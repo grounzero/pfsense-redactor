@@ -2,7 +2,7 @@
 
 The **pfSense XML Configuration Redactor** safely removes sensitive information from `config.xml` exports before they are shared with support, consultants, auditors, or AI tools for security analysis.
 
-The tool preserves **network architecture and routing logic** while sanitising **secrets and identifiers** — allowing safe troubleshooting and topology review without disclosing private data.
+The tool preserves **network architecture and routing logic** while sanitising **secrets and identifiers** allowing safe troubleshooting and topology review without disclosing private data.
 
 > Keeps firewall and routing context  
 > Removes passwords, keys, public IPs (optional), tokens, certs  
@@ -310,7 +310,7 @@ Always keep the **original secure copy**.
 
 ## Contributing
 
-Pull requests welcome — particularly:
+Pull requests welcome.  Particularly:
 
 - Additional pfSense element coverage
 - Plugin XML tag packs (WireGuard, pfBlockerNG, HAProxy, Snort, ACME, FRR)
