@@ -9,7 +9,6 @@ disable=
     W0718,  # broad-exception-caught (intentional for IDNA encoding fallback)
     C0302,  # too-many-lines (single-module design is intentional for this tool)
     C0301,  # line-too-long (regex patterns and help text are hard to break meaningfully)
-    R0201,  # no-self-use (helper methods are part of class API, may need self in future)
 
 [BASIC]
 # Allow common short variable names

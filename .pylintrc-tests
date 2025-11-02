@@ -10,6 +10,7 @@ disable=
     W0613,  # unused-argument (pytest fixtures)
     W0611,  # unused-import (test fixtures)
     W0612,  # unused-variable (test setup)
+    W0640,  # cell-var-from-loop (test patterns)
     W1510,  # subprocess-run-check (intentional in tests)
     
     # Import patterns:
@@ -23,6 +24,7 @@ disable=
     R0913,  # too-many-arguments (test fixtures)
     R0914,  # too-many-locals (test setup)
     R0915,  # too-many-statements (comprehensive tests)
+    R0917,  # too-many-positional-arguments (test fixtures)
     R1713,  # consider-using-join (test string building can be explicit)
     
     # Style choices in tests:
