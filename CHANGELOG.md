@@ -74,4 +74,4 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
-[1.0.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.0
+[1.0.3]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.3

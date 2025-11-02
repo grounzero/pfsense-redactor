@@ -58,7 +58,7 @@ IP_CONTAINING_ELEMENTS: FrozenSet[str] = frozenset({
     'mac',  # MAC addresses in <mac> tags
 })
 
-SENSITIVE_ATTR_TOKENS: tuple[str, ...] = (
+SENSITIVE_ATTR_TOKENS: Tuple[str, ...] = (
     'password', 'passwd', 'pass', 'key', 'secret', 'token', 'bearer',
     'cookie', 'client_secret', 'client-key', 'api_key', 'apikey', 'auth', 'signature'
 )
