@@ -1,0 +1,42 @@
+[MASTER]
+# Configuration for test files - more relaxed than main code
+
+[MESSAGES CONTROL]
+# Disable warnings that are acceptable in test code:
+disable=
+    # Test-specific patterns:
+    W0212,  # protected-access (testing private methods)
+    W0621,  # redefined-outer-name (pytest fixtures)
+    W0613,  # unused-argument (pytest fixtures)
+    W0611,  # unused-import (test fixtures)
+    W0612,  # unused-variable (test setup)
+    
+    # Import patterns:
+    C0415,  # import-outside-toplevel (lazy imports for test isolation)
+    C0411,  # wrong-import-order (less critical in tests)
+    
+    # Design patterns acceptable in tests:
+    R0801,  # duplicate-code (similar test patterns)
+    R0903,  # too-few-public-methods (test classes)
+    R0913,  # too-many-arguments (test fixtures)
+    R0914,  # too-many-locals (test setup)
+    R0915,  # too-many-statements (comprehensive tests)
+    
+    # Style choices in tests:
+    C0103,  # invalid-name (test function names can be descriptive)
+
+[BASIC]
+# Allow descriptive test names and common variables
+good-names=i,j,k,ex,_,ip,id,f
+
+[FORMAT]
+max-line-length=120
+
+[DESIGN]
+# More relaxed limits for tests:
+max-args=10
+max-attributes=20
+max-branches=20
+max-locals=20
+max-statements=100
+max-returns=10

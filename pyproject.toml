@@ -48,3 +48,28 @@ pfsense-redactor = "pfsense_redactor.__main__:main"
 where = ["."]
 include = ["pfsense_redactor*"]
 exclude = ["tests*"]
+
+[tool.pylint.main]
+ignore-patterns = ["test_.*\\.py"]
+
+[tool.pylint.messages_control]
+disable = [
+    "W0212",  # protected-access (needed to test private methods)
+    "W0621",  # redefined-outer-name (pytest fixtures pattern)
+    "C0415",  # import-outside-toplevel (lazy imports in tests)
+    "R0801",  # duplicate-code (similar test patterns)
+]
+
+[tool.pylint.basic]
+good-names = ["i", "j", "k", "ex", "_", "ip", "id"]
+
+[tool.pylint.format]
+max-line-length = 120
+
+[tool.pylint.design]
+max-args = 7
+max-attributes = 15
+max-branches = 15
+max-locals = 15
+max-statements = 60
+max-returns = 8

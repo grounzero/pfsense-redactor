@@ -221,6 +221,96 @@ class PfSenseRedactor:
             return True
         return any(ip in net for net in self.allowlist_ip_networks)
 
+    def _mask_ip_sample(self, value: str) -> str:
+        """Mask IP address for sample display"""
+        try:
+            ip = ipaddress.ip_address(value)
+            if ip.version == 4:
+                parts = value.split('.')
+                if len(parts) == 4:
+                    return f"{parts[0]}.{parts[1]}.***.{parts[3]}"
+            else:
+                parts = value.split(':')
+                if len(parts) >= 3:
+                    return f"{parts[0]}:{parts[1]}:*:****::{parts[-1]}"
+        except ValueError:
+            pass
+        return value
+
+    def _mask_url_sample(self, value: str) -> str:
+        """Mask URL for sample display"""
+        try:
+            parts = urlsplit(value)
+            host = parts.hostname or ''
+            if not host:
+                return value
+
+            try:
+                ip = ipaddress.ip_address(host)
+                if ip.version == 4:
+                    host_parts = host.split('.')
+                    masked_host = f"{host_parts[0]}.{host_parts[1]}.***.{host_parts[3]}" if len(host_parts) == 4 else host
+                else:
+                    host_parts = host.split(':')
+                    masked_host = f"[{host_parts[0]}:{host_parts[1]}:*:****::{host_parts[-1]}]" if len(host_parts) >= 3 else f"[{host}]"
+            except (ValueError, ipaddress.AddressValueError):
+                host_parts = host.split('.')
+                if len(host_parts) >= 3:
+                    masked_host = f"{host_parts[0]}.***.{'.'.join(host_parts[-2:])}"
+                elif len(host_parts) == 2:
+                    masked_host = f"***.{host}"
+                else:
+                    masked_host = host
+
+            userinfo = ''
+            if parts.username:
+                userinfo = f"{parts.username}:***@" if parts.password else f"{parts.username}@"
+            netloc = f"{userinfo}{masked_host}"
+            if parts.port:
+                netloc += f":{parts.port}"
+
+            if '[' in masked_host:
+                result = f"{parts.scheme}://{netloc}{parts.path}"
+                if parts.query:
+                    result += f"?{parts.query}"
+                if parts.fragment:
+                    result += f"#{parts.fragment}"
+                return result
+            return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+        except (ValueError, AttributeError):
+            pass
+        return value
+
+    def _mask_fqdn_sample(self, value: str) -> str:
+        """Mask FQDN for sample display"""
+        parts = value.split('.')
+        if len(parts) >= 3:
+            return f"{parts[0]}.***.{'.'.join(parts[-2:])}"
+        if len(parts) == 2:
+            return f"***.{value}"
+        return value
+
+    def _mask_mac_sample(self, value: str) -> str:
+        """Mask MAC address for sample display"""
+        if ':' in value:
+            parts = value.split(':')
+            if len(parts) == 6:
+                return f"{parts[0]}:{parts[1]}:**:**:{parts[4]}:{parts[5]}"
+        elif '.' in value:
+            parts = value.split('.')
+            if len(parts) == 3:
+                return f"{parts[0]}.****.{parts[2]}"
+        return value
+
+    def _mask_secret_sample(self, value: str) -> str:
+        """Mask secret for sample display"""
+        length = len(value)
+        return f"{'*' * min(length, 8)} (len={length})"
+
+    def _mask_cert_sample(self, value: str) -> str:
+        """Mask certificate/key for sample display"""
+        return f"PEM blob (len≈{len(value)})"
+
     def _safe_mask_for_sample(self, value: str, category: str) -> str:
         """Create a safely masked version of a value for sample display
 
@@ -234,112 +324,17 @@ class PfSenseRedactor:
         if not value:
             return value
 
-        if category == 'IP':
-            # Mask middle octets/segments: 198.51.***.42 or 2001:db8:*:****::1
-            try:
-                ip = ipaddress.ip_address(value)
-                if ip.version == 4:
-                    parts = value.split('.')
-                    if len(parts) == 4:
-                        return f"{parts[0]}.{parts[1]}.***.{parts[3]}"
-                else:
-                    # IPv6: keep first and last segment, mask middle
-                    parts = value.split(':')
-                    if len(parts) >= 3:
-                        return f"{parts[0]}:{parts[1]}:*:****::{parts[-1]}"
-            except ValueError:
-                pass
-            return value
+        maskers = {
+            'IP': self._mask_ip_sample,
+            'URL': self._mask_url_sample,
+            'FQDN': self._mask_fqdn_sample,
+            'MAC': self._mask_mac_sample,
+            'Secret': self._mask_secret_sample,
+            'Cert/Key': self._mask_cert_sample,
+        }
 
-        elif category == 'URL':
-            # Show full URL but mask the host part
-            try:
-                parts = urlsplit(value)
-                host = parts.hostname or ''
-                if host:
-                    # Try to mask as IP first
-                    try:
-                        ip = ipaddress.ip_address(host)
-                        if ip.version == 4:
-                            host_parts = host.split('.')
-                            if len(host_parts) == 4:
-                                masked_host = f"{host_parts[0]}.{host_parts[1]}.***.{host_parts[3]}"
-                            else:
-                                masked_host = host
-                        else:
-                            # IPv6: mask and wrap in brackets
-                            host_parts = host.split(':')
-                            if len(host_parts) >= 3:
-                                masked_host = f"[{host_parts[0]}:{host_parts[1]}:*:****::{host_parts[-1]}]"
-                            else:
-                                masked_host = f"[{host}]"
-                    except (ValueError, ipaddress.AddressValueError):
-                        # Domain: keep TLD and one left label, mask rest
-                        host_parts = host.split('.')
-                        if len(host_parts) >= 3:
-                            masked_host = f"{host_parts[0]}.***.{'.'.join(host_parts[-2:])}"
-                        elif len(host_parts) == 2:
-                            masked_host = f"***.{host}"
-                        else:
-                            masked_host = host
-
-                    # Rebuild URL with masked host
-                    userinfo = ''
-                    if parts.username:
-                        userinfo = f"{parts.username}:***@" if parts.password else f"{parts.username}@"
-                    netloc = f"{userinfo}{masked_host}"
-                    if parts.port:
-                        netloc += f":{parts.port}"
-
-                    # Build URL manually if we have brackets (to avoid urlunsplit validation issues)
-                    if '[' in masked_host:
-                        result = f"{parts.scheme}://{netloc}{parts.path}"
-                        if parts.query:
-                            result += f"?{parts.query}"
-                        if parts.fragment:
-                            result += f"#{parts.fragment}"
-                        return result
-                    else:
-                        return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
-            except (ValueError, AttributeError):
-                # URL parsing or manipulation failed
-                pass
-            return value
-
-        elif category == 'FQDN':
-            # Keep TLD and one left label, mask rest: db.***.example.org
-            parts = value.split('.')
-            if len(parts) >= 3:
-                return f"{parts[0]}.***.{'.'.join(parts[-2:])}"
-            elif len(parts) == 2:
-                return f"***.{value}"
-            return value
-
-        elif category == 'MAC':
-            # Mask middle octets: aa:bb:**:**:ee:ff
-            if ':' in value:
-                parts = value.split(':')
-                if len(parts) == 6:
-                    return f"{parts[0]}:{parts[1]}:**:**:{parts[4]}:{parts[5]}"
-            elif '.' in value:
-                # Cisco format: aaaa.bbbb.cccc -> aaaa.****.cccc
-                parts = value.split('.')
-                if len(parts) == 3:
-                    return f"{parts[0]}.****.{parts[2]}"
-            return value
-
-        elif category == 'Secret':
-            # Show only masked stars and length (safer - no edge chars exposed)
-            # Cap stars at 8 to prevent log flooding with very long secrets
-            length = len(value)
-            return f"{'*' * min(length, 8)} (len={length})"
-
-        elif category == 'Cert/Key':
-            # Just show placeholder with approximate length
-            length = len(value)
-            return f"PEM blob (len≈{length})"
-
-        return value
+        masker = maskers.get(category)
+        return masker(value) if masker else value
 
     def _add_sample(self, category: str, before: str, after: str) -> None:
         """Add a sample to the collection (if under limit and not duplicate)"""

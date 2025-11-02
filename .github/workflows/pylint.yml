@@ -18,6 +18,10 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install pylint
-    - name: Analysing the code with pylint
+    - name: Analysing production code with pylint (strict)
       run: |
-        pylint $(git ls-files '*.py')
+        pylint --rcfile=.pylintrc $(git ls-files 'pfsense_redactor/*.py')
+    
+    - name: Analysing test code with pylint (relaxed)
+      run: |
+        pylint --rcfile=.pylintrc-tests $(git ls-files 'tests/**/*.py')
