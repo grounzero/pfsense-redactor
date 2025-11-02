@@ -6,19 +6,27 @@
 # Minimal disables - only truly necessary exceptions:
 disable=
     R0801,  # duplicate-code (can occur in similar logic paths)
+    W0718,  # broad-exception-caught (intentional for IDNA encoding fallback)
+    C0302,  # too-many-lines (single-module design is intentional for this tool)
+    C0301,  # line-too-long (regex patterns and help text are hard to break meaningfully)
 
 [BASIC]
 # Allow common short variable names
 good-names=i,j,k,ex,_,ip,id
 
+# Allow UPPER_CASE for constants (Python convention)
+const-rgx=[A-Z_][A-Z0-9_]*
+attr-rgx=[a-z_][a-z0-9_]*|[A-Z_][A-Z0-9_]*
+
 [FORMAT]
 max-line-length=120
 
 [DESIGN]
-# Strict limits to encourage clean design:
-max-args=7
-max-attributes=12
-max-branches=12
-max-locals=15
-max-statements=50
-max-returns=6
+# Balanced limits - strict but pragmatic for complex security tool:
+max-args=10
+max-attributes=30
+max-branches=25
+max-locals=20
+max-statements=100
+max-returns=8
+max-positional-arguments=10

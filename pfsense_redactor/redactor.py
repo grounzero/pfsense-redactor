@@ -858,8 +858,7 @@ class PfSenseRedactor:
                 if self.fail_on_warn:
                     print(f"{msg} Exiting.", file=sys.stderr)
                     return False
-                else:
-                    print(f"{msg} Proceeding anyway...", file=sys.stderr)
+                print(f"{msg} Proceeding anyway...", file=sys.stderr)
 
             if not dry_run and not stdout_mode:
                 print(f"[+] Parsing XML configuration from: {input_file}")
@@ -1046,6 +1045,7 @@ def find_default_allowlist_files() -> List[Path]:
 
 
 def main() -> None:
+    """Main entry point for the pfSense redactor CLI"""
     parser = argparse.ArgumentParser(
         description='Redact sensitive information from pfSense XML configuration files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
