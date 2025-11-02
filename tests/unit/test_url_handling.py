@@ -135,13 +135,51 @@ class TestNonHTTPProtocolURLs:
         assert "REDACTED" in result
         assert "telnet://" in result
 
-    def test_file_url_preserved(self, basic_redactor):
-        """Verify that file:// URLs are handled"""
+    def test_file_url_local_path_preserved(self, basic_redactor):
+        """Verify that file:// URLs with local paths are preserved unchanged"""
         url = "file:///etc/config.xml"
         result = basic_redactor._mask_url(url)
 
-        # file:// URLs don't have hosts, so should be preserved
+        # file:// URLs without hostnames should be preserved exactly
+        assert result == url
+        assert "example.com" not in result
+
+    def test_file_url_windows_path_preserved(self, basic_redactor):
+        """Verify that file:// URLs with Windows paths are preserved"""
+        url = "file:///C:/Users/admin/config.xml"
+        result = basic_redactor._mask_url(url)
+
+        # Should be preserved exactly, not transformed to network path
+        assert result == url
+        assert "example.com" not in result
+
+    def test_file_url_with_hostname_redacted(self, basic_redactor):
+        """Verify that file:// URLs with actual hostnames are redacted"""
+        url = "file://fileserver.local/share/config.xml"
+        result = basic_redactor._mask_url(url)
+
+        # Should mask the hostname
+        assert "fileserver.local" not in result
+        assert "example.com" in result
         assert "file://" in result
+
+    def test_nfs_url_without_hostname_preserved(self, basic_redactor):
+        """Verify that NFS URLs without hostnames are preserved"""
+        url = "nfs:///mnt/share"
+        result = basic_redactor._mask_url(url)
+
+        # Should be preserved unchanged
+        assert result == url
+        assert "example.com" not in result
+
+    def test_smb_url_without_hostname_preserved(self, basic_redactor):
+        """Verify that SMB URLs without hostnames are preserved"""
+        url = "smb:///share"
+        result = basic_redactor._mask_url(url)
+
+        # Should be preserved unchanged
+        assert result == url
+        assert "example.com" not in result
 
     def test_smb_url_with_credentials_redacted(self, basic_redactor):
         """Verify that SMB URLs with credentials are properly redacted"""

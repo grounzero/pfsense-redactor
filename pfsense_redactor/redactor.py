@@ -594,6 +594,11 @@ class PfSenseRedactor:
 
         host = parts.hostname or ''
 
+        # Skip URLs without hostnames (e.g., file:///path, about:blank)
+        # These have no network location to redact and no credentials to leak
+        if not host:
+            return url
+
         # Check if already masked
         if self._is_already_masked_host(host):
             return self._normalise_masked_url(parts, host)
