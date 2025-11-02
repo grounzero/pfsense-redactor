@@ -10,11 +10,42 @@ The **pfSense XML Configuration Redactor** safely removes sensitive information 
 pip install pfsense-redactor
 ```
 
+> **Note:** If you encounter an `externally-managed-environment` error (common on macOS and modern Linux distributions), use one of these alternatives:
+>
+> **Option 1: Install with pipx (recommended for CLI tools)**
+> ```bash
+> brew install pipx
+> pipx install pfsense-redactor
+> ```
+>
+> **Option 2: Use a virtual environment**
+> ```bash
+> python3 -m venv venv
+> source venv/bin/activate
+> pip install pfsense-redactor
+> ```
+>
+> **Option 3: Install in user space**
+> ```bash
+> pip install --user pfsense-redactor
+> ```
+
 ### From Source
 
 ```bash
 git clone https://github.com/grounzero/pfsense-redactor.git
 cd pfsense-redactor
+```
+
+**Option 1: Development mode (recommended for contributing)**
+```bash
+pip install -e .
+```
+
+**Option 2: With virtual environment**
+```bash
+python3 -m venv venv
+source venv/bin/activate
 pip install -e .
 ```
 
