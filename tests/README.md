@@ -40,7 +40,7 @@ tests/
 
 1. **Activate the virtual environment:**
    ```bash
-   cd /Users/me/git/pfsense-redactor
+   cd /pfsense-redactor
    source .venv/bin/activate
    ```
 
