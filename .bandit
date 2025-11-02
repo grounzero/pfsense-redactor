@@ -1,0 +1,12 @@
+[bandit]
+# Bandit configuration for pfSense redactor
+
+# Exclude test directories from assert checks
+# Using assert in tests is standard pytest practice
+exclude_dirs = /tests/
+
+# Skip assert_used check (B101) for test files
+skips = B101
+
+# Test files are not compiled to optimised bytecode in production
+# so assert statements in tests are not a security concern
