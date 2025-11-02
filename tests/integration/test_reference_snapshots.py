@@ -151,4 +151,4 @@ def test_stats_stderr_mode(sample_files, cli_runner, stats_parser):
 
         # Verify stats are parseable
         stats = stats_parser.parse(stderr)
-        assert len(stats) > 0, "No stats parsed from stderr"
+        assert stats, "No stats parsed from stderr"

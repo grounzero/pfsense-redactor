@@ -984,7 +984,7 @@ def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> Tupl
 
     try:
         with open(filepath, 'r', encoding='utf-8') as file_handle:
-            for line_num, line in enumerate(file_handle, 1):
+            for _, line in enumerate(file_handle, 1):
                 line = line.strip()
                 # Skip blank lines and comments
                 if not line or line.startswith('#'):

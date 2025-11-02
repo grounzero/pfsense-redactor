@@ -303,8 +303,8 @@ def test_no_redact_domains_flag(cli_runner, create_xml_file, tmp_path):
     assert exit_code == 0
     output_content = output_file.read_text()
 
-    assert "<hostname>firewall.example.com</hostname>" in output_content or "firewall.example.com" in output_content
-    assert "<domain>example.org</domain>" in output_content or "example.org" in output_content
+    assert "<hostname>firewall.example.com</hostname>" in output_content
+    assert "<domain>example.org</domain>" in output_content
 
 
 def test_anonymise_implies_keep_private(cli_runner, create_xml_file, tmp_path):
@@ -457,4 +457,4 @@ def test_combined_flags(cli_runner, create_xml_file, tmp_path):
     # Non-whitelisted public IPs redacted
     assert "93.184.216.34" not in output_content
 
-    assert "<hostname>firewall.example.com</hostname>" in output_content or "example.com" in output_content
+    assert "<hostname>firewall.example.com</hostname>" in output_content
