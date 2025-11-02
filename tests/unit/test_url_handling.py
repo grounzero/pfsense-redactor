@@ -74,5 +74,105 @@ class TestURLWithIPHandling:
         assert "[" in result and "]" in result
 
 
+class TestNonHTTPProtocolURLs:
+    """Test URL handling for protocols other than HTTP/HTTPS"""
+
+    def test_ftp_url_with_credentials_redacted(self, basic_redactor):
+        """Verify that FTP URLs with credentials are properly redacted"""
+        url = "ftp://user:password@ftp.example.com/files"
+        result = basic_redactor._mask_url(url)
+
+        # Should redact password
+        assert "password" not in result
+        assert "REDACTED" in result
+        # Should preserve username and protocol
+        assert "ftp://" in result
+        assert "user" in result
+        # Should mask domain
+        assert "ftp.example.com" not in result
+
+    def test_ftps_url_with_credentials_redacted(self, basic_redactor):
+        """Verify that FTPS URLs with credentials are properly redacted"""
+        url = "ftps://admin:secret123@secure.example.org:990/data"
+        result = basic_redactor._mask_url(url)
+
+        # Should redact password
+        assert "secret123" not in result
+        assert "REDACTED" in result
+        # Should preserve protocol and username
+        assert "ftps://" in result
+        assert "admin" in result
+        # Should preserve port
+        assert ":990" in result
+
+    def test_sftp_url_with_credentials_redacted(self, basic_redactor):
+        """Verify that SFTP URLs with credentials are properly redacted"""
+        url = "sftp://backup:pass@192.168.1.100/backups"
+        result = basic_redactor._mask_url(url)
+
+        # Should redact password
+        assert "pass" not in result
+        assert "REDACTED" in result
+        # Should mask IP
+        assert "192.168.1.100" not in result
+
+    def test_ssh_url_with_credentials_redacted(self, basic_redactor):
+        """Verify that SSH URLs with credentials are properly redacted"""
+        url = "ssh://root:toor@server.local:22"
+        result = basic_redactor._mask_url(url)
+
+        # Should redact password
+        assert "toor" not in result
+        assert "REDACTED" in result
+        assert "ssh://" in result
+
+    def test_telnet_url_with_credentials_redacted(self, basic_redactor):
+        """Verify that Telnet URLs with credentials are properly redacted"""
+        url = "telnet://admin:admin@router.local:23"
+        result = basic_redactor._mask_url(url)
+
+        # Should redact password
+        assert "REDACTED" in result
+        assert "telnet://" in result
+
+    def test_file_url_preserved(self, basic_redactor):
+        """Verify that file:// URLs are handled"""
+        url = "file:///etc/config.xml"
+        result = basic_redactor._mask_url(url)
+
+        # file:// URLs don't have hosts, so should be preserved
+        assert "file://" in result
+
+    def test_smb_url_with_credentials_redacted(self, basic_redactor):
+        """Verify that SMB URLs with credentials are properly redacted"""
+        url = "smb://domain\\user:password@fileserver/share"
+        result = basic_redactor._mask_url(url)
+
+        # Should redact password
+        assert "password" not in result
+        assert "REDACTED" in result
+        assert "smb://" in result
+
+    def test_mixed_protocols_in_text(self, basic_redactor):
+        """Verify that multiple protocol URLs in text are all redacted"""
+        text = """
+        FTP: ftp://user:pass@ftp.example.com/files
+        HTTPS: https://admin:secret@web.example.com/admin
+        SFTP: sftp://backup:key@192.168.1.50/data
+        """
+        result = basic_redactor.redact_text(text)
+
+        # All passwords should be redacted
+        assert "pass" not in result
+        assert "secret" not in result
+        assert "key" not in result
+        # Should have REDACTED markers
+        assert result.count("REDACTED") >= 3
+        # Protocols should be preserved
+        assert "ftp://" in result
+        assert "https://" in result
+        assert "sftp://" in result
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

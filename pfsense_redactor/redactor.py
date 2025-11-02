@@ -162,7 +162,9 @@ class PfSenseRedactor:
         # Domain/email/URL patterns
         # ReDoS mitigation: limit repetitions to prevent catastrophic backtracking
         self.EMAIL_RE = re.compile(r'(?<!:)\b[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.){1,10}[A-Za-z]{2,}\b')
-        self.URL_RE = re.compile(r'\bhttps?://[^\s<>"\']+\b')
+        # URL pattern: matches common protocols (http, https, ftp, ftps, sftp, ssh, telnet, etc.)
+        # This ensures credentials in URLs like ftp://user:pass@host are properly redacted
+        self.URL_RE = re.compile(r'\b(?:https?|ftps?|sftp|ssh|telnet|file|smb|nfs)://[^\s<>"\']+\b')
         # FQDN pattern is intentionally broad for security (better to over-redact than under-redact)
         # Matches: label.label.tld where labels are alphanumeric with hyphens, TLD is 2+ letters
         # Note: This may match some non-domains (e.g., version numbers like 1.2.3a) but that's acceptable
