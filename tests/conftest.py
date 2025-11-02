@@ -266,7 +266,6 @@ def redactor_factory():
             redactor = redactor_factory(anonymise=True, keep_private_ips=False)
             result = redactor.redact_text("test")
     """
-    # pylint: disable=import-outside-toplevel
     from pfsense_redactor.redactor import PfSenseRedactor
 
     def _create(**kwargs):
