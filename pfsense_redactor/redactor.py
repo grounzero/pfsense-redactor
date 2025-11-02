@@ -2,6 +2,7 @@
 pfSense XML Configuration Redactor
 Redacts sensitive information from pfSense config.xml files
 """
+from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 import argparse
