@@ -66,13 +66,13 @@ SENSITIVE_ATTR_TOKENS: Tuple[str, ...] = (
 
 class PfSenseRedactor:
     """pfSense configuration redactor with comprehensive sensitive data handling"""
-    
+
     # Class constants for magic numbers
     SAMPLE_LIMIT: int = 5  # Maximum number of samples to collect per category
     CERT_MIN_LENGTH: int = 50  # Minimum length to treat text as certificate/key blob
     KEY_BLOB_MIN_LENGTH: int = 64  # Minimum length to treat <key> content as PEM blob
     KEY_SHORT_THRESHOLD: int = 40  # Threshold for short key detection (alphanumeric check)
-    
+
     def __init__(
         self,
         keep_private_ips: bool = False,
@@ -89,7 +89,7 @@ class PfSenseRedactor:
         self.aggressive = aggressive
         self.fail_on_warn = fail_on_warn
         self.dry_run_verbose = dry_run_verbose
-        
+
         # Allow-lists (opt-in, empty by default)
         # IP allow-lists: support both individual IPs and CIDR networks
         self.allowlist_ip_addrs: Set[IPAddress] = set()
@@ -99,11 +99,11 @@ class PfSenseRedactor:
                     self.allowlist_ip_addrs.add(ipaddress.ip_address(ip_str))
                 except ValueError:
                     pass  # Will be handled as network or error elsewhere
-        
+
         self.allowlist_ip_networks: List[IPNetwork] = []
         if allowlist_networks:
             self.allowlist_ip_networks = list(allowlist_networks)
-        
+
         # Domain allow-lists: store both normalised Unicode and IDNA forms
         self.allowlist_domains: Set[str] = set()
         self.allowlist_domains_idna: Set[str] = set()
@@ -115,32 +115,32 @@ class PfSenseRedactor:
                     self.allowlist_domains.add(norm_domain)
                     if idna_domain and idna_domain != norm_domain:
                         self.allowlist_domains_idna.add(idna_domain)
-        
+
         # Sample collection for --dry-run-verbose
         self.sample_limit: int = self.SAMPLE_LIMIT
         self.samples: DefaultDict[str, List[Tuple[str, str]]] = defaultdict(list)
         self.sample_seen: DefaultDict[str, Set[str]] = defaultdict(set)
-        
+
         # Anonymisation maps
         self.ip_aliases: Dict[str, str] = {}
         self.domain_aliases: Dict[str, str] = {}
         self.ip_counter: int = 0
         self.domain_counter: int = 0
-        
+
         # Statistics
         self.stats: DefaultDict[str, int] = defaultdict(int)
-        
+
         # Reference module-level constants
         self.always_preserve_ips = ALWAYS_PRESERVE_IPS
         self.redact_elements = REDACT_ELEMENTS
         self.cert_key_elements = CERT_KEY_ELEMENTS
         self.ip_containing_elements = IP_CONTAINING_ELEMENTS
-        
+
         # Compile all regex patterns for consistency and performance
         # MAC address patterns
         self.MAC_RE = re.compile(r'\b(?:[0-9A-Fa-f]{2}[:-]){5}(?:[0-9A-Fa-f]{2})\b')
         self.MAC_CISCO_RE = re.compile(r'\b[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\.[0-9A-Fa-f]{4}\b')
-        
+
         # Domain/email/URL patterns
         # ReDoS mitigation: limit repetitions to prevent catastrophic backtracking
         self.EMAIL_RE = re.compile(r'(?<!:)\b[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.){1,10}[A-Za-z]{2,}\b')
@@ -150,11 +150,11 @@ class PfSenseRedactor:
         # Note: This may match some non-domains (e.g., version numbers like 1.2.3a) but that's acceptable
         # for a redaction tool where false positives are preferable to false negatives
         self.FQDN_RE = re.compile(r'\b(?:[A-Za-z0-9-]+\.){1,10}[A-Za-z]{2,}\b')
-        
+
         # IP pattern for token matching and splitting
         self.IP_PATTERN = re.compile(r'^[\[\]]?[0-9A-Fa-f:.]+(?:%[A-Za-z0-9_.:+-]+)?[\[\]]?(?::\d+)?$')
         self._ip_token_splitter = re.compile(r'([^0-9A-Za-z\.\:\[\]_+-])')
-        
+
         # PEM marker detection
         self.PEM_MARKER = re.compile(
             r'-----BEGIN (?:CERTIFICATE|RSA PRIVATE KEY|EC PRIVATE KEY|ENCRYPTED PRIVATE KEY|PRIVATE KEY|PUBLIC KEY|OPENVPN STATIC KEY|OPENSSH PRIVATE KEY)-----'
@@ -162,57 +162,57 @@ class PfSenseRedactor:
 
     def _normalise_domain(self, domain: str) -> Tuple[Optional[str], Optional[str]]:
         """Normalise domain: lowercase, strip leading and trailing dots, handle wildcards, compute IDNA
-        
+
         Returns:
             tuple: (normalised_unicode, normalised_idna) or (None, None) if invalid
         """
         # Strip leading and trailing dots
         domain = domain.lstrip('.').rstrip('.')
-        
+
         # Handle wildcard prefix (*.example.org -> example.org for suffix matching)
         if domain.startswith('*.'):
             domain = domain[2:]
-        
+
         # Lowercase
         domain_lower = domain.lower()
-        
+
         # CRITICAL: Reject empty domains to prevent bypass vulnerability
         # Malformed entries like ".", "*.", or "*.*" would normalise to empty string
         # which could match ANY domain in suffix matching
         if not domain_lower:
             return None, None
-        
+
         # Compute IDNA (punycode) form
         try:
             domain_idna = domain_lower.encode('idna').decode('ascii')
         except (UnicodeError, UnicodeDecodeError):
             domain_idna = domain_lower
-        
+
         return domain_lower, domain_idna
 
     def _is_domain_allowed(self, host: str) -> bool:
         """Check if a domain/hostname is in the allow-list (with suffix and IDNA matching)"""
         if not host:
             return False
-        
+
         host_l = host.lower().rstrip('.')
-        
+
         # Compute IDNA form
         try:
             host_idna = host_l.encode('idna').decode('ascii')
         except (UnicodeError, UnicodeDecodeError):
             host_idna = host_l
-        
+
         # Check exact match or suffix match against Unicode forms
         for allow_domain in self.allowlist_domains:
             if host_l == allow_domain or host_l.endswith('.' + allow_domain):
                 return True
-        
+
         # Check exact match or suffix match against IDNA forms
         for allow_domain_idna in self.allowlist_domains_idna:
             if host_idna == allow_domain_idna or host_idna.endswith('.' + allow_domain_idna):
                 return True
-        
+
         return False
 
     def _is_ip_allowed(self, ip: IPAddress) -> bool:
@@ -223,17 +223,17 @@ class PfSenseRedactor:
 
     def _safe_mask_for_sample(self, value: str, category: str) -> str:
         """Create a safely masked version of a value for sample display
-        
+
         Args:
             value: The original value to mask
             category: One of 'IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key'
-        
+
         Returns:
             str: Safely masked version suitable for display
         """
         if not value:
             return value
-        
+
         if category == 'IP':
             # Mask middle octets/segments: 198.51.***.42 or 2001:db8:*:****::1
             try:
@@ -250,7 +250,7 @@ class PfSenseRedactor:
             except ValueError:
                 pass
             return value
-        
+
         elif category == 'URL':
             # Show full URL but mask the host part
             try:
@@ -282,7 +282,7 @@ class PfSenseRedactor:
                             masked_host = f"***.{host}"
                         else:
                             masked_host = host
-                    
+
                     # Rebuild URL with masked host
                     userinfo = ''
                     if parts.username:
@@ -290,7 +290,7 @@ class PfSenseRedactor:
                     netloc = f"{userinfo}{masked_host}"
                     if parts.port:
                         netloc += f":{parts.port}"
-                    
+
                     # Build URL manually if we have brackets (to avoid urlunsplit validation issues)
                     if '[' in masked_host:
                         result = f"{parts.scheme}://{netloc}{parts.path}"
@@ -305,7 +305,7 @@ class PfSenseRedactor:
                 # URL parsing or manipulation failed
                 pass
             return value
-        
+
         elif category == 'FQDN':
             # Keep TLD and one left label, mask rest: db.***.example.org
             parts = value.split('.')
@@ -314,7 +314,7 @@ class PfSenseRedactor:
             elif len(parts) == 2:
                 return f"***.{value}"
             return value
-        
+
         elif category == 'MAC':
             # Mask middle octets: aa:bb:**:**:ee:ff
             if ':' in value:
@@ -327,29 +327,29 @@ class PfSenseRedactor:
                 if len(parts) == 3:
                     return f"{parts[0]}.****.{parts[2]}"
             return value
-        
+
         elif category == 'Secret':
             # Show only masked stars and length (safer - no edge chars exposed)
             # Cap stars at 8 to prevent log flooding with very long secrets
             length = len(value)
             return f"{'*' * min(length, 8)} (len={length})"
-        
+
         elif category == 'Cert/Key':
             # Just show placeholder with approximate length
             length = len(value)
             return f"PEM blob (len≈{length})"
-        
+
         return value
 
     def _add_sample(self, category: str, before: str, after: str) -> None:
         """Add a sample to the collection (if under limit and not duplicate)"""
         if not self.dry_run_verbose:
             return
-        
+
         # Check if we've already seen this 'before' value in this category
         if before in self.sample_seen[category]:
             return
-        
+
         if len(self.samples[category]) < self.sample_limit:
             # Record that we've seen this value
             self.sample_seen[category].add(before)
@@ -363,7 +363,7 @@ class PfSenseRedactor:
         bracketed = token.startswith('[') and token.endswith(']')
         core = token[1:-1] if bracketed else token
         core_no_zone, _, zone = core.partition('%')
-        
+
         try:
             ip = ipaddress.ip_address(core_no_zone)
             return ip, bracketed, zone
@@ -384,7 +384,7 @@ class PfSenseRedactor:
             if token in ('XXX.XXX.XXX.XXX', 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX', '[XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX]'):
                 return token
             original_token = token
-            
+
             # Extract optional trailing :port for unbracketed tokens
             # IPv6 must use brackets to carry a port; we only peel :port when the token contains a dot
             # Only strip port if it looks like IPv4:port (has dots)
@@ -398,7 +398,7 @@ class PfSenseRedactor:
                     # IPv6 addresses should not have ports stripped here (use brackets for IPv6:port)
                     if '.' in potential_ip:
                         token, port_suffix = potential_ip, potential_port
-            
+
             # Handle bracketed IPv6 with optional zone identifier and port: [fe80::1%em0]:51820
             # This handles: [IPv6], [IPv6%zone], [IPv6]:port, [IPv6%zone]:port
             if token.startswith('['):
@@ -408,48 +408,48 @@ class PfSenseRedactor:
                     bracket_end = token.index(']:')
                     port_suffix = token[bracket_end+1:]  # Includes the colon
                     token = token[:bracket_end+1]  # Keep just [IPv6%zone]
-            
+
             ip, bracketed, zone = self._parse_ip_token(token)
             if ip is None:
                 return original_token
-            
+
             # Always preserve common netmasks and unspecified addresses for readability
             # (regardless of --keep-private-ips setting)
             if str(ip) in self.always_preserve_ips:
                 return original_token
-            
+
             # Preserve allow-listed IPs (opt-in, including CIDR networks)
             if self._is_ip_allowed(ip):
                 return original_token
-            
+
             # Keep non-global IPs if requested (simplified test for RFC1918, ULA, loopback,
             # link-local, multicast, reserved, and unspecified addresses)
             if self.keep_private_ips and not ip.is_global:
                 return original_token
-            
+
             # Anonymisation mode
             if self.anonymise:
                 rep = self._anonymise_ip(str(ip))
             else:
                 # Standard redaction
                 rep = 'XXX.XXX.XXX.XXX' if ip.version == 4 else 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX'
-            
+
             # Preserve zone identifier if present
             if zone:
                 rep = f"{rep}%{zone}"
             if bracketed:
                 rep = f"[{rep}]"
-            
+
             result = rep + port_suffix
-            
+
             # Only count if actually changed
             if result != original_token:
                 self.stats['ips_redacted'] += 1
                 # Collect sample for dry-run-verbose
                 self._add_sample('IP', str(ip), rep)
-            
+
             return result
-        
+
         # Split conservatively - matches IP-like tokens including zone IDs and ports
         # Pattern matches: IPs with optional brackets, zone identifiers, and ports
         # Examples: [fe80::1%eth0]:51820, [fe80::1%eth0], fe80::1%eth0, 192.168.1.1
@@ -460,20 +460,20 @@ class PfSenseRedactor:
 
     def _anonymise_domain(self, domain: str) -> str:
         """Generate a consistent alias for a domain
-        
+
         Normalises to IDNA (punycode) to ensure Unicode and ASCII forms
         of the same domain get the same alias (e.g., bücher.de and xn--bcher-kva.de)
         """
         # Normalise domain to ensure consistent aliases (lowercase, strip trailing dots)
         raw = domain.rstrip('.').lower()
-        
+
         # Convert to IDNA (punycode) for consistent aliasing across Unicode/ASCII forms
         try:
             norm = raw.encode('idna').decode('ascii')
         except Exception:
             # If IDNA encoding fails, use the raw normalised form
             norm = raw
-        
+
         if norm not in self.domain_aliases:
             self.domain_counter += 1
             self.domain_aliases[norm] = f"domain{self.domain_counter}.example"
@@ -498,10 +498,10 @@ class PfSenseRedactor:
         """Normalise already-masked URLs to use example.com (or alias in anonymise mode)"""
         # In anonymise mode, use a consistent alias for masked URLs
         masked_host = self._anonymise_domain('example.com') if self.anonymise else 'example.com'
-        
+
         if host == masked_host:
             return urlunsplit(parts)
-        
+
         # Replace IP masks with example.com (or alias)
         netloc = self._build_netloc(parts, masked_host, False)
         return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
@@ -519,23 +519,23 @@ class PfSenseRedactor:
     def _mask_ip_host(self, ip: IPAddress) -> Tuple[str, bool, bool]:
         """Mask IP address in URL. Returns (masked, changed, is_ipv6)"""
         is_ipv6 = (ip.version == 6)
-        
+
         # Check preservation rules
         if str(ip) in self.always_preserve_ips:
             return str(ip), False, is_ipv6
-        
+
         if self._is_ip_allowed(ip):
             return str(ip), False, is_ipv6
-        
+
         if self.keep_private_ips and not ip.is_global:
             return str(ip), False, is_ipv6
-        
+
         # Mask the IP
         if self.anonymise:
             masked = self._anonymise_ip(str(ip))
         else:
             masked = 'example.com' if ip.version == 4 else 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX'
-        
+
         self.stats['ips_redacted'] += 1
         return masked, True, is_ipv6
 
@@ -543,7 +543,7 @@ class PfSenseRedactor:
         """Mask domain in URL. Returns (masked, changed, is_ipv6=False)"""
         if self._is_domain_allowed(host):
             return host, False, False
-        
+
         masked = self._anonymise_domain(host) if self.anonymise else 'example.com'
         return masked, True, False
 
@@ -555,21 +555,21 @@ class PfSenseRedactor:
             if parts.password:
                 userinfo += ':REDACTED'
             userinfo += '@'
-        
+
         # Wrap IPv6 in brackets
         if is_ipv6 or (':' in host and not host.startswith('[')):
             host = f"[{host}]"
-        
+
         netloc = f"{userinfo}{host}"
         if parts.port:
             netloc += f":{parts.port}"
-        
+
         return netloc
 
     def _rebuild_url(self, parts: SplitResult, masked_host: str, is_ipv6: bool) -> str:
         """Rebuild URL from parts with masked host"""
         netloc = self._build_netloc(parts, masked_host, is_ipv6)
-        
+
         # Manual construction for masked IPv6 (urlunsplit doesn't like invalid IPv6)
         if is_ipv6 and 'XXXX:XXXX' in masked_host:
             result = f"{parts.scheme}://{netloc}{parts.path}"
@@ -578,7 +578,7 @@ class PfSenseRedactor:
             if parts.fragment:
                 result += f"#{parts.fragment}"
             return result
-        
+
         return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
     def _mask_url(self, url: str) -> str:
@@ -586,60 +586,60 @@ class PfSenseRedactor:
         parts = self._parse_url_safely(url)
         if parts is None:
             return url
-        
+
         host = parts.hostname or ''
-        
+
         # Check if already masked
         if self._is_already_masked_host(host):
             return self._normalise_masked_url(parts, host)
-        
+
         # Determine host type and mask accordingly
         masked_host, host_changed, is_ipv6 = self._mask_url_host(host)
-        
+
         # Rebuild URL
         result = self._rebuild_url(parts, masked_host, is_ipv6)
-        
+
         # Track statistics
         if host_changed and result != url:
             self.stats['urls_redacted'] += 1
             self._add_sample('URL', url, result)
-        
+
         return result
 
     def redact_text(self, text: str, redact_ips: bool = True, redact_domains: bool = True) -> str:
         """Redact sensitive patterns from text"""
         if not text:
             return text
-            
+
         result = text
-        
+
         # Redact MAC addresses FIRST (both formats) before IP processing
         # This prevents strings like aa:bb:cc:dd:ee:ff from being misinterpreted as IPv6
         std_macs = self.MAC_RE.findall(result)
         cisco_macs = self.MAC_CISCO_RE.findall(result)
-        
+
         # Collect samples for dry-run-verbose
         for mac in std_macs[:self.sample_limit]:
             self._add_sample('MAC', mac, 'XX:XX:XX:XX:XX:XX')
         for mac in cisco_macs[:self.sample_limit]:
             self._add_sample('MAC', mac, 'XXXX.XXXX.XXXX')
-        
+
         self.stats['macs_redacted'] += len(std_macs) + len(cisco_macs)
-        
+
         result = self.MAC_RE.sub('XX:XX:XX:XX:XX:XX', result)
         result = self.MAC_CISCO_RE.sub('XXXX.XXXX.XXXX', result)
-        
+
         if redact_domains:
             # Redact URLs FIRST before bare IPs (to preserve URL structure)
             # Note: _mask_url now handles its own counting
             result = self.URL_RE.sub(lambda m: self._mask_url(m.group(0)), result)
-        
+
         # Redact IP addresses (robust) - done after URLs to avoid breaking URL structure
         if redact_ips:
             result = self._mask_ip_like_tokens(result)
-        
+
         if redact_domains:
-            
+
             # Redact emails
             def email_mask(m):
                 self.stats['emails_redacted'] += 1
@@ -650,14 +650,14 @@ class PfSenseRedactor:
                     return f'user@{token}'
                 return 'user@example.com'
             result = self.EMAIL_RE.sub(email_mask, result)
-            
+
             # Protect IPv4 mask and Cisco MAC format before FQDN pass
             # (prevent XXX.XXX.XXX.XXX → example.com and XXXX.XXXX.XXXX → example.com)
             ipv4_mask_placeholder = '___IPV4_MASK_PLACEHOLDER___'
             cisco_mac_placeholder = '___CISCO_MAC_PLACEHOLDER___'
             result = result.replace('XXX.XXX.XXX.XXX', ipv4_mask_placeholder)
             result = result.replace('XXXX.XXXX.XXXX', cisco_mac_placeholder)
-            
+
             # Redact remaining bare FQDNs
             def fqdn_mask(m):
                 domain = m.group(0)
@@ -673,11 +673,11 @@ class PfSenseRedactor:
                     self._add_sample('FQDN', domain, replacement)
                 return replacement
             result = self.FQDN_RE.sub(fqdn_mask, result)
-            
+
             # Restore IPv4 mask and Cisco MAC format
             result = result.replace(ipv4_mask_placeholder, 'XXX.XXX.XXX.XXX')
             result = result.replace(cisco_mac_placeholder, 'XXXX.XXXX.XXXX')
-        
+
         return result
 
     def _normalise_tag(self, tag: str) -> str:
@@ -694,40 +694,40 @@ class PfSenseRedactor:
         """Redact element text and track statistics"""
         original = element.text
         element.text = replacement
-        
+
         if category == 'Cert/Key':
             self.stats['certs_redacted'] += 1
         else:
             self.stats['secrets_redacted'] += 1
-        
+
         self._add_sample(category, original, replacement)
 
     def _should_redact_completely(self, tag: str, element: ET.Element, redact_ips: bool, redact_domains: bool) -> bool:
         """Check if element should be completely redacted and handle it. Returns True if handled."""
         if tag not in self.redact_elements:
             return False
-        
+
         if element.text:
             self._redact_text_and_track(element, 'Secret')
-        
+
         # Redact attributes
         for attr in list(element.attrib.keys()):
             original = element.attrib[attr]
             element.attrib[attr] = '[REDACTED]'
             self.stats['secrets_redacted'] += 1
             self._add_sample('Secret', original, '[REDACTED]')
-        
+
         # Process children recursively
         for child in element:
             self.redact_element(child, redact_ips, redact_domains)
-        
+
         return True
 
     def _handle_key_element(self, tag: str, element: ET.Element, redact_ips: bool, redact_domains: bool) -> bool:
         """Handle <key> element specially - can be short secret or PEM blob. Returns True if handled."""
         if tag != 'key' or not element.text:
             return False
-        
+
         text = element.text.strip()
         # Check if it's a PEM blob or long base64-like content
         # Uses class constants for length thresholds
@@ -737,29 +737,29 @@ class PfSenseRedactor:
             (len(text) > self.KEY_SHORT_THRESHOLD and
              text.replace('\n', '').replace('\r', '').replace(' ', '').isalnum())
         )
-        
+
         if is_pem_or_blob:
             self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
         else:
             # Short key - treat as secret
             self._redact_text_and_track(element, 'Secret')
-        
+
         # Process children
         for child in element:
             self.redact_element(child, redact_ips, redact_domains)
-        
+
         return True
 
     def _handle_cert_key_element(self, tag: str, element: ET.Element) -> bool:
         """Handle certificate/key elements. Returns True if this is a cert/key element."""
         if tag not in self.cert_key_elements:
             return False
-        
+
         # Use class constant for minimum certificate length
         if element.text and (self.PEM_MARKER.search(element.text) or
                             len(element.text.strip()) > self.CERT_MIN_LENGTH):
             self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
-        
+
         return True
 
     def _redact_ip_containing_element(
@@ -787,15 +787,15 @@ class PfSenseRedactor:
         """Apply aggressive mode redaction to text and attributes"""
         if self._normalise_tag(element.tag) in self.redact_elements:
             return
-        
+
         # Process text if not already done
         if element.text and not text_already_processed:
             element.text = self.redact_text(element.text, redact_ips, redact_domains)
-        
+
         # Process tail
         if element.tail:
             element.tail = self.redact_text(element.tail, redact_ips, redact_domains)
-        
+
         # Process attributes
         for attr in list(element.attrib.keys()):
             if element.attrib[attr]:
@@ -805,36 +805,36 @@ class PfSenseRedactor:
 
     def redact_element(self, element: ET.Element, redact_ips: bool = True, redact_domains: bool = True) -> None:
         """Recursively redact sensitive information from XML element"""
-        
+
         # Normalise tag name to handle namespaced exports
         tag = self._normalise_tag(element.tag)
-        
+
         # Strip trailing digits from tag to handle numbered variants (e.g., dnsserver6 -> dnsserver)
         tag_base = self._get_tag_base(tag)
-        
+
         # Handle complete redaction cases
         if self._should_redact_completely(tag, element, redact_ips, redact_domains):
             return
-        
+
         # Handle special cases
         if self._handle_key_element(tag, element, redact_ips, redact_domains):
             return
-        
+
         # Handle cert/key elements (don't return - continue to process children)
         self._handle_cert_key_element(tag, element)
-        
+
         # Track whether we already processed text to avoid double processing in aggressive mode
         text_already_processed = self._redact_ip_containing_element(
             tag, tag_base, element, redact_ips, redact_domains
         )
-        
+
         # Redact attributes with sensitive names
         self._redact_sensitive_attributes(element)
-        
+
         # Recursively process child elements
         for child in element:
             self.redact_element(child, redact_ips, redact_domains)
-        
+
         # Aggressive mode: apply redaction to text content, tail, and attributes
         if self.aggressive:
             self._apply_aggressive_redaction(element, text_already_processed, redact_ips, redact_domains)
@@ -855,7 +855,7 @@ class PfSenseRedactor:
             # Parse XML
             tree = ET.parse(input_file)
             root = tree.getroot()
-            
+
             # G) Sanity check: ensure this is a pfSense config (namespace-robust)
             root_tag = root.tag.rsplit('}', 1)[-1].lower()
             if root_tag != 'pfsense':
@@ -865,27 +865,27 @@ class PfSenseRedactor:
                     return False
                 else:
                     print(f"{msg} Proceeding anyway...", file=sys.stderr)
-            
+
             if not dry_run and not stdout_mode:
                 print(f"[+] Parsing XML configuration from: {input_file}")
-            
+
             # Redact the configuration
             if not dry_run and not stdout_mode:
                 print("[+] Redacting sensitive information...")
             self.redact_element(root, redact_ips, redact_domains)
-            
+
             # Dry run mode: just print stats
             if dry_run:
                 print("[+] Dry run - no files modified")
                 self._print_stats()
                 return True
-            
+
             # Pretty print (Python 3.9+)
             try:
                 ET.indent(tree, space="  ")
             except AttributeError:
                 pass  # Older Python version
-            
+
             # Write redacted configuration
             if stdout_mode:
                 tree.write(sys.stdout.buffer, encoding='utf-8', xml_declaration=True)
@@ -895,15 +895,15 @@ class PfSenseRedactor:
             else:
                 tree.write(output_file, encoding='utf-8', xml_declaration=True)
                 print(f"[+] Redacted configuration written to: {output_file}")
-            
+
             # Print summary
             if stdout_mode and stats_stderr:
                 self._print_stats(output=sys.stderr)
             elif not stdout_mode:
                 self._print_stats()
-            
+
             return True
-            
+
         except ET.ParseError as e:
             print(f"[!] Error parsing XML: {e}", file=sys.stderr)
             return False
@@ -925,7 +925,7 @@ class PfSenseRedactor:
         except (AttributeError, OSError):
             # If reconfigure fails or doesn't exist, we'll use ASCII fallback for arrow
             pass
-        
+
         print("\n[+] Redaction summary:", file=output)
         if self.stats['secrets_redacted']:
             print(f"    - Passwords/keys/secrets: {self.stats['secrets_redacted']}", file=output)
@@ -941,12 +941,12 @@ class PfSenseRedactor:
             print(f"    - Email addresses: {self.stats['emails_redacted']}", file=output)
         if self.stats['urls_redacted']:
             print(f"    - URLs: {self.stats['urls_redacted']}", file=output)
-        
+
         if self.anonymise:
             print(f"\n[+] Anonymisation stats:", file=output)
             print(f"    - Unique IPs anonymised: {len(self.ip_aliases)}", file=output)
             print(f"    - Unique domains anonymised: {len(self.domain_aliases)}", file=output)
-        
+
         # Print samples if in dry-run-verbose mode
         if self.dry_run_verbose:
             print(f"\n[+] Samples of changes (limit N={self.sample_limit}):", file=output)
@@ -964,24 +964,24 @@ class PfSenseRedactor:
 
 def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> Tuple[Set[str], List[IPNetwork], Set[str]]:
     """Parse allow-list file containing IPs, CIDR networks, and domains (one per line)
-    
+
     Format:
     - One item per line
     - Blank lines ignored
     - Lines starting with # are comments (ignored)
     - Items can be IPs, CIDR networks, or domains
-    
+
     Args:
         filepath: Path to allow-list file
         silent_if_missing: If True, return empty sets if file doesn't exist (for default files)
-    
+
     Returns:
         tuple: (set of IP strings, list of IP network objects, set of domains)
     """
     ips = set()
     networks = []
     domains = set()
-    
+
     try:
         with open(filepath, 'r') as f:
             for line_num, line in enumerate(f, 1):
@@ -989,7 +989,7 @@ def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> Tupl
                 # Skip blank lines and comments
                 if not line or line.startswith('#'):
                     continue
-                
+
                 # Try to parse as IP address first
                 try:
                     ipaddress.ip_address(line)
@@ -997,7 +997,7 @@ def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> Tupl
                     continue
                 except ValueError:
                     pass
-                
+
                 # Try to parse as CIDR network
                 try:
                     network = ipaddress.ip_network(line, strict=False)
@@ -1005,10 +1005,10 @@ def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> Tupl
                     continue
                 except ValueError:
                     pass
-                
+
                 # Not an IP or CIDR, treat as domain (case-insensitive)
                 domains.add(line.lower())
-                
+
     except FileNotFoundError:
         if not silent_if_missing:
             print(f"[!] Error: Allow-list file '{filepath}' not found", file=sys.stderr)
@@ -1021,32 +1021,32 @@ def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> Tupl
     except (ValueError, UnicodeDecodeError) as e:
         print(f"[!] Error parsing allow-list file: {e}", file=sys.stderr)
         sys.exit(1)
-    
+
     return ips, networks, domains
 
 
 def find_default_allowlist_files() -> List[Path]:
     """Find default allow-list files in standard locations
-    
+
     Checks in order:
     1. .pfsense-allowlist in current directory
     2. ~/.pfsense-allowlist in home directory
-    
+
     Returns:
         list: Paths to existing default allow-list files
     """
     default_files = []
-    
+
     # Check current directory
     local_file = Path('.pfsense-allowlist')
     if local_file.exists():
         default_files.append(local_file)
-    
+
     # Check home directory
     home_file = Path.home() / '.pfsense-allowlist'
     if home_file.exists():
         default_files.append(home_file)
-    
+
     return default_files
 
 
@@ -1080,7 +1080,7 @@ Do not restore redacted configs to pfSense as XML comments and
 CDATA sections are not preserved.
         """
     )
-    
+
     parser.add_argument('input', help='Input pfSense config.xml file')
     parser.add_argument('output', nargs='?', help='Output redacted config.xml file')
     parser.add_argument('--no-redact-ips', action='store_true',
@@ -1117,36 +1117,36 @@ CDATA sections are not preserved.
                         help='Do not load default allow-list files (.pfsense-allowlist in current directory or ~/.pfsense-allowlist)')
     parser.add_argument('--dry-run-verbose', action='store_true',
                         help='Like --dry-run, but also show examples of what would be redacted')
-    
+
     args = parser.parse_args()
-    
+
     # Handle --dry-run-verbose
     if args.dry_run_verbose:
         args.dry_run = True
-    
+
     # Default output filename if not specified
     if not args.stdout and not args.inplace and not args.dry_run and not args.output:
         # Auto-generate output filename: input-redacted.xml
         input_path = Path(args.input)
         args.output = str(input_path.parent / f"{input_path.stem}-redacted{input_path.suffix}")
-    
+
     # Check if input file exists
     if not Path(args.input).exists():
         print(f"[!] Error: Input file '{args.input}' not found", file=sys.stderr)
         sys.exit(1)
-    
+
     # Check if input file is empty
     if Path(args.input).stat().st_size == 0:
         print(f"[!] Error: Input file is empty", file=sys.stderr)
         sys.exit(1)
-    
+
     # Check if output file exists (unless force or special modes)
     if args.output and not args.force and not args.dry_run:
         if Path(args.output).exists():
-            print(f"[!] Error: Output file '{args.output}' already exists. Use --force to overwrite.", 
+            print(f"[!] Error: Output file '{args.output}' already exists. Use --force to overwrite.",
                   file=sys.stderr)
             sys.exit(1)
-    
+
     # Default keep_private_ips to True when anonymise is used (better AI context)
     # unless explicitly disabled with --no-keep-private-ips
     if args.anonymise and args.keep_private_ips is None:
@@ -1158,12 +1158,12 @@ CDATA sections are not preserved.
     else:
         # Explicit flag was used
         keep_private_ips = args.keep_private_ips
-    
+
     # Build allow-lists from multiple sources (merge all)
     allowlist_ips = set()
     allowlist_networks = []
     allowlist_domains = set()
-    
+
     # 1. Load default allow-list files (unless disabled)
     if not getattr(args, 'no_default_allowlist', False):
         default_files = find_default_allowlist_files()
@@ -1174,14 +1174,14 @@ CDATA sections are not preserved.
             allowlist_domains.update(file_domains)
             if not args.dry_run and not args.stdout:
                 print(f"[+] Loaded default allow-list: {default_file}")
-    
+
     # 2. Load explicit allow-list file if provided
     if args.allowlist_file:
         file_ips, file_networks, file_domains = parse_allowlist_file(args.allowlist_file, silent_if_missing=False)
         allowlist_ips.update(file_ips)
         allowlist_networks.extend(file_networks)
         allowlist_domains.update(file_domains)
-    
+
     # 3. Add IPs/CIDRs from CLI
     if args.allowlist_ips:
         for entry in args.allowlist_ips:
@@ -1192,7 +1192,7 @@ CDATA sections are not preserved.
                 continue
             except ValueError:
                 pass
-            
+
             # Try as CIDR network
             try:
                 network = ipaddress.ip_network(entry, strict=False)
@@ -1200,16 +1200,16 @@ CDATA sections are not preserved.
                 continue
             except ValueError:
                 pass
-            
+
             # Invalid entry
             print(f"[!] Error: Invalid IP or CIDR in --allowlist-ip: {entry}", file=sys.stderr)
             sys.exit(1)
-    
+
     # 4. Add domains from CLI (case-insensitive)
     if args.allowlist_domains:
         for domain in args.allowlist_domains:
             allowlist_domains.add(domain.lower())
-    
+
     # Create redactor and process file
     redactor = PfSenseRedactor(
         keep_private_ips=keep_private_ips,
@@ -1221,7 +1221,7 @@ CDATA sections are not preserved.
         allowlist_networks=allowlist_networks,
         dry_run_verbose=args.dry_run_verbose
     )
-    
+
     success = redactor.redact_config(
         args.input,
         args.output,
@@ -1232,7 +1232,7 @@ CDATA sections are not preserved.
         inplace=args.inplace,
         stats_stderr=args.stats_stderr
     )
-    
+
     sys.exit(0 if success else 1)
 
 

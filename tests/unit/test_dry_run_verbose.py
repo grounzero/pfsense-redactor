@@ -23,17 +23,17 @@ def test_dry_run_verbose_shows_samples(cli_runner, create_xml_file):
   </system>
 </pfsense>
 """)
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--dry-run-verbose"]
     )
-    
+
     assert exit_code == 0
     assert "Samples of changes" in stdout
     assert "limit N=" in stdout
-    
+
     # Should show sample categories
     assert "IP:" in stdout or "Secret:" in stdout or "FQDN:" in stdout
 
@@ -48,15 +48,15 @@ def test_dry_run_verbose_masks_ip_samples_safely(cli_runner, create_xml_file):
   </system>
 </pfsense>
 """)
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--dry-run-verbose"]
     )
-    
+
     assert exit_code == 0
-    
+
     # IP samples should be masked (e.g., 198.51.***.42)
     if "IP:" in stdout:
         # Should contain masked format
@@ -82,15 +82,15 @@ def test_dry_run_verbose_masks_secret_samples_safely(cli_runner, create_xml_file
   </system>
 </pfsense>
 """)
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--dry-run-verbose"]
     )
-    
+
     assert exit_code == 0
-    
+
     # Secret samples should show length indicator
     if "Secret:" in stdout:
         assert "(len=" in stdout
@@ -109,15 +109,15 @@ def test_dry_run_verbose_masks_fqdn_samples_safely(cli_runner, create_xml_file):
   </system>
 </pfsense>
 """)
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--dry-run-verbose"]
     )
-    
+
     assert exit_code == 0
-    
+
     # FQDN samples should contain masked format
     if "FQDN:" in stdout:
         assert "***" in stdout
@@ -133,15 +133,15 @@ def test_dry_run_verbose_shows_mac_samples(cli_runner, create_xml_file):
   </system>
 </pfsense>
 """)
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--dry-run-verbose"]
     )
-    
+
     assert exit_code == 0
-    
+
     # MAC samples should be shown
     if "MAC:" in stdout:
         # Should show masked format (aa:bb:**:**:ee:ff)
@@ -161,15 +161,15 @@ aWRnaXRzIFB0eSBMdGQwHhcNMTcwODIzMTUxNjQ3WhcNMTgwODIzMTUxNjQ3WjBF
   </cert>
 </pfsense>
 """)
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--dry-run-verbose"]
     )
-    
+
     assert exit_code == 0
-    
+
     # Cert/Key samples should show placeholder
     if "Cert/Key:" in stdout:
         assert "PEM blob" in stdout or "len≈" in stdout
@@ -185,15 +185,15 @@ def test_dry_run_verbose_shows_url_samples(cli_runner, create_xml_file):
   </system>
 </pfsense>
 """)
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--dry-run-verbose"]
     )
-    
+
     assert exit_code == 0
-    
+
     # URL samples should be shown
     if "URL:" in stdout:
         # Should show URL structure
@@ -212,15 +212,15 @@ def test_dry_run_verbose_no_file_creation(cli_runner, create_xml_file, tmp_path)
   </system>
 </pfsense>
 """)
-    
+
     output_file = tmp_path / "output.xml"
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         flags=["--dry-run-verbose"]
     )
-    
+
     assert exit_code == 0
     assert not output_file.exists(), "Output file should not be created in dry-run-verbose"
     assert "Samples of changes" in stdout
@@ -239,17 +239,17 @@ def test_dry_run_verbose_respects_sample_limit(cli_runner, create_xml_file):
     xml_content += """  </system>
 </pfsense>
 """
-    
+
     xml_file = create_xml_file(xml_content)
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--dry-run-verbose"]
     )
-    
+
     assert exit_code == 0
-    
+
     # Count IP samples shown
     if "IP:" in stdout:
         ip_sample_lines = [line for line in stdout.split('\n') if line.strip().startswith('IP:')]
@@ -268,19 +268,19 @@ def test_dry_run_verbose_shows_statistics(cli_runner, create_xml_file):
   </system>
 </pfsense>
 """)
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--dry-run-verbose"]
     )
-    
+
     assert exit_code == 0
-    
+
     # Should show both statistics and samples
     assert "Redaction summary:" in stdout
     assert "Samples of changes" in stdout
-    
+
     # Statistics should come before samples
     stats_pos = stdout.find("Redaction summary:")
     samples_pos = stdout.find("Samples of changes")
@@ -296,13 +296,13 @@ def test_dry_run_verbose_with_no_redactions(cli_runner, create_xml_file):
   </system>
 </pfsense>
 """)
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--dry-run-verbose", "--no-redact-ips", "--no-redact-domains"]
     )
-    
+
     assert exit_code == 0
     assert "Dry run" in stdout
     # May or may not show samples section if nothing was redacted
@@ -318,19 +318,19 @@ def test_dry_run_verbose_sample_format(cli_runner, create_xml_file):
   </system>
 </pfsense>
 """)
-    
+
     exit_code, stdout, stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--dry-run-verbose"]
     )
-    
+
     assert exit_code == 0
-    
+
     # Check format of sample lines
-    sample_lines = [line for line in stdout.split('\n') 
+    sample_lines = [line for line in stdout.split('\n')
                    if any(cat in line for cat in ['IP:', 'Secret:', 'FQDN:', 'MAC:', 'URL:', 'Cert/Key:'])]
-    
+
     for line in sample_lines:
         if '→' in line:
             # Should have format: "    CATEGORY: before → after"

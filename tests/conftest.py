@@ -41,11 +41,11 @@ def sample_files(test_configs_dir):
     """List of available sample config files"""
     if not test_configs_dir.exists():
         pytest.skip(f"Test configs directory not found: {test_configs_dir}")
-    
+
     samples = list(test_configs_dir.glob("*.xml"))
     if not samples:
         pytest.skip(f"No XML files found in {test_configs_dir}")
-    
+
     return samples
 
 
@@ -65,10 +65,10 @@ def update_reference():
 
 class CLIRunner:
     """Helper class to run the pfsense-redactor CLI and capture results"""
-    
+
     def __init__(self, script_path: str):
         self.script_path = script_path
-    
+
     def run(
         self,
         input_file: str,
@@ -78,24 +78,24 @@ class CLIRunner:
     ) -> Tuple[int, str, str]:
         """
         Run the CLI with specified arguments
-        
+
         Returns:
             Tuple of (exit_code, stdout, stderr)
         """
         cmd = ["python3", self.script_path, input_file]
-        
+
         if output_file:
             cmd.append(output_file)
-        
+
         if flags:
             cmd.extend(flags)
-        
+
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True
         )
-        
+
         if expect_success and result.returncode != 0:
             raise AssertionError(
                 f"Command failed with exit code {result.returncode}\n"
@@ -103,9 +103,9 @@ class CLIRunner:
                 f"Stderr: {result.stderr}\n"
                 f"Stdout: {result.stdout}"
             )
-        
+
         return result.returncode, result.stdout, result.stderr
-    
+
     def run_to_stdout(
         self,
         input_file: str,
@@ -115,7 +115,7 @@ class CLIRunner:
         flags = flags or []
         if "--stdout" not in flags:
             flags.append("--stdout")
-        
+
         return self.run(input_file, output_file=None, flags=flags)
 
 
@@ -127,17 +127,17 @@ def cli_runner(script_path):
 
 class StatsParser:
     """Helper to parse statistics from CLI output"""
-    
+
     @staticmethod
     def parse(output: str) -> Dict[str, int]:
         """
         Parse redaction statistics from stdout/stderr
-        
+
         Returns:
             Dictionary with stat names and counts
         """
         stats = {}
-        
+
         # Parse standard stats format
         patterns = {
             'secrets_redacted': r'Passwords/keys/secrets:\s+(\d+)',
@@ -150,13 +150,13 @@ class StatsParser:
             'unique_ips_anonymised': r'Unique IPs anonymised:\s+(\d+)',
             'unique_domains_anonymised': r'Unique domains anonymised:\s+(\d+)',
         }
-        
+
         import re
         for key, pattern in patterns.items():
             match = re.search(pattern, output)
             if match:
                 stats[key] = int(match.group(1))
-        
+
         return stats
 
 
@@ -168,53 +168,53 @@ def stats_parser():
 
 class XMLHelper:
     """Helper for XML operations"""
-    
+
     @staticmethod
     def normalise_xml(xml_path: Path) -> ET.Element:
         """Parse and return normalised XML tree"""
         tree = ET.parse(xml_path)
         return tree.getroot()
-    
+
     @staticmethod
     def xml_to_string(element: ET.Element) -> str:
         """Convert XML element to string"""
         return ET.tostring(element, encoding='unicode')
-    
+
     @staticmethod
     def compare_xml_files(file1: Path, file2: Path) -> bool:
         """
         Compare two XML files semantically
-        
+
         Returns True if they are equivalent
         """
         tree1 = ET.parse(file1)
         tree2 = ET.parse(file2)
-        
+
         return XMLHelper._elements_equal(tree1.getroot(), tree2.getroot())
-    
+
     @staticmethod
     def _elements_equal(e1: ET.Element, e2: ET.Element) -> bool:
         """Recursively compare two XML elements"""
         # Compare tags
         if e1.tag != e2.tag:
             return False
-        
+
         # Compare text (strip whitespace for comparison)
         if (e1.text or '').strip() != (e2.text or '').strip():
             return False
-        
+
         # Compare tail
         if (e1.tail or '').strip() != (e2.tail or '').strip():
             return False
-        
+
         # Compare attributes
         if e1.attrib != e2.attrib:
             return False
-        
+
         # Compare children
         if len(e1) != len(e2):
             return False
-        
+
         return all(
             XMLHelper._elements_equal(c1, c2)
             for c1, c2 in zip(e1, e2)
@@ -230,11 +230,11 @@ def xml_helper():
 def create_temp_xml(content: str, tmp_path: Path) -> Path:
     """
     Create a temporary XML file with given content
-    
+
     Args:
         content: XML content as string
         tmp_path: pytest tmp_path fixture
-    
+
     Returns:
         Path to created file
     """
@@ -260,7 +260,7 @@ def create_xml_file(tmp_path):
 @pytest.fixture
 def redactor_factory():
     """Factory for creating redactor instances with custom configuration
-    
+
     Usage:
         def test_something(redactor_factory):
             redactor = redactor_factory(anonymise=True, keep_private_ips=False)
@@ -269,7 +269,7 @@ def redactor_factory():
     # Import from the installed package
     # pylint: disable=import-outside-toplevel
     from pfsense_redactor.redactor import PfSenseRedactor
-    
+
     def _create(**kwargs):
         return PfSenseRedactor(**kwargs)
     return _create
