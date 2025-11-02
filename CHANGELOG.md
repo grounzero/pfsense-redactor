@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4][] - 2025-11-02
+
+### Changed
+- Upgraded minimum Python version from 3.8 to 3.9
+- Modernised type hints using `from __future__ import annotations` and PEP 604 union syntax (`X | Y`)
+- Replaced all `typing` module imports with built-in types (`list`, `dict`, `tuple`, etc.)
+- Refactored code to eliminate pylint warnings and improve maintainability
+- Removed `ET.indent()` try/except block (now available in Python 3.9+)
+
+### Added
+- Linter configurations:
+  - `.pylintrc` for production code (strict)
+  - `.pylintrc-tests` for test code (relaxed)
+  - `.bandit` for security linting
+
+### Fixed
+- Consistent XML indentation across Python versions
+- All pylint, Prospector, and Bandit warnings resolved
+- CI/CD workflows updated to test Python 3.9-3.13
+
 ## [1.0.3][] - 2025-11-02
 
 ### Added
@@ -74,4 +94,5 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.0.4]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.4
 [1.0.3]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.3
