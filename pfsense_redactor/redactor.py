@@ -11,14 +11,14 @@ import ipaddress
 from pathlib import Path
 from collections import defaultdict
 from urllib.parse import urlsplit, urlunsplit, SplitResult
-from typing import Optional, Set, List, Dict, Tuple, DefaultDict, Union
+from typing import Optional, Set, List, Dict, Tuple, DefaultDict, Union, FrozenSet
 
 # Type aliases for clarity
 IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 
 # Module-level constants (immutable for safety)
-ALWAYS_PRESERVE_IPS: frozenset[str] = frozenset({
+ALWAYS_PRESERVE_IPS: FrozenSet[str] = frozenset({
     '255.255.255.0', '255.255.0.0', '255.0.0.0',
     '255.255.255.128', '255.255.255.192', '255.255.255.224',
     '255.255.255.240', '255.255.255.248', '255.255.255.252',
@@ -26,7 +26,7 @@ ALWAYS_PRESERVE_IPS: frozenset[str] = frozenset({
     '0.0.0.0', '::'
 })
 
-REDACT_ELEMENTS: frozenset[str] = frozenset({
+REDACT_ELEMENTS: FrozenSet[str] = frozenset({
     'password', 'passwordenc', 'bcrypt-hash', 'md5-hash', 'nt-hash',
     'pre-shared-key', 'shared_key', 'psk', 'privatekey',
     'prv',  # Private keys are secrets, not just certs
@@ -37,13 +37,13 @@ REDACT_ELEMENTS: frozenset[str] = frozenset({
     # Note: 'key' handled specially - can be short secret or PEM blob
 })
 
-CERT_KEY_ELEMENTS: frozenset[str] = frozenset({
+CERT_KEY_ELEMENTS: FrozenSet[str] = frozenset({
     'crt',
     'cert',  # Can contain PEM directly in some configs
     'public-key',
 })
 
-IP_CONTAINING_ELEMENTS: frozenset[str] = frozenset({
+IP_CONTAINING_ELEMENTS: FrozenSet[str] = frozenset({
     'ipaddr', 'ipaddrv6', 'gateway', 'dnsserver', 'hostname', 'domain',
     'remote-gateway', 'tunnel_network', 'local_network', 'remote_network',
     'server', 'host', 'address', 'subnet', 'subnetv6',
@@ -916,6 +916,16 @@ class PfSenseRedactor:
 
     def _print_stats(self, output=sys.stdout) -> None:
         """Print redaction statistics"""
+        # Ensure UTF-8 encoding for Unicode characters (e.g., arrow →)
+        # On Windows, sys.stdout may use 'charmap' encoding which doesn't support Unicode
+        try:
+            # Try to reconfigure the stream to use UTF-8
+            if hasattr(output, 'reconfigure'):
+                output.reconfigure(encoding='utf-8', errors='replace')
+        except (AttributeError, OSError):
+            # If reconfigure fails or doesn't exist, we'll use ASCII fallback for arrow
+            pass
+        
         print("\n[+] Redaction summary:", file=output)
         if self.stats['secrets_redacted']:
             print(f"    - Passwords/keys/secrets: {self.stats['secrets_redacted']}", file=output)
@@ -943,10 +953,11 @@ class PfSenseRedactor:
             has_any = any(self.samples.get(cat) for cat in ['IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key'])
             if has_any:
                 # Print in consistent order
+                # Use ASCII arrow '->' instead of Unicode '→' for Windows compatibility
                 for category in ['IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key']:
                     if category in self.samples and self.samples[category]:
                         for before_masked, after in self.samples[category]:
-                            print(f"    {category}: {before_masked} → {after}", file=output)
+                            print(f"    {category}: {before_masked} -> {after}", file=output)
             else:
                 print("    (no examples collected)", file=output)
 
