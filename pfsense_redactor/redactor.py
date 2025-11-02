@@ -518,7 +518,7 @@ class PfSenseRedactor:
 
     def _mask_ip_host(self, ip: IPAddress) -> Tuple[str, bool, bool]:
         """Mask IP address in URL. Returns (masked, changed, is_ipv6)"""
-        is_ipv6 = (ip.version == 6)
+        is_ipv6 = ip.version == 6
 
         # Check preservation rules
         if str(ip) in self.always_preserve_ips:
@@ -943,7 +943,7 @@ class PfSenseRedactor:
             print(f"    - URLs: {self.stats['urls_redacted']}", file=output)
 
         if self.anonymise:
-            print(f"\n[+] Anonymisation stats:", file=output)
+            print("\n[+] Anonymisation stats:", file=output)
             print(f"    - Unique IPs anonymised: {len(self.ip_aliases)}", file=output)
             print(f"    - Unique domains anonymised: {len(self.domain_aliases)}", file=output)
 
@@ -983,7 +983,7 @@ def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> Tupl
     domains = set()
 
     try:
-        with open(filepath, 'r') as f:
+        with open(filepath, 'r', encoding='utf-8') as f:
             for line_num, line in enumerate(f, 1):
                 line = line.strip()
                 # Skip blank lines and comments
@@ -1137,7 +1137,7 @@ CDATA sections are not preserved.
 
     # Check if input file is empty
     if Path(args.input).stat().st_size == 0:
-        print(f"[!] Error: Input file is empty", file=sys.stderr)
+        print("[!] Error: Input file is empty", file=sys.stderr)
         sys.exit(1)
 
     # Check if output file exists (unless force or special modes)
