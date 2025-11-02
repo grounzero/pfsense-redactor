@@ -10,10 +10,12 @@ disable=
     W0613,  # unused-argument (pytest fixtures)
     W0611,  # unused-import (test fixtures)
     W0612,  # unused-variable (test setup)
+    W1510,  # subprocess-run-check (intentional in tests)
     
     # Import patterns:
     C0415,  # import-outside-toplevel (lazy imports for test isolation)
     C0411,  # wrong-import-order (less critical in tests)
+    E0401,  # import-error (pytest not in production deps)
     
     # Design patterns acceptable in tests:
     R0801,  # duplicate-code (similar test patterns)
@@ -21,9 +23,11 @@ disable=
     R0913,  # too-many-arguments (test fixtures)
     R0914,  # too-many-locals (test setup)
     R0915,  # too-many-statements (comprehensive tests)
+    R1713,  # consider-using-join (test string building can be explicit)
     
     # Style choices in tests:
     C0103,  # invalid-name (test function names can be descriptive)
+    C0301,  # line-too-long (test assertions can be descriptive)
 
 [BASIC]
 # Allow descriptive test names and common variables

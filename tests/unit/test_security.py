@@ -197,7 +197,7 @@ class TestInputValidation:
     def test_very_long_input_performance(self, basic_redactor):
         """Verify that very long inputs are processed in reasonable time"""
         # Create a long text with repeated patterns
-        long_text = ("test@example.com " * 1000)
+        long_text = "test@example.com " * 1000
 
         start = time.time()
         result = basic_redactor.redact_text(long_text)
