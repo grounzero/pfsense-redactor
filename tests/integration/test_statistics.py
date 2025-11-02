@@ -11,7 +11,7 @@ import importlib.util
 
 # Import the pfsense-redactor module dynamically
 PROJECT_ROOT = Path(__file__).parent.parent.parent
-SCRIPT_PATH = PROJECT_ROOT / "pfsense-redactor.py"
+SCRIPT_PATH = PROJECT_ROOT / "pfsense_redactor" / "redactor.py"
 
 spec = importlib.util.spec_from_file_location("pfsense_redactor", SCRIPT_PATH)
 pfsense_redactor = importlib.util.module_from_spec(spec)

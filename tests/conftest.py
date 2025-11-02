@@ -13,14 +13,14 @@ import pytest
 
 # Project paths
 PROJECT_ROOT = Path(__file__).parent.parent
-SCRIPT_PATH = PROJECT_ROOT / "pfsense-redactor.py"
+SCRIPT_PATH = PROJECT_ROOT / "pfsense_redactor" / "redactor.py"
 TEST_CONFIGS_DIR = PROJECT_ROOT / "test-configs"
 REFERENCE_DIR = PROJECT_ROOT / "tests" / "reference"
 
 
 @pytest.fixture
 def script_path():
-    """Path to the pfsense-redactor.py script"""
+    """Path to the pfsense_redactor module"""
     return str(SCRIPT_PATH)
 
 
@@ -266,16 +266,8 @@ def redactor_factory():
             redactor = redactor_factory(anonymise=True, keep_private_ips=False)
             result = redactor.redact_text("test")
     """
-    # Import here to avoid circular dependencies
-    import sys
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "pfsense_redactor", 
-        PROJECT_ROOT / "pfsense-redactor.py"
-    )
-    pfsense_redactor = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(pfsense_redactor)
-    PfSenseRedactor = pfsense_redactor.PfSenseRedactor
+    # Import from the installed package
+    from pfsense_redactor.redactor import PfSenseRedactor
     
     def _create(**kwargs):
         return PfSenseRedactor(**kwargs)
@@ -406,4 +398,3 @@ def config_with_domains(tmp_path):
 </pfsense>
 """)
     return config
-    return _create
