@@ -1,0 +1,29 @@
+# Test artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+*.cover
+.hypothesis/
+
+# Test outputs
+*.xml.tmp
+test_output_*/
+
+# Reference files are tracked, but you may want to exclude them initially
+# Uncomment the following line if you want to exclude reference files from git:
+# reference/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

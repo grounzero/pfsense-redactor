@@ -1,0 +1,46 @@
+# pfSense Redactor Allow-list Example
+#
+# This file demonstrates the format for allow-list files.
+# Copy this to .pfsense-allowlist (current directory) or ~/.pfsense-allowlist (home directory)
+# to have it automatically loaded by default.
+#
+# Format:
+# - One item per line
+# - Blank lines are ignored
+# - Lines starting with # are comments
+# - Items can be IP addresses or domain names
+# - Domain matching is case-insensitive
+#
+# Use cases:
+# - Preserve well-known public services (DNS, NTP) that don't leak private info
+# - Keep specific infrastructure IPs/domains visible for troubleshooting
+# - Maintain references to external services your network depends on
+
+# Common Public DNS Servers
+8.8.8.8
+8.8.4.4
+1.1.1.1
+1.0.0.1
+9.9.9.9
+149.112.112.112
+
+# Common NTP Servers
+time.nist.gov
+time.google.com
+time.cloudflare.com
+pool.ntp.org
+0.pool.ntp.org
+1.pool.ntp.org
+2.pool.ntp.org
+3.pool.ntp.org
+
+# Common Update/Repository Servers
+# (Uncomment if you want to preserve these)
+# pkg.freebsd.org
+# update.freebsd.org
+
+# Your Public Services
+# (Add your own public-facing services here)
+# example.com
+# mail.example.com
+# 203.0.113.10
