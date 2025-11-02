@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pfsense-redactor"
-version = "1.0.5"
+version = "1.0.6"
 description = "Safely removes sensitive information from pfSense config.xml exports"
 readme = "README.md"
 authors = [

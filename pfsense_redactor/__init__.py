@@ -15,5 +15,5 @@ if sys.version_info < (3, 9):
 
 from .redactor import PfSenseRedactor, main, parse_allowlist_file
 
-__version__ = "1.0.5"
+__version__ = "1.0.6"
 __all__ = ["PfSenseRedactor", "main", "parse_allowlist_file"]
