@@ -1,0 +1,6 @@
+include README.md
+include LICENSE
+include allowlist.example
+recursive-include tests *.py *.xml *.txt *.ini
+recursive-exclude tests __pycache__
+recursive-exclude tests *.pyc

@@ -2,7 +2,23 @@
 
 The **pfSense XML Configuration Redactor** safely removes sensitive information from `config.xml` exports before they are shared with support, consultants, auditors, or AI tools for security analysis.
 
-The tool preserves **network architecture and routing logic** while sanitising **secrets and identifiers** allowing safe troubleshooting and topology review without disclosing private data.
+## Installation
+
+### From PyPI (recommended)
+
+```bash
+pip install pfsense-redactor
+```
+
+### From Source
+
+```bash
+git clone https://github.com/yourusername/pfsense-redactor.git
+cd pfsense-redactor
+pip install -e .
+```
+
+The tool preserves **network architecture and routing logic** whilst sanitising **secrets and identifiers** allowing safe troubleshooting and topology review without disclosing private data.
 
 > Keeps firewall and routing context  
 > Removes passwords, keys, public IPs (optional), tokens, certs  
@@ -53,12 +69,6 @@ The tool preserves **network architecture and routing logic** while sanitising *
 
 - **Python 3.8+**
 
-Install (optional):
-
-```bash
-chmod +x pfsense-redactor.py
-```
-
 ---
 
 ## Usage
@@ -66,61 +76,61 @@ chmod +x pfsense-redactor.py
 ### Basic usage
 ```bash
 # Output filename auto-generated as config-redacted.xml
-./pfsense-redactor.py config.xml
+pfsense-redactor config.xml
 
 # Or specify output filename explicitly
-./pfsense-redactor.py config.xml redacted.xml
+pfsense-redactor config.xml redacted.xml
 ```
 
 ### Preserve private IPs (recommended)
 ```bash
-./pfsense-redactor.py config.xml redacted.xml --keep-private-ips
+pfsense-redactor config.xml redacted.xml --keep-private-ips
 ```
 
 ### Allow-list specific IPs and domains
 ```bash
 # Preserve specific public services (never redact)
-./pfsense-redactor.py config.xml --allowlist-ip 8.8.8.8 --allowlist-domain time.nist.gov
+pfsense-redactor config.xml --allowlist-ip 8.8.8.8 --allowlist-domain time.nist.gov
 
 # Preserve entire CIDR ranges
-./pfsense-redactor.py config.xml --allowlist-ip 203.0.113.0/24
+pfsense-redactor config.xml --allowlist-ip 203.0.113.0/24
 
 # Use an allow-list file (supports IPs, CIDRs, and domains)
-./pfsense-redactor.py config.xml --allowlist-file my-allowlist.txt
+pfsense-redactor config.xml --allowlist-file my-allowlist.txt
 ```
 
 ### Topology-safe anonymisation
 ```bash
-./pfsense-redactor.py config.xml redacted.xml --anonymise
+pfsense-redactor config.xml redacted.xml --anonymise
 ```
 
 ### Allow internal DNS names
 ```bash
-./pfsense-redactor.py config.xml redacted.xml --no-redact-domains --keep-private-ips
+pfsense-redactor config.xml redacted.xml --no-redact-domains --keep-private-ips
 ```
 
 ### Aggressive mode
 ```bash
-./pfsense-redactor.py config.xml redacted.xml --aggressive
+pfsense-redactor config.xml redacted.xml --aggressive
 ```
 
 ### Dry run
 ```bash
 # Show statistics only
-./pfsense-redactor.py config.xml --dry-run
+pfsense-redactor config.xml --dry-run
 
 # Show statistics with sample redactions (safely masked)
-./pfsense-redactor.py config.xml --dry-run-verbose
+pfsense-redactor config.xml --dry-run-verbose
 ```
 
 ### Output to STDOUT
 ```bash
-./pfsense-redactor.py config.xml --stdout > redacted.xml
+pfsense-redactor config.xml --stdout > redacted.xml
 ```
 
 ### In-place (danger)
 ```bash
-./pfsense-redactor.py config.xml --inplace --force
+pfsense-redactor config.xml --inplace --force
 ```
 
 ---
@@ -252,10 +262,10 @@ Always keep the **original secure copy**.
 ### Dry run summary
 ```bash
 # Statistics only
-./pfsense-redactor.py config.xml --dry-run
+pfsense-redactor config.xml --dry-run
 
 # Statistics with sample redactions (safely masked to avoid leaks)
-./pfsense-redactor.py config.xml --dry-run-verbose
+pfsense-redactor config.xml --dry-run-verbose
 ```
 
 **Sample output with `--dry-run-verbose`:**

@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 pfSense XML Configuration Redactor
 Redacts sensitive information from pfSense config.xml files
