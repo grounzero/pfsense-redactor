@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pfsense-redactor"
-version = "1.0.0"
+version = "1.0.2"
 description = "Safely removes sensitive information from pfSense config.xml exports"
 readme = "README.md"
 authors = [
@@ -37,9 +37,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/pfsense-redactor"
-Repository = "https://github.com/yourusername/pfsense-redactor"
-Issues = "https://github.com/yourusername/pfsense-redactor/issues"
+Homepage = "https://github.com/grounzero/pfsense-redactor"
+Repository = "https://github.com/grounzero/pfsense-redactor"
+Issues = "https://github.com/grounzero/pfsense-redactor/issues"
 
 [project.scripts]
 pfsense-redactor = "pfsense_redactor.__main__:main"

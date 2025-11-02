@@ -13,7 +13,7 @@ pip install pfsense-redactor
 ### From Source
 
 ```bash
-git clone https://github.com/yourusername/pfsense-redactor.git
+git clone https://github.com/grounzero/pfsense-redactor.git
 cd pfsense-redactor
 pip install -e .
 ```
