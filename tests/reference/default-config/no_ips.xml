@@ -1,5 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <pfsense>
+  <!-- Redacted using pfsense-redactor vunknown -->
   <version>2.9</version>
   <lastchange />
   <theme>nervecenter</theme>
