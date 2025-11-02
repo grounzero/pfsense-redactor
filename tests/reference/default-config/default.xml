@@ -1,242 +1,274 @@
 <?xml version='1.0' encoding='utf-8'?>
 <pfsense>
-  <version>2.9</version>
-  <lastchange />
-  <theme>nervecenter</theme>
-  <system>
-    <optimization>normal</optimization>
-    <hostname>pfSense</hostname>
-    <domain>local</domain>
-    <dnsserver />
-    <dnsallowoverride />
-    <username>admin</username>
-    <password>[REDACTED]</password>
-    <timezone>Etc/UTC</timezone>
-    <time-update-interval>300</time-update-interval>
-    <timeservers>0.pfsense.pool.ntp.org</timeservers>
-    <webgui>
-      <protocol>http</protocol>
-    </webgui>
-    <disablenatreflection>yes</disablenatreflection>
-  </system>
-  <interfaces>
-    <lan>
-      <if>sis0</if>
-      <ipaddr>XXX.XXX.XXX.XXX</ipaddr>
-      <subnet>24</subnet>
-      <media />
-      <mediaopt />
-      <bandwidth>100</bandwidth>
-      <bandwidthtype>Mb</bandwidthtype>
-    </lan>
-    <wan>
-      <if>sis1</if>
-      <mtu />
-      <ipaddr>dhcp</ipaddr>
-      <subnet />
-      <gateway />
-      <blockpriv />
-      <disableftpproxy />
-      <dhcphostname />
-      <media />
-      <mediaopt />
-      <bandwidth>100</bandwidth>
-      <bandwidthtype>Mb</bandwidthtype>
-    </wan>
-  </interfaces>
-  <staticroutes>
+	<version>2.9</version>
+	<lastchange />
+	<theme>nervecenter</theme>
+	<system>
+		<optimization>normal</optimization>
+		<hostname>pfSense</hostname>
+		<domain>local</domain>
+		<dnsserver />
+		<dnsallowoverride />
+		<username>admin</username>
+		<password>[REDACTED]</password>
+		<timezone>Etc/UTC</timezone>
+		<time-update-interval>300</time-update-interval>
+		<timeservers>0.pfsense.pool.ntp.org</timeservers>
+		<webgui>
+			<protocol>http</protocol>
+			
+		</webgui>
+                <disablenatreflection>yes</disablenatreflection>
+		
+		
+		
+		
+		
+	</system>
+	<interfaces>
+		<lan>
+			<if>sis0</if>
+			<ipaddr>XXX.XXX.XXX.XXX</ipaddr>
+			<subnet>24</subnet>
+			<media />
+			<mediaopt />
+			<bandwidth>100</bandwidth>
+			<bandwidthtype>Mb</bandwidthtype>
+			
+		</lan>
+		<wan>
+			<if>sis1</if>
+			<mtu />
+			<ipaddr>dhcp</ipaddr>
+			
+			<subnet />
+			<gateway />
+			<blockpriv />
+                        <disableftpproxy />
+			<dhcphostname />
+			<media />
+			<mediaopt />
+			<bandwidth>100</bandwidth>
+			<bandwidthtype>Mb</bandwidthtype>
+			
+		</wan>
+		
+	</interfaces>
+	
+	<staticroutes>
 		
 	</staticroutes>
-  <pppoe>
-    <username />
-    <password />
-    <provider />
-  </pppoe>
-  <pptp>
-    <username />
-    <password />
-    <local />
-    <subnet />
-    <remote />
-  </pptp>
-  <bigpond>
-    <username />
-    <password />
-    <authserver />
-    <authdomain />
-    <minheartbeatinterval />
-  </bigpond>
-  <dyndns>
-    <type>dyndns</type>
-    <username />
-    <password />
-    <host />
-    <mx />
-  </dyndns>
-  <dhcpd>
-    <lan>
-      <enable />
-      <range>
-        <from>192.168.1.100</from>
-        <to>192.168.1.199</to>
-      </range>
-    </lan>
-  </dhcpd>
-  <pptpd>
-    <mode />
-    <redir />
-    <localip />
-    <remoteip />
-  </pptpd>
-  <ovpn>
+	<pppoe>
+		<username />
+		<password />
+		<provider />
+		
+	</pppoe>
+	<pptp>
+		<username />
+		<password />
+		<local />
+		<subnet />
+		<remote />
+		
+	</pptp>
+	<bigpond>
+		<username />
+		<password />
+		<authserver />
+		<authdomain />
+		<minheartbeatinterval />
+	</bigpond>
+	<dyndns>
+		
+		<type>dyndns</type>
+		<username />
+		<password />
+		<host />
+		<mx />
+		
+	</dyndns>
+	<dhcpd>
+		<lan>
+			<enable />
+			<range>
+				<from>192.168.1.100</from>
+				<to>192.168.1.199</to>
+			</range>
+			
+		</lan>
+		
+		
+	</dhcpd>
+	<pptpd>
+		<mode />
+		<redir />
+		<localip />
+		<remoteip />
+		
+		
+	</pptpd>
+	<ovpn>
 		
 	</ovpn>
-  <dnsmasq>
-    <enable />
-  </dnsmasq>
-  <snmpd>
-    <syslocation />
-    <syscontact />
-    <rocommunity>public</rocommunity>
-  </snmpd>
-  <diag>
-    <ipv6nat>
-      <ipaddr />
-    </ipv6nat>
-  </diag>
-  <bridge>
+	<dnsmasq>
+		<enable />
+		
+	</dnsmasq>
+	<snmpd>
+		
+		<syslocation />
+		<syscontact />
+		<rocommunity>public</rocommunity>
+	</snmpd>
+	<diag>
+		<ipv6nat>
+			
+			<ipaddr />
+		</ipv6nat>
+	</diag>
+	<bridge>
 		
 	</bridge>
-  <syslog>
+	<syslog>
 		
 	</syslog>
-  <nat>
-    <ipsecpassthru>
-      <enable />
-    </ipsecpassthru>
-  </nat>
-  <filter>
-    <rule>
-      <type>pass</type>
-      <descr>Default LAN -&gt; any</descr>
-      <interface>lan</interface>
-      <source>
-        <network>lan</network>
-      </source>
-      <destination>
-        <any />
-      </destination>
-    </rule>
-  </filter>
-  <shaper>
+	
+	<nat>
+		<ipsecpassthru>
+			<enable />
+		</ipsecpassthru>
+		
+		
+		
+		
+	</nat>
+	<filter>
+		
+		<rule>
+			<type>pass</type>
+			<descr>Default LAN -&gt; any</descr>
+			<interface>lan</interface>
+			<source>
+				<network>lan</network>
+			</source>
+			<destination>
+				<any />
+			</destination>
+		</rule>
+		
+	</filter>
+	<shaper>
 		
 		
 		
 	</shaper>
-  <ipsec>
-    <preferredoldsa />
-  </ipsec>
-  <aliases>
+	<ipsec>
+                <preferredoldsa />
+		
+		
+	</ipsec>
+	<aliases>
 		
 	</aliases>
-  <proxyarp>
+	<proxyarp>
 		
 	</proxyarp>
-  <cron>
-    <item>
-      <minute>0</minute>
-      <hour>*</hour>
-      <mday>*</mday>
-      <month>*</month>
-      <wday>*</wday>
-      <who>root</who>
-      <command>/usr/bin/nice -n20 newsyslog</command>
-    </item>
-    <item>
-      <minute>1,31</minute>
-      <hour>0-5</hour>
-      <mday>*</mday>
-      <month>*</month>
-      <wday>*</wday>
-      <who>root</who>
-      <command>/usr/bin/nice -n20 adjkerntz -a</command>
-    </item>
-    <item>
-      <minute>1</minute>
-      <hour>3</hour>
-      <mday>1</mday>
-      <month>*</month>
-      <wday>*</wday>
-      <who>root</who>
-      <command>/usr/bin/nice -n20 /etc/rc.update_bogons.sh</command>
-    </item>
-    <item>
-      <minute>*/60</minute>
-      <hour>*</hour>
-      <mday>*</mday>
-      <month>*</month>
-      <wday>*</wday>
-      <who>root</who>
-      <command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -v -t 3600 sshlockout</command>
-    </item>
-    <item>
-      <minute>1</minute>
-      <hour>1</hour>
-      <mday>*</mday>
-      <month>*</month>
-      <wday>*</wday>
-      <who>root</who>
-      <command>/usr/bin/nice -n20 /etc/rc.dyndns.update</command>
-    </item>
-    <item>
-      <minute>*/60</minute>
-      <hour>*</hour>
-      <mday>*</mday>
-      <month>*</month>
-      <wday>*</wday>
-      <who>root</who>
-      <command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -v -t 3600 virusprot</command>
-    </item>
-    <item>
-      <minute>*/60</minute>
-      <hour>*</hour>
-      <mday>*</mday>
-      <month>*</month>
-      <wday>*</wday>
-      <who>root</who>
-      <command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -t 3600 snort2c</command>
-    </item>
-    <item>
-      <minute>*/5</minute>
-      <hour>*</hour>
-      <mday>*</mday>
-      <month>*</month>
-      <wday>*</wday>
-      <who>root</who>
-      <command>/usr/local/bin/checkreload.sh</command>
-    </item>
-    <item>
-      <minute>*/5</minute>
-      <hour>*</hour>
-      <mday>*</mday>
-      <month>*</month>
-      <wday>*</wday>
-      <who>root</who>
-      <command>/etc/ping_hosts.sh</command>
-    </item>
-    <item>
-      <minute>*/140</minute>
-      <hour>*</hour>
-      <mday>*</mday>
-      <month>*</month>
-      <wday>*</wday>
-      <who>root</who>
-      <command>/usr/local/sbin/reset_slbd.sh</command>
-    </item>
-  </cron>
-  <wol>
+	<cron>
+		<item>
+			<minute>0</minute>
+			<hour>*</hour>
+			<mday>*</mday>
+			<month>*</month>
+			<wday>*</wday>
+			<who>root</who>
+			<command>/usr/bin/nice -n20 newsyslog</command>
+		</item>
+		<item>
+			<minute>1,31</minute>
+			<hour>0-5</hour>
+			<mday>*</mday>
+			<month>*</month>
+			<wday>*</wday>
+			<who>root</who>
+			<command>/usr/bin/nice -n20 adjkerntz -a</command>
+		</item>
+		<item>
+			<minute>1</minute>
+			<hour>3</hour>
+			<mday>1</mday>
+			<month>*</month>
+			<wday>*</wday>
+			<who>root</who>
+			<command>/usr/bin/nice -n20 /etc/rc.update_bogons.sh</command>
+		</item>
+		<item>
+			<minute>*/60</minute>
+			<hour>*</hour>
+			<mday>*</mday>
+			<month>*</month>
+			<wday>*</wday>
+			<who>root</who>
+			<command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -v -t 3600 sshlockout</command>
+		</item>
+		<item>
+			<minute>1</minute>
+			<hour>1</hour>
+			<mday>*</mday>
+			<month>*</month>
+			<wday>*</wday>
+			<who>root</who>
+			<command>/usr/bin/nice -n20 /etc/rc.dyndns.update</command>
+		</item>
+		<item>
+			<minute>*/60</minute>
+			<hour>*</hour>
+			<mday>*</mday>
+			<month>*</month>
+			<wday>*</wday>
+			<who>root</who>
+			<command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -v -t 3600 virusprot</command>
+		</item>
+		<item>
+			<minute>*/60</minute>
+			<hour>*</hour>
+			<mday>*</mday>
+			<month>*</month>
+			<wday>*</wday>
+			<who>root</who>
+			<command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -t 3600 snort2c</command>
+		</item>
+		<item>
+			<minute>*/5</minute>
+			<hour>*</hour>
+			<mday>*</mday>
+			<month>*</month>
+			<wday>*</wday>
+			<who>root</who>
+			<command>/usr/local/bin/checkreload.sh</command>
+		</item>
+		<item>
+			<minute>*/5</minute>
+			<hour>*</hour>
+			<mday>*</mday>
+			<month>*</month>
+			<wday>*</wday>
+			<who>root</who>
+			<command>/etc/ping_hosts.sh</command>
+		</item>
+		<item>
+			<minute>*/140</minute>
+			<hour>*</hour>
+			<mday>*</mday>
+			<month>*</month>
+			<wday>*</wday>
+			<who>root</who>
+			<command>/usr/local/sbin/reset_slbd.sh</command>
+		</item>
+	</cron>
+	<wol>
 		
 	</wol>
-  <installedpackages>
+	<installedpackages>
 	</installedpackages>
 </pfsense>
