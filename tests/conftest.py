@@ -267,7 +267,7 @@ def redactor_factory():
             result = redactor.redact_text("test")
     """
     # Import from the installed package
-    from pfsense_redactor.redactor import PfSenseRedactor
+    from pfsense_redactor.redactor import PfSenseRedactor  # pylint: disable=import-outside-toplevel
     
     def _create(**kwargs):
         return PfSenseRedactor(**kwargs)
