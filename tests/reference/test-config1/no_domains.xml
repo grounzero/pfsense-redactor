@@ -1,2353 +1,2353 @@
 <?xml version='1.0' encoding='utf-8'?>
 <pfsense>
-	<version>18.2</version>
-	<lastchange />
-	<system>
-		<optimization>normal</optimization>
-		<hostname>pf_test</hostname>
-		<domain>example.com</domain>
-		<group>
-			<name>all</name>
-			<description>All Users</description>
-			<scope>system</scope>
-			<gid>1998</gid>
-			<member>0</member>
-		</group>
-		<group>
-			<name>admins</name>
-			<description>System Administrators</description>
-			<scope>system</scope>
-			<gid>1999</gid>
-			<member>0</member>
-			<priv>page-all</priv>
-		</group>
-		<user>
-			<name>admin</name>
-			<descr>System Administrator</descr>
-			<scope>system</scope>
-			<groupname>admins</groupname>
-			<bcrypt-hash>[REDACTED]</bcrypt-hash>
-			<uid>0</uid>
-			<priv>user-shell-access</priv>
-		</user>
-		<nextuid>2000</nextuid>
-		<nextgid>2000</nextgid>
-		<timeservers>0.pfsense.pool.ntp.org</timeservers>
-		<webgui>
-			<protocol>https</protocol>
-			<loginautocomplete />
-			<ssl-certref>59d39fada929c</ssl-certref>
-			<dashboardcolumns>2</dashboardcolumns>
-			<port />
-			<max_procs>5</max_procs>
-			<nohttpreferercheck />
-			<nodnsrebindcheck />
-			<webguicss>pfSense.css</webguicss>
-			<logincss>1e3f75;</logincss>
-		</webgui>
-		<disablenatreflection>yes</disablenatreflection>
-		<disablesegmentationoffloading />
-		<disablelargereceiveoffloading />
-		<ipv6allow />
-		<powerd_ac_mode>hadp</powerd_ac_mode>
-		<powerd_battery_mode>hadp</powerd_battery_mode>
-		<powerd_normal_mode>hadp</powerd_normal_mode>
-		<bogons>
-			<interval>monthly</interval>
-		</bogons>
-		<timezone>Etc/UTC</timezone>
-		<serialspeed>115200</serialspeed>
-		<primaryconsole>serial</primaryconsole>
-		<enablesshd>enabled</enablesshd>
-		<disablechecksumoffloading />
-		<powerd_enable />
-		<use_mfs_tmp_size />
-		<use_mfs_var_size />
-		<maximumtableentries>2000000</maximumtableentries>
-		<gitsync>
-			<repositoryurl />
-			<branch />
-		</gitsync>
-		<pkg_repo_conf_path>/usr/local/share/pfSense/pkg/repos/pfSense-repo-devel.conf</pkg_repo_conf_path>
-		<already_run_config_upgrade />
-		<crypto_hardware>cryptodev</crypto_hardware>
-		<language>en_US</language>
-		<dnsserver>XXX.XXX.XXX.XXX</dnsserver>
-		<dnsserver>XXX.XXX.XXX.XXX</dnsserver>
-		<dnsallowoverride />
-		<dns1gw>none</dns1gw>
-		<dns2gw>none</dns2gw>
-		<scrubnodf>enabled</scrubnodf>
-		<maximumstates />
-		<aliasesresolveinterval />
-		<maximumfrags />
-		<reflectiontimeout />
-	</system>
-	<interfaces>
-		<wan>
-			<enable />
-			<if>vmx0</if>
-			<blockbogons />
-			<descr>WAN</descr>
-			<spoofmac />
-			<alias-address />
-			<alias-subnet>32</alias-subnet>
-			<ipaddr>dhcp</ipaddr>
-			<dhcphostname />
-			<dhcprejectfrom />
-			<adv_dhcp_pt_timeout />
-			<adv_dhcp_pt_retry />
-			<adv_dhcp_pt_select_timeout />
-			<adv_dhcp_pt_reboot />
-			<adv_dhcp_pt_backoff_cutoff />
-			<adv_dhcp_pt_initial_interval />
-			<adv_dhcp_pt_values>SavedCfg</adv_dhcp_pt_values>
-			<adv_dhcp_send_options />
-			<adv_dhcp_request_options />
-			<adv_dhcp_required_options />
-			<adv_dhcp_option_modifiers />
-			<adv_dhcp_config_advanced />
-			<adv_dhcp_config_file_override />
-			<adv_dhcp_config_file_override_path />
-		</wan>
-		<lan>
-			<enable />
-			<if>vmx1</if>
-			<descr>LAN</descr>
-			<spoofmac />
-			<ipaddr>192.168.125.1</ipaddr>
-			<subnet>24</subnet>
-		</lan>
-		<opt1>
-			<descr>OPT1</descr>
-			<if>ovpnc2</if>
-			<spoofmac />
-		</opt1>
-	</interfaces>
-	<staticroutes />
-	<dhcpd>
-		<lan>
-			<range>
-				<from>192.168.125.10</from>
-				<to>192.168.125.245</to>
-			</range>
-			<failover_peerip />
-			<dhcpleaseinlocaltime />
-			<defaultleasetime />
-			<maxleasetime />
-			<netmask />
-			<gateway />
-			<domain />
-			<domainsearchlist />
-			<ddnsdomain />
-			<ddnsdomainprimary />
-			<ddnsdomainkeyname />
-			<ddnsdomainkeyalgorithm>hmac-md5</ddnsdomainkeyalgorithm>
-			<ddnsdomainkey />
-			<mac_allow />
-			<mac_deny />
-			<ddnsclientupdates>allow</ddnsclientupdates>
-			<tftp />
-			<ldap />
-			<nextserver />
-			<filename />
-			<filename32 />
-			<filename64 />
-			<rootpath />
-			<numberoptions />
-			<enable />
-		</lan>
-	</dhcpd>
-	<dhcpdv6>
-		<lan>
-			<range>
-				<from>::1000</from>
-				<to>::2000</to>
-			</range>
-			<ramode>assist</ramode>
-			<rapriority>medium</rapriority>
-			<prefixrange>
-				<from />
-				<to />
-				<prefixlength>48</prefixlength>
-			</prefixrange>
-			<defaultleasetime />
-			<maxleasetime />
-			<netmask />
-			<domain />
-			<domainsearchlist />
-			<ddnsdomain />
-			<ddnsdomainprimary />
-			<ddnsdomainkeyname />
-			<ddnsdomainkey />
-			<ddnsclientupdates>allow</ddnsclientupdates>
-			<tftp />
-			<ldap />
-			<bootfile_url />
-			<dhcpv6leaseinlocaltime />
-			<numberoptions />
-		</lan>
-	</dhcpdv6>
-	<snmpd>
-		<syslocation />
-		<syscontact />
-		<rocommunity>public</rocommunity>
-	</snmpd>
-	<diag>
-		<ipv6nat />
-	</diag>
-	<syslog>
-		<nentries>50</nentries>
-		<sourceip />
-		<ipproto>ipv4</ipproto>
-		<filterdescriptions>1</filterdescriptions>
-	</syslog>
-	<nat>
-		<outbound>
-			<mode>automatic</mode>
-		</outbound>
-		<rule>
-			<source>
-				<any />
-			</source>
-			<destination>
-				<address>10.10.10.1</address>
-				<port>80</port>
-			</destination>
-			<protocol>tcp</protocol>
-			<target>127.0.0.1</target>
-			<local-port>8081</local-port>
-			<interface>lan</interface>
-			<descr>pfB DNSBL - DO NOT EDIT</descr>
-			<associated-rule-id>pass</associated-rule-id>
-			<natreflection>purenat</natreflection>
-		</rule>
-		<rule>
-			<source>
-				<any />
-			</source>
-			<destination>
-				<address>10.10.10.1</address>
-				<port>443</port>
-			</destination>
-			<protocol>tcp</protocol>
-			<target>127.0.0.1</target>
-			<local-port>8443</local-port>
-			<interface>lan</interface>
-			<descr>pfB DNSBL - DO NOT EDIT</descr>
-			<associated-rule-id>pass</associated-rule-id>
-			<natreflection>purenat</natreflection>
-		</rule>
-	</nat>
-	<filter>
-		<rule>
-			<ipprotocol>inet</ipprotocol>
-			<type>block</type>
-			<descr>pfB_Asia_v4 auto rule</descr>
-			<source>
-				<address>pfB_Asia_v4</address>
-			</source>
-			<destination>
-				<any />
-			</destination>
-			<log />
-			<created>
-				<time>1528156827</time>
-				<username>Auto</username>
-			</created>
-			<interface>wan</interface>
-			<tracker>1770009596</tracker>
-		</rule>
-		<rule>
-			<ipprotocol>inet</ipprotocol>
-			<type>block</type>
-			<descr>pfB_Blacklist_v4 auto rule</descr>
-			<source>
-				<address>pfB_Blacklist_v4</address>
-			</source>
-			<destination>
-				<any />
-			</destination>
-			<log />
-			<created>
-				<time>1528156828</time>
-				<username>Auto</username>
-			</created>
-			<interface>wan</interface>
-			<tracker>1770010135</tracker>
-		</rule>
-		<rule>
-			<ipprotocol>inet</ipprotocol>
-			<type>pass</type>
-			<descr>pfB_Whitelist_v4 auto rule</descr>
-			<source>
-				<address>pfB_Whitelist_v4</address>
-			</source>
-			<destination>
-				<any />
-			</destination>
-			<log />
-			<created>
-				<time>1528156828</time>
-				<username>Auto</username>
-			</created>
-			<interface>wan</interface>
-			<tracker>1770010396</tracker>
-		</rule>
-		<rule>
-			<ipprotocol>inet</ipprotocol>
-			<type>reject</type>
-			<descr>pfB_Asia_v4 auto rule</descr>
-			<source>
-				<any />
-			</source>
-			<destination>
-				<address>pfB_Asia_v4</address>
-			</destination>
-			<log />
-			<created>
-				<time>1528156827</time>
-				<username>Auto</username>
-			</created>
-			<interface>lan</interface>
-			<tracker>1770009093</tracker>
-		</rule>
-		<rule>
-			<ipprotocol>inet</ipprotocol>
-			<type>reject</type>
-			<descr>pfB_DNSBLIP_v4 auto rule</descr>
-			<source>
-				<any />
-			</source>
-			<destination>
-				<address>pfB_DNSBLIP_v4</address>
-			</destination>
-			<log />
-			<created>
-				<time>1528156828</time>
-				<username>Auto</username>
-			</created>
-			<interface>lan</interface>
-			<tracker>1770009235</tracker>
-		</rule>
-		<rule>
-			<ipprotocol>inet</ipprotocol>
-			<type>pass</type>
-			<descr>pfB_Whitelist_v4 auto rule</descr>
-			<source>
-				<any />
-			</source>
-			<destination>
-				<address>pfB_Whitelist_v4</address>
-			</destination>
-			<log />
-			<created>
-				<time>1528156828</time>
-				<username>Auto</username>
-			</created>
-			<interface>lan</interface>
-			<tracker>1770009893</tracker>
-		</rule>
-		<rule>
-			<id />
-			<tracker>1507617312</tracker>
-			<type>pass</type>
-			<interface>wan</interface>
-			<ipprotocol>inet</ipprotocol>
-			<tag />
-			<tagged />
-			<max />
-			<max-src-nodes />
-			<max-src-conn />
-			<max-src-states />
-			<statetimeout />
-			<statetype>keep state</statetype>
-			<os />
-			<protocol>udp</protocol>
-			<source>
-				<any />
-			</source>
-			<destination>
-				<network>(self)</network>
-				<port>1194</port>
-			</destination>
-			<descr />
-			<updated>
-				<time>1507617312</time>
-				<username>admin@172.16.150.131</username>
-			</updated>
-			<created>
-				<time>1507617312</time>
-				<username>admin@172.16.150.131</username>
-			</created>
-		</rule>
-		<rule>
-			<type>pass</type>
-			<interface>wan</interface>
-			<ipprotocol>inet</ipprotocol>
-			<descr>Easy Rule: Passed from Firewall Log View</descr>
-			<source>
-				<any />
-			</source>
-			<destination>
-				<any />
-			</destination>
-			<created>
-				<time>1507041729</time>
-				<username>Easy Rule</username>
-			</created>
-		</rule>
-		<rule>
-			<type>pass</type>
-			<interface>wan</interface>
-			<ipprotocol>inet</ipprotocol>
-			<descr>Easy Rule: Passed from Firewall Log View</descr>
-			<source>
-				<any />
-			</source>
-			<destination>
-				<any />
-			</destination>
-			<created>
-				<time>1507042058</time>
-				<username>Easy Rule</username>
-			</created>
-		</rule>
-		<rule>
-			<type>pass</type>
-			<ipprotocol>inet</ipprotocol>
-			<descr>Default allow LAN to any rule</descr>
-			<interface>lan</interface>
-			<tracker>0100000101</tracker>
-			<source>
-				<network>lan</network>
-			</source>
-			<destination>
-				<any />
-			</destination>
-		</rule>
-		<rule>
-			<type>pass</type>
-			<ipprotocol>inet6</ipprotocol>
-			<descr>Default allow LAN IPv6 to any rule</descr>
-			<interface>lan</interface>
-			<tracker>0100000102</tracker>
-			<source>
-				<network>lan</network>
-			</source>
-			<destination>
-				<any />
-			</destination>
-		</rule>
-		<rule>
-			<id />
-			<tracker>1507626308</tracker>
-			<type>pass</type>
-			<interface>enc0</interface>
-			<ipprotocol>inet</ipprotocol>
-			<tag />
-			<tagged />
-			<max />
-			<max-src-nodes />
-			<max-src-conn />
-			<max-src-states />
-			<statetimeout />
-			<statetype>keep state</statetype>
-			<os />
-			<source>
-				<any />
-			</source>
-			<destination>
-				<any />
-			</destination>
-			<descr />
-			<updated>
-				<time>1507626308</time>
-				<username>admin@172.16.150.8</username>
-			</updated>
-			<created>
-				<time>1507626308</time>
-				<username>admin@172.16.150.8</username>
-			</created>
-		</rule>
-		<rule>
-			<id />
-			<tracker>1507617328</tracker>
-			<type>pass</type>
-			<interface>openvpn</interface>
-			<ipprotocol>inet</ipprotocol>
-			<tag />
-			<tagged />
-			<max />
-			<max-src-nodes />
-			<max-src-conn />
-			<max-src-states />
-			<statetimeout />
-			<statetype>keep state</statetype>
-			<os />
-			<source>
-				<any />
-			</source>
-			<destination>
-				<any />
-			</destination>
-			<descr />
-			<updated>
-				<time>1507617328</time>
-				<username>admin@172.16.150.131</username>
-			</updated>
-			<created>
-				<time>1507617328</time>
-				<username>admin@172.16.150.131</username>
-			</created>
-		</rule>
-		<rule>
-			<type>pass</type>
-			<interface>lan</interface>
-			<ipprotocol>inet</ipprotocol>
-			<descr>Easy Rule: Passed from Firewall Log View</descr>
-			<source>
-				<any />
-			</source>
-			<destination>
-				<any />
-			</destination>
-			<created>
-				<time>1525695659</time>
-				<username>Easy Rule</username>
-			</created>
-			<tracker>1525695659</tracker>
-		</rule>
-		<separator>
-			<wan />
-		</separator>
-	</filter>
-	<shaper />
-	<ipsec>
-		<phase1>
-			<ikeid>1</ikeid>
-			<iketype>ikev2</iketype>
-			<interface>wan</interface>
-			<remote-gateway>172.21.41.146</remote-gateway>
-			<protocol>inet</protocol>
-			<myid_type>myaddress</myid_type>
-			<myid_data />
-			<peerid_type>peeraddress</peerid_type>
-			<peerid_data />
-			<lifetime>28800</lifetime>
-			<pre-shared-key>[REDACTED]</pre-shared-key>
-			<private-key />
-			<certref />
-			<caref />
-			<authentication_method>pre_shared_key</authentication_method>
-			<descr />
-			<nat_traversal>on</nat_traversal>
-			<mobike>off</mobike>
-			<dpd_delay>10</dpd_delay>
-			<dpd_maxfail>5</dpd_maxfail>
-			<disabled />
-			<encryption>
-				<item>
-					<encryption-algorithm>
-						<name>aes</name>
-						<keylen>256</keylen>
-					</encryption-algorithm>
-					<hash-algorithm>sha1</hash-algorithm>
-					<dhgroup>2</dhgroup>
-				</item>
-			</encryption>
-		</phase1>
-		<phase1>
-			<ikeid>2</ikeid>
-			<iketype>ikev2</iketype>
-			<interface>wan</interface>
-			<remote-gateway>10.10.10.2</remote-gateway>
-			<protocol>inet</protocol>
-			<myid_type>myaddress</myid_type>
-			<myid_data />
-			<peerid_type>peeraddress</peerid_type>
-			<peerid_data />
-			<encryption>
-				<item>
-					<encryption-algorithm>
-						<name>aes</name>
-						<keylen>128</keylen>
-					</encryption-algorithm>
-					<hash-algorithm>sha1</hash-algorithm>
-					<dhgroup>14</dhgroup>
-				</item>
-			</encryption>
-			<lifetime>28800</lifetime>
-			<pre-shared-key>[REDACTED]</pre-shared-key>
-			<private-key />
-			<certref />
-			<caref />
-			<authentication_method>pre_shared_key</authentication_method>
-			<descr>Tunnel with PB2</descr>
-			<nat_traversal>on</nat_traversal>
-			<mobike>off</mobike>
-			<rekey_enable />
-			<dpd_delay>10</dpd_delay>
-			<dpd_maxfail>5</dpd_maxfail>
-			<disabled />
-		</phase1>
-		<client />
-		<phase2>
-			<ikeid>1</ikeid>
-			<uniqid>59dc8cdccfa7b</uniqid>
-			<mode>tunnel</mode>
-			<reqid>1</reqid>
-			<localid>
-				<type>lan</type>
-			</localid>
-			<remoteid>
-				<type>network</type>
-				<address>192.168.1.0</address>
-				<netbits>24</netbits>
-			</remoteid>
-			<protocol>esp</protocol>
-			<encryption-algorithm-option>
-				<name>aes</name>
-				<keylen>auto</keylen>
-			</encryption-algorithm-option>
-			<hash-algorithm-option>hmac_sha1</hash-algorithm-option>
-			<pfsgroup>0</pfsgroup>
-			<lifetime>3600</lifetime>
-			<pinghost />
-			<descr />
-		</phase2>
-		<phase2>
-			<ikeid>2</ikeid>
-			<uniqid>5ab0a8c528fd8</uniqid>
-			<mode>tunnel</mode>
-			<reqid>2</reqid>
-			<localid>
-				<type>lan</type>
-			</localid>
-			<remoteid>
-				<type>network</type>
-				<address>0.0.0.0</address>
-				<netbits>0</netbits>
-			</remoteid>
-			<protocol>esp</protocol>
-			<encryption-algorithm-option>
-				<name>aes</name>
-				<keylen>128</keylen>
-			</encryption-algorithm-option>
-			<hash-algorithm-option>hmac_sha1</hash-algorithm-option>
-			<pfsgroup>14</pfsgroup>
-			<lifetime>3600</lifetime>
-			<pinghost />
-			<descr />
-		</phase2>
-	</ipsec>
-	<aliases>
-		<alias>
-			<name>pfB_Asia_v4</name>
-			<url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Asia_v4 &lt;br /&gt;[ 6255147, 6255147_rep, CN, CN_rep ]</url>
-			<updatefreq>32</updatefreq>
-			<address />
-			<descr>pfBlockerNG  Auto  GeoIP Alias</descr>
-			<type>urltable</type>
-			<detail>DO NOT EDIT THIS ALIAS</detail>
-		</alias>
-		<alias>
-			<name>pfB_Whitelist_v4</name>
-			<url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Whitelist_v4 &lt;br /&gt;[ Whitelist_custom_v4 ]</url>
-			<updatefreq>32</updatefreq>
-			<address />
-			<descr>pfBlockerNG  Auto  Alias</descr>
-			<type>urltable</type>
-			<detail>DO NOT EDIT THIS ALIAS</detail>
-		</alias>
-		<alias>
-			<name>pfB_Blacklist_v4</name>
-			<url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Blacklist_v4 &lt;br /&gt;[ C2_IP_Feed_v4, C2_All_Indicator_Feed_v4 ]</url>
-			<updatefreq>32</updatefreq>
-			<address />
-			<descr>pfBlockerNG  Auto  Alias</descr>
-			<type>urltable</type>
-			<detail>DO NOT EDIT THIS ALIAS</detail>
-		</alias>
-		<alias>
-			<name>pfB_DNSBLIP_v4</name>
-			<url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_DNSBLIP_v4 &lt;br /&gt;[ DNSBLIP_v4 ]</url>
-			<updatefreq>32</updatefreq>
-			<address />
-			<descr>pfBlockerNG  Auto  Alias</descr>
-			<type>urltable</type>
-			<detail>DO NOT EDIT THIS ALIAS</detail>
-		</alias>
-		<alias>
-			<name>Alias_1</name>
-			<type>host</type>
-			<address>XXX.XXX.XXX.XXX XXX.XXX.XXX.XXX Alias2</address>
-			<descr />
-			<detail>Entry added Mon, 19 Mar 2018 13:16:33 +0000||Entry added Mon, 19 Mar 2018 13:16:33 +0000||Entry added Mon, 19 Mar 2018 13:16:33 +0000</detail>
-		</alias>
-		<alias>
-			<name>Test</name>
-			<type>host</type>
-			<address>XXX.XXX.XXX.XXX Test1</address>
-			<descr />
-			<detail>Entry added Tue, 27 Feb 2018 14:25:35 +0000||Entry added Wed, 28 Feb 2018 06:49:30 +0000</detail>
-		</alias>
-		<alias>
-			<name>Test1</name>
-			<type>host</type>
-			<address>XXX.XXX.XXX.XXX</address>
-			<descr />
-			<detail>Entry added Wed, 28 Feb 2018 06:49:16 +0000</detail>
-		</alias>
-	</aliases>
-	<proxyarp />
-	<cron>
-		<item>
-			<minute>1,31</minute>
-			<hour>0-5</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/bin/nice -n20 adjkerntz -a</command>
-		</item>
-		<item>
-			<minute>1</minute>
-			<hour>3</hour>
-			<mday>1</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/bin/nice -n20 /etc/rc.update_bogons.sh</command>
-		</item>
-		<item>
-			<minute>*/60</minute>
-			<hour>*</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -v -t 3600 sshlockout</command>
-		</item>
-		<item>
-			<minute>*/60</minute>
-			<hour>*</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -v -t 3600 webConfiguratorlockout</command>
-		</item>
-		<item>
-			<minute>1</minute>
-			<hour>1</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/bin/nice -n20 /etc/rc.dyndns.update</command>
-		</item>
-		<item>
-			<minute>*/60</minute>
-			<hour>*</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -v -t 3600 virusprot</command>
-		</item>
-		<item>
-			<minute>30</minute>
-			<hour>12</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/bin/nice -n20 /etc/rc.update_urltables</command>
-		</item>
-		<item>
-			<minute>1</minute>
-			<hour>0</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/bin/nice -n20 /etc/rc.update_pkg_metadata</command>
-		</item>
-		<item>
-			<minute>*/5</minute>
-			<hour>*</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/bin/nice -n20 /usr/local/bin/php -f /usr/local/pkg/snort/snort_check_cron_misc.inc</command>
-		</item>
-		<item>
-			<minute>5</minute>
-			<hour>0,12</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/bin/nice -n20 /usr/local/bin/php -f /usr/local/pkg/snort/snort_check_for_rule_updates.php</command>
-		</item>
-		<item>
-			<minute>0</minute>
-			<hour>0</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/local/bin/mail_reports_generate.php 0 &amp;</command>
-		</item>
-		<item>
-			<minute>0</minute>
-			<hour>3</hour>
-			<mday>4-10</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/local/bin/php /usr/local/www/pfblockerng/pfblockerng.php dcc &gt;&gt; /var/log/pfblockerng/extras.log 2&gt;&amp;1</command>
-		</item>
-		<item>
-			<minute>0</minute>
-			<hour>0,12</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/local/bin/php /usr/local/www/pfblockerng/pfblockerng.php cron &gt;&gt; /var/log/pfblockerng/pfblockerng.log 2&gt;&amp;1</command>
-		</item>
-		<item>
-			<minute>0</minute>
-			<hour>0</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/local/sbin/squid -k rotate -f /usr/local/etc/squid/squid.conf</command>
-		</item>
-		<item>
-			<minute>15</minute>
-			<hour>0</hour>
-			<mday>*</mday>
-			<month>*</month>
-			<wday>*</wday>
-			<who>root</who>
-			<command>/usr/local/pkg/swapstate_check.php</command>
-		</item>
-	</cron>
-	<wol />
-	<rrd>
-		<enable />
-	</rrd>
-	<load_balancer>
-		<monitor_type>
-			<name>ICMP</name>
-			<type>icmp</type>
-			<descr>ICMP</descr>
-			<options />
-		</monitor_type>
-		<monitor_type>
-			<name>TCP</name>
-			<type>tcp</type>
-			<descr>Generic TCP</descr>
-			<options />
-		</monitor_type>
-		<monitor_type>
-			<name>HTTP</name>
-			<type>http</type>
-			<descr>Generic HTTP</descr>
-			<options>
-				<path>/</path>
-				<host />
-				<code>200</code>
-			</options>
-		</monitor_type>
-		<monitor_type>
-			<name>HTTPS</name>
-			<type>https</type>
-			<descr>Generic HTTPS</descr>
-			<options>
-				<path>/</path>
-				<host />
-				<code>200</code>
-			</options>
-		</monitor_type>
-		<monitor_type>
-			<name>SMTP</name>
-			<type>send</type>
-			<descr>Generic SMTP</descr>
-			<options>
-				<send />
-				<expect>220 *</expect>
-			</options>
-		</monitor_type>
-	</load_balancer>
-	<widgets>
-		<sequence>system_information:col1:open:0,interfaces:col2:open:0,pfblockerng:col2:open:0,snort_alerts:col2:open:0,installed_packages:col2:open:0</sequence>
-	</widgets>
-	<openvpn />
-	<dnshaper />
-	<unbound>
-		<enable />
-		<dnssec />
-		<active_interface />
-		<outgoing_interface />
-		<custom_options>c2VydmVyOmluY2x1ZGU6IC92YXIvdW5ib3VuZC9wZmJfZG5zYmwuKmNvbmY=</custom_options>
-		<hideidentity />
-		<hideversion />
-		<dnssecstripped />
-		<hosts>
-			<host>pkg</host>
-			<domain>pfsense.org</domain>
-			<ip>172.27.10.115</ip>
-			<descr />
-			<aliases />
-		</hosts>
-		<hosts>
-			<host>release-staging</host>
-			<domain>netgate.com</domain>
-			<ip>172.27.10.115</ip>
-			<descr />
-			<aliases />
-		</hosts>
-	</unbound>
-	<revision>
-		<time>1532955144</time>
-		<username>admin@172.21.41.249</username>
-	</revision>
-	<cert>
-		<refid>59d39fada929c</refid>
-		<descr>webConfigurator default (59d39fada929c)</descr>
-		<type>server</type>
-		<crt>[REDACTED_CERT_OR_KEY]</crt>
-		<prv>[REDACTED]</prv>
-	</cert>
-	<cert>
-		<refid>5a030fac39e79</refid>
-		<descr>OpenVPNClientCert</descr>
-		<crt>[REDACTED_CERT_OR_KEY]</crt>
-		<prv>[REDACTED]</prv>
-		<caref>5a030f8debd96</caref>
-	</cert>
-	<cert>
-		<refid>5a04208c7c65a</refid>
-		<descr>FreeRADIUS Server Certificate</descr>
-		<type>server</type>
-		<caref>5a04208c70f14</caref>
-		<crt>[REDACTED_CERT_OR_KEY]</crt>
-		<prv>[REDACTED]</prv>
-	</cert>
-	<ppps />
-	<gateways />
-	<installedpackages>
-		<package>
-			<name>snort</name>
-			<pkginfolink>https://doc.pfsense.org/index.php/Setup_Snort_Package</pkginfolink>
-			<website>http://www.snort.org</website>
-			<descr>Snort is an open source network intrusion prevention and detection system (IDS/IPS). Combining the benefits of signature, protocol, and anomaly-based inspection.</descr>
-			<version>3.2.9.6_1</version>
-			<configurationfile>/snort.xml</configurationfile>
-			<after_install_info>Please visit Services - Snort - Interfaces tab first and select your desired rules. Afterwards visit the Updates tab to download your configured rulesets.</after_install_info>
-			<include_file>/usr/local/pkg/snort/snort.inc</include_file>
-		</package>
-		<package>
-			<name>Lightsquid</name>
-			<descr>LightSquid is a high performance web proxy reporting tool. Includes proxy realtime statistics (SQStat).
+  <version>18.2</version>
+  <lastchange />
+  <system>
+    <optimization>normal</optimization>
+    <hostname>pf_test</hostname>
+    <domain>example.com</domain>
+    <group>
+      <name>all</name>
+      <description>All Users</description>
+      <scope>system</scope>
+      <gid>1998</gid>
+      <member>0</member>
+    </group>
+    <group>
+      <name>admins</name>
+      <description>System Administrators</description>
+      <scope>system</scope>
+      <gid>1999</gid>
+      <member>0</member>
+      <priv>page-all</priv>
+    </group>
+    <user>
+      <name>admin</name>
+      <descr>System Administrator</descr>
+      <scope>system</scope>
+      <groupname>admins</groupname>
+      <bcrypt-hash>[REDACTED]</bcrypt-hash>
+      <uid>0</uid>
+      <priv>user-shell-access</priv>
+    </user>
+    <nextuid>2000</nextuid>
+    <nextgid>2000</nextgid>
+    <timeservers>0.pfsense.pool.ntp.org</timeservers>
+    <webgui>
+      <protocol>https</protocol>
+      <loginautocomplete />
+      <ssl-certref>59d39fada929c</ssl-certref>
+      <dashboardcolumns>2</dashboardcolumns>
+      <port />
+      <max_procs>5</max_procs>
+      <nohttpreferercheck />
+      <nodnsrebindcheck />
+      <webguicss>pfSense.css</webguicss>
+      <logincss>1e3f75;</logincss>
+    </webgui>
+    <disablenatreflection>yes</disablenatreflection>
+    <disablesegmentationoffloading />
+    <disablelargereceiveoffloading />
+    <ipv6allow />
+    <powerd_ac_mode>hadp</powerd_ac_mode>
+    <powerd_battery_mode>hadp</powerd_battery_mode>
+    <powerd_normal_mode>hadp</powerd_normal_mode>
+    <bogons>
+      <interval>monthly</interval>
+    </bogons>
+    <timezone>Etc/UTC</timezone>
+    <serialspeed>115200</serialspeed>
+    <primaryconsole>serial</primaryconsole>
+    <enablesshd>enabled</enablesshd>
+    <disablechecksumoffloading />
+    <powerd_enable />
+    <use_mfs_tmp_size />
+    <use_mfs_var_size />
+    <maximumtableentries>2000000</maximumtableentries>
+    <gitsync>
+      <repositoryurl />
+      <branch />
+    </gitsync>
+    <pkg_repo_conf_path>/usr/local/share/pfSense/pkg/repos/pfSense-repo-devel.conf</pkg_repo_conf_path>
+    <already_run_config_upgrade />
+    <crypto_hardware>cryptodev</crypto_hardware>
+    <language>en_US</language>
+    <dnsserver>XXX.XXX.XXX.XXX</dnsserver>
+    <dnsserver>XXX.XXX.XXX.XXX</dnsserver>
+    <dnsallowoverride />
+    <dns1gw>none</dns1gw>
+    <dns2gw>none</dns2gw>
+    <scrubnodf>enabled</scrubnodf>
+    <maximumstates />
+    <aliasesresolveinterval />
+    <maximumfrags />
+    <reflectiontimeout />
+  </system>
+  <interfaces>
+    <wan>
+      <enable />
+      <if>vmx0</if>
+      <blockbogons />
+      <descr>WAN</descr>
+      <spoofmac />
+      <alias-address />
+      <alias-subnet>32</alias-subnet>
+      <ipaddr>dhcp</ipaddr>
+      <dhcphostname />
+      <dhcprejectfrom />
+      <adv_dhcp_pt_timeout />
+      <adv_dhcp_pt_retry />
+      <adv_dhcp_pt_select_timeout />
+      <adv_dhcp_pt_reboot />
+      <adv_dhcp_pt_backoff_cutoff />
+      <adv_dhcp_pt_initial_interval />
+      <adv_dhcp_pt_values>SavedCfg</adv_dhcp_pt_values>
+      <adv_dhcp_send_options />
+      <adv_dhcp_request_options />
+      <adv_dhcp_required_options />
+      <adv_dhcp_option_modifiers />
+      <adv_dhcp_config_advanced />
+      <adv_dhcp_config_file_override />
+      <adv_dhcp_config_file_override_path />
+    </wan>
+    <lan>
+      <enable />
+      <if>vmx1</if>
+      <descr>LAN</descr>
+      <spoofmac />
+      <ipaddr>192.168.125.1</ipaddr>
+      <subnet>24</subnet>
+    </lan>
+    <opt1>
+      <descr>OPT1</descr>
+      <if>ovpnc2</if>
+      <spoofmac />
+    </opt1>
+  </interfaces>
+  <staticroutes />
+  <dhcpd>
+    <lan>
+      <range>
+        <from>192.168.125.10</from>
+        <to>192.168.125.245</to>
+      </range>
+      <failover_peerip />
+      <dhcpleaseinlocaltime />
+      <defaultleasetime />
+      <maxleasetime />
+      <netmask />
+      <gateway />
+      <domain />
+      <domainsearchlist />
+      <ddnsdomain />
+      <ddnsdomainprimary />
+      <ddnsdomainkeyname />
+      <ddnsdomainkeyalgorithm>hmac-md5</ddnsdomainkeyalgorithm>
+      <ddnsdomainkey />
+      <mac_allow />
+      <mac_deny />
+      <ddnsclientupdates>allow</ddnsclientupdates>
+      <tftp />
+      <ldap />
+      <nextserver />
+      <filename />
+      <filename32 />
+      <filename64 />
+      <rootpath />
+      <numberoptions />
+      <enable />
+    </lan>
+  </dhcpd>
+  <dhcpdv6>
+    <lan>
+      <range>
+        <from>::1000</from>
+        <to>::2000</to>
+      </range>
+      <ramode>assist</ramode>
+      <rapriority>medium</rapriority>
+      <prefixrange>
+        <from />
+        <to />
+        <prefixlength>48</prefixlength>
+      </prefixrange>
+      <defaultleasetime />
+      <maxleasetime />
+      <netmask />
+      <domain />
+      <domainsearchlist />
+      <ddnsdomain />
+      <ddnsdomainprimary />
+      <ddnsdomainkeyname />
+      <ddnsdomainkey />
+      <ddnsclientupdates>allow</ddnsclientupdates>
+      <tftp />
+      <ldap />
+      <bootfile_url />
+      <dhcpv6leaseinlocaltime />
+      <numberoptions />
+    </lan>
+  </dhcpdv6>
+  <snmpd>
+    <syslocation />
+    <syscontact />
+    <rocommunity>public</rocommunity>
+  </snmpd>
+  <diag>
+    <ipv6nat />
+  </diag>
+  <syslog>
+    <nentries>50</nentries>
+    <sourceip />
+    <ipproto>ipv4</ipproto>
+    <filterdescriptions>1</filterdescriptions>
+  </syslog>
+  <nat>
+    <outbound>
+      <mode>automatic</mode>
+    </outbound>
+    <rule>
+      <source>
+        <any />
+      </source>
+      <destination>
+        <address>10.10.10.1</address>
+        <port>80</port>
+      </destination>
+      <protocol>tcp</protocol>
+      <target>127.0.0.1</target>
+      <local-port>8081</local-port>
+      <interface>lan</interface>
+      <descr>pfB DNSBL - DO NOT EDIT</descr>
+      <associated-rule-id>pass</associated-rule-id>
+      <natreflection>purenat</natreflection>
+    </rule>
+    <rule>
+      <source>
+        <any />
+      </source>
+      <destination>
+        <address>10.10.10.1</address>
+        <port>443</port>
+      </destination>
+      <protocol>tcp</protocol>
+      <target>127.0.0.1</target>
+      <local-port>8443</local-port>
+      <interface>lan</interface>
+      <descr>pfB DNSBL - DO NOT EDIT</descr>
+      <associated-rule-id>pass</associated-rule-id>
+      <natreflection>purenat</natreflection>
+    </rule>
+  </nat>
+  <filter>
+    <rule>
+      <ipprotocol>inet</ipprotocol>
+      <type>block</type>
+      <descr>pfB_Asia_v4 auto rule</descr>
+      <source>
+        <address>pfB_Asia_v4</address>
+      </source>
+      <destination>
+        <any />
+      </destination>
+      <log />
+      <created>
+        <time>1528156827</time>
+        <username>Auto</username>
+      </created>
+      <interface>wan</interface>
+      <tracker>1770009596</tracker>
+    </rule>
+    <rule>
+      <ipprotocol>inet</ipprotocol>
+      <type>block</type>
+      <descr>pfB_Blacklist_v4 auto rule</descr>
+      <source>
+        <address>pfB_Blacklist_v4</address>
+      </source>
+      <destination>
+        <any />
+      </destination>
+      <log />
+      <created>
+        <time>1528156828</time>
+        <username>Auto</username>
+      </created>
+      <interface>wan</interface>
+      <tracker>1770010135</tracker>
+    </rule>
+    <rule>
+      <ipprotocol>inet</ipprotocol>
+      <type>pass</type>
+      <descr>pfB_Whitelist_v4 auto rule</descr>
+      <source>
+        <address>pfB_Whitelist_v4</address>
+      </source>
+      <destination>
+        <any />
+      </destination>
+      <log />
+      <created>
+        <time>1528156828</time>
+        <username>Auto</username>
+      </created>
+      <interface>wan</interface>
+      <tracker>1770010396</tracker>
+    </rule>
+    <rule>
+      <ipprotocol>inet</ipprotocol>
+      <type>reject</type>
+      <descr>pfB_Asia_v4 auto rule</descr>
+      <source>
+        <any />
+      </source>
+      <destination>
+        <address>pfB_Asia_v4</address>
+      </destination>
+      <log />
+      <created>
+        <time>1528156827</time>
+        <username>Auto</username>
+      </created>
+      <interface>lan</interface>
+      <tracker>1770009093</tracker>
+    </rule>
+    <rule>
+      <ipprotocol>inet</ipprotocol>
+      <type>reject</type>
+      <descr>pfB_DNSBLIP_v4 auto rule</descr>
+      <source>
+        <any />
+      </source>
+      <destination>
+        <address>pfB_DNSBLIP_v4</address>
+      </destination>
+      <log />
+      <created>
+        <time>1528156828</time>
+        <username>Auto</username>
+      </created>
+      <interface>lan</interface>
+      <tracker>1770009235</tracker>
+    </rule>
+    <rule>
+      <ipprotocol>inet</ipprotocol>
+      <type>pass</type>
+      <descr>pfB_Whitelist_v4 auto rule</descr>
+      <source>
+        <any />
+      </source>
+      <destination>
+        <address>pfB_Whitelist_v4</address>
+      </destination>
+      <log />
+      <created>
+        <time>1528156828</time>
+        <username>Auto</username>
+      </created>
+      <interface>lan</interface>
+      <tracker>1770009893</tracker>
+    </rule>
+    <rule>
+      <id />
+      <tracker>1507617312</tracker>
+      <type>pass</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <tag />
+      <tagged />
+      <max />
+      <max-src-nodes />
+      <max-src-conn />
+      <max-src-states />
+      <statetimeout />
+      <statetype>keep state</statetype>
+      <os />
+      <protocol>udp</protocol>
+      <source>
+        <any />
+      </source>
+      <destination>
+        <network>(self)</network>
+        <port>1194</port>
+      </destination>
+      <descr />
+      <updated>
+        <time>1507617312</time>
+        <username>admin@172.16.150.131</username>
+      </updated>
+      <created>
+        <time>1507617312</time>
+        <username>admin@172.16.150.131</username>
+      </created>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <descr>Easy Rule: Passed from Firewall Log View</descr>
+      <source>
+        <any />
+      </source>
+      <destination>
+        <any />
+      </destination>
+      <created>
+        <time>1507041729</time>
+        <username>Easy Rule</username>
+      </created>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <interface>wan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <descr>Easy Rule: Passed from Firewall Log View</descr>
+      <source>
+        <any />
+      </source>
+      <destination>
+        <any />
+      </destination>
+      <created>
+        <time>1507042058</time>
+        <username>Easy Rule</username>
+      </created>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <ipprotocol>inet</ipprotocol>
+      <descr>Default allow LAN to any rule</descr>
+      <interface>lan</interface>
+      <tracker>0100000101</tracker>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <any />
+      </destination>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <ipprotocol>inet6</ipprotocol>
+      <descr>Default allow LAN IPv6 to any rule</descr>
+      <interface>lan</interface>
+      <tracker>0100000102</tracker>
+      <source>
+        <network>lan</network>
+      </source>
+      <destination>
+        <any />
+      </destination>
+    </rule>
+    <rule>
+      <id />
+      <tracker>1507626308</tracker>
+      <type>pass</type>
+      <interface>enc0</interface>
+      <ipprotocol>inet</ipprotocol>
+      <tag />
+      <tagged />
+      <max />
+      <max-src-nodes />
+      <max-src-conn />
+      <max-src-states />
+      <statetimeout />
+      <statetype>keep state</statetype>
+      <os />
+      <source>
+        <any />
+      </source>
+      <destination>
+        <any />
+      </destination>
+      <descr />
+      <updated>
+        <time>1507626308</time>
+        <username>admin@172.16.150.8</username>
+      </updated>
+      <created>
+        <time>1507626308</time>
+        <username>admin@172.16.150.8</username>
+      </created>
+    </rule>
+    <rule>
+      <id />
+      <tracker>1507617328</tracker>
+      <type>pass</type>
+      <interface>openvpn</interface>
+      <ipprotocol>inet</ipprotocol>
+      <tag />
+      <tagged />
+      <max />
+      <max-src-nodes />
+      <max-src-conn />
+      <max-src-states />
+      <statetimeout />
+      <statetype>keep state</statetype>
+      <os />
+      <source>
+        <any />
+      </source>
+      <destination>
+        <any />
+      </destination>
+      <descr />
+      <updated>
+        <time>1507617328</time>
+        <username>admin@172.16.150.131</username>
+      </updated>
+      <created>
+        <time>1507617328</time>
+        <username>admin@172.16.150.131</username>
+      </created>
+    </rule>
+    <rule>
+      <type>pass</type>
+      <interface>lan</interface>
+      <ipprotocol>inet</ipprotocol>
+      <descr>Easy Rule: Passed from Firewall Log View</descr>
+      <source>
+        <any />
+      </source>
+      <destination>
+        <any />
+      </destination>
+      <created>
+        <time>1525695659</time>
+        <username>Easy Rule</username>
+      </created>
+      <tracker>1525695659</tracker>
+    </rule>
+    <separator>
+      <wan />
+    </separator>
+  </filter>
+  <shaper />
+  <ipsec>
+    <phase1>
+      <ikeid>1</ikeid>
+      <iketype>ikev2</iketype>
+      <interface>wan</interface>
+      <remote-gateway>172.21.41.146</remote-gateway>
+      <protocol>inet</protocol>
+      <myid_type>myaddress</myid_type>
+      <myid_data />
+      <peerid_type>peeraddress</peerid_type>
+      <peerid_data />
+      <lifetime>28800</lifetime>
+      <pre-shared-key>[REDACTED]</pre-shared-key>
+      <private-key />
+      <certref />
+      <caref />
+      <authentication_method>pre_shared_key</authentication_method>
+      <descr />
+      <nat_traversal>on</nat_traversal>
+      <mobike>off</mobike>
+      <dpd_delay>10</dpd_delay>
+      <dpd_maxfail>5</dpd_maxfail>
+      <disabled />
+      <encryption>
+        <item>
+          <encryption-algorithm>
+            <name>aes</name>
+            <keylen>256</keylen>
+          </encryption-algorithm>
+          <hash-algorithm>sha1</hash-algorithm>
+          <dhgroup>2</dhgroup>
+        </item>
+      </encryption>
+    </phase1>
+    <phase1>
+      <ikeid>2</ikeid>
+      <iketype>ikev2</iketype>
+      <interface>wan</interface>
+      <remote-gateway>10.10.10.2</remote-gateway>
+      <protocol>inet</protocol>
+      <myid_type>myaddress</myid_type>
+      <myid_data />
+      <peerid_type>peeraddress</peerid_type>
+      <peerid_data />
+      <encryption>
+        <item>
+          <encryption-algorithm>
+            <name>aes</name>
+            <keylen>128</keylen>
+          </encryption-algorithm>
+          <hash-algorithm>sha1</hash-algorithm>
+          <dhgroup>14</dhgroup>
+        </item>
+      </encryption>
+      <lifetime>28800</lifetime>
+      <pre-shared-key>[REDACTED]</pre-shared-key>
+      <private-key />
+      <certref />
+      <caref />
+      <authentication_method>pre_shared_key</authentication_method>
+      <descr>Tunnel with PB2</descr>
+      <nat_traversal>on</nat_traversal>
+      <mobike>off</mobike>
+      <rekey_enable />
+      <dpd_delay>10</dpd_delay>
+      <dpd_maxfail>5</dpd_maxfail>
+      <disabled />
+    </phase1>
+    <client />
+    <phase2>
+      <ikeid>1</ikeid>
+      <uniqid>59dc8cdccfa7b</uniqid>
+      <mode>tunnel</mode>
+      <reqid>1</reqid>
+      <localid>
+        <type>lan</type>
+      </localid>
+      <remoteid>
+        <type>network</type>
+        <address>192.168.1.0</address>
+        <netbits>24</netbits>
+      </remoteid>
+      <protocol>esp</protocol>
+      <encryption-algorithm-option>
+        <name>aes</name>
+        <keylen>auto</keylen>
+      </encryption-algorithm-option>
+      <hash-algorithm-option>hmac_sha1</hash-algorithm-option>
+      <pfsgroup>0</pfsgroup>
+      <lifetime>3600</lifetime>
+      <pinghost />
+      <descr />
+    </phase2>
+    <phase2>
+      <ikeid>2</ikeid>
+      <uniqid>5ab0a8c528fd8</uniqid>
+      <mode>tunnel</mode>
+      <reqid>2</reqid>
+      <localid>
+        <type>lan</type>
+      </localid>
+      <remoteid>
+        <type>network</type>
+        <address>0.0.0.0</address>
+        <netbits>0</netbits>
+      </remoteid>
+      <protocol>esp</protocol>
+      <encryption-algorithm-option>
+        <name>aes</name>
+        <keylen>128</keylen>
+      </encryption-algorithm-option>
+      <hash-algorithm-option>hmac_sha1</hash-algorithm-option>
+      <pfsgroup>14</pfsgroup>
+      <lifetime>3600</lifetime>
+      <pinghost />
+      <descr />
+    </phase2>
+  </ipsec>
+  <aliases>
+    <alias>
+      <name>pfB_Asia_v4</name>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Asia_v4 &lt;br /&gt;[ 6255147, 6255147_rep, CN, CN_rep ]</url>
+      <updatefreq>32</updatefreq>
+      <address />
+      <descr>pfBlockerNG  Auto  GeoIP Alias</descr>
+      <type>urltable</type>
+      <detail>DO NOT EDIT THIS ALIAS</detail>
+    </alias>
+    <alias>
+      <name>pfB_Whitelist_v4</name>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Whitelist_v4 &lt;br /&gt;[ Whitelist_custom_v4 ]</url>
+      <updatefreq>32</updatefreq>
+      <address />
+      <descr>pfBlockerNG  Auto  Alias</descr>
+      <type>urltable</type>
+      <detail>DO NOT EDIT THIS ALIAS</detail>
+    </alias>
+    <alias>
+      <name>pfB_Blacklist_v4</name>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Blacklist_v4 &lt;br /&gt;[ C2_IP_Feed_v4, C2_All_Indicator_Feed_v4 ]</url>
+      <updatefreq>32</updatefreq>
+      <address />
+      <descr>pfBlockerNG  Auto  Alias</descr>
+      <type>urltable</type>
+      <detail>DO NOT EDIT THIS ALIAS</detail>
+    </alias>
+    <alias>
+      <name>pfB_DNSBLIP_v4</name>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_DNSBLIP_v4 &lt;br /&gt;[ DNSBLIP_v4 ]</url>
+      <updatefreq>32</updatefreq>
+      <address />
+      <descr>pfBlockerNG  Auto  Alias</descr>
+      <type>urltable</type>
+      <detail>DO NOT EDIT THIS ALIAS</detail>
+    </alias>
+    <alias>
+      <name>Alias_1</name>
+      <type>host</type>
+      <address>XXX.XXX.XXX.XXX XXX.XXX.XXX.XXX Alias2</address>
+      <descr />
+      <detail>Entry added Mon, 19 Mar 2018 13:16:33 +0000||Entry added Mon, 19 Mar 2018 13:16:33 +0000||Entry added Mon, 19 Mar 2018 13:16:33 +0000</detail>
+    </alias>
+    <alias>
+      <name>Test</name>
+      <type>host</type>
+      <address>XXX.XXX.XXX.XXX Test1</address>
+      <descr />
+      <detail>Entry added Tue, 27 Feb 2018 14:25:35 +0000||Entry added Wed, 28 Feb 2018 06:49:30 +0000</detail>
+    </alias>
+    <alias>
+      <name>Test1</name>
+      <type>host</type>
+      <address>XXX.XXX.XXX.XXX</address>
+      <descr />
+      <detail>Entry added Wed, 28 Feb 2018 06:49:16 +0000</detail>
+    </alias>
+  </aliases>
+  <proxyarp />
+  <cron>
+    <item>
+      <minute>1,31</minute>
+      <hour>0-5</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/bin/nice -n20 adjkerntz -a</command>
+    </item>
+    <item>
+      <minute>1</minute>
+      <hour>3</hour>
+      <mday>1</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/bin/nice -n20 /etc/rc.update_bogons.sh</command>
+    </item>
+    <item>
+      <minute>*/60</minute>
+      <hour>*</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -v -t 3600 sshlockout</command>
+    </item>
+    <item>
+      <minute>*/60</minute>
+      <hour>*</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -v -t 3600 webConfiguratorlockout</command>
+    </item>
+    <item>
+      <minute>1</minute>
+      <hour>1</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/bin/nice -n20 /etc/rc.dyndns.update</command>
+    </item>
+    <item>
+      <minute>*/60</minute>
+      <hour>*</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/bin/nice -n20 /usr/local/sbin/expiretable -v -t 3600 virusprot</command>
+    </item>
+    <item>
+      <minute>30</minute>
+      <hour>12</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/bin/nice -n20 /etc/rc.update_urltables</command>
+    </item>
+    <item>
+      <minute>1</minute>
+      <hour>0</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/bin/nice -n20 /etc/rc.update_pkg_metadata</command>
+    </item>
+    <item>
+      <minute>*/5</minute>
+      <hour>*</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/bin/nice -n20 /usr/local/bin/php -f /usr/local/pkg/snort/snort_check_cron_misc.inc</command>
+    </item>
+    <item>
+      <minute>5</minute>
+      <hour>0,12</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/bin/nice -n20 /usr/local/bin/php -f /usr/local/pkg/snort/snort_check_for_rule_updates.php</command>
+    </item>
+    <item>
+      <minute>0</minute>
+      <hour>0</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/local/bin/mail_reports_generate.php 0 &amp;</command>
+    </item>
+    <item>
+      <minute>0</minute>
+      <hour>3</hour>
+      <mday>4-10</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/local/bin/php /usr/local/www/pfblockerng/pfblockerng.php dcc &gt;&gt; /var/log/pfblockerng/extras.log 2&gt;&amp;1</command>
+    </item>
+    <item>
+      <minute>0</minute>
+      <hour>0,12</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/local/bin/php /usr/local/www/pfblockerng/pfblockerng.php cron &gt;&gt; /var/log/pfblockerng/pfblockerng.log 2&gt;&amp;1</command>
+    </item>
+    <item>
+      <minute>0</minute>
+      <hour>0</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/local/sbin/squid -k rotate -f /usr/local/etc/squid/squid.conf</command>
+    </item>
+    <item>
+      <minute>15</minute>
+      <hour>0</hour>
+      <mday>*</mday>
+      <month>*</month>
+      <wday>*</wday>
+      <who>root</who>
+      <command>/usr/local/pkg/swapstate_check.php</command>
+    </item>
+  </cron>
+  <wol />
+  <rrd>
+    <enable />
+  </rrd>
+  <load_balancer>
+    <monitor_type>
+      <name>ICMP</name>
+      <type>icmp</type>
+      <descr>ICMP</descr>
+      <options />
+    </monitor_type>
+    <monitor_type>
+      <name>TCP</name>
+      <type>tcp</type>
+      <descr>Generic TCP</descr>
+      <options />
+    </monitor_type>
+    <monitor_type>
+      <name>HTTP</name>
+      <type>http</type>
+      <descr>Generic HTTP</descr>
+      <options>
+        <path>/</path>
+        <host />
+        <code>200</code>
+      </options>
+    </monitor_type>
+    <monitor_type>
+      <name>HTTPS</name>
+      <type>https</type>
+      <descr>Generic HTTPS</descr>
+      <options>
+        <path>/</path>
+        <host />
+        <code>200</code>
+      </options>
+    </monitor_type>
+    <monitor_type>
+      <name>SMTP</name>
+      <type>send</type>
+      <descr>Generic SMTP</descr>
+      <options>
+        <send />
+        <expect>220 *</expect>
+      </options>
+    </monitor_type>
+  </load_balancer>
+  <widgets>
+    <sequence>system_information:col1:open:0,interfaces:col2:open:0,pfblockerng:col2:open:0,snort_alerts:col2:open:0,installed_packages:col2:open:0</sequence>
+  </widgets>
+  <openvpn />
+  <dnshaper />
+  <unbound>
+    <enable />
+    <dnssec />
+    <active_interface />
+    <outgoing_interface />
+    <custom_options>c2VydmVyOmluY2x1ZGU6IC92YXIvdW5ib3VuZC9wZmJfZG5zYmwuKmNvbmY=</custom_options>
+    <hideidentity />
+    <hideversion />
+    <dnssecstripped />
+    <hosts>
+      <host>pkg</host>
+      <domain>pfsense.org</domain>
+      <ip>172.27.10.115</ip>
+      <descr />
+      <aliases />
+    </hosts>
+    <hosts>
+      <host>release-staging</host>
+      <domain>netgate.com</domain>
+      <ip>172.27.10.115</ip>
+      <descr />
+      <aliases />
+    </hosts>
+  </unbound>
+  <revision>
+    <time>1532955144</time>
+    <username>admin@172.21.41.249</username>
+  </revision>
+  <cert>
+    <refid>59d39fada929c</refid>
+    <descr>webConfigurator default (59d39fada929c)</descr>
+    <type>server</type>
+    <crt>[REDACTED_CERT_OR_KEY]</crt>
+    <prv>[REDACTED]</prv>
+  </cert>
+  <cert>
+    <refid>5a030fac39e79</refid>
+    <descr>OpenVPNClientCert</descr>
+    <crt>[REDACTED_CERT_OR_KEY]</crt>
+    <prv>[REDACTED]</prv>
+    <caref>5a030f8debd96</caref>
+  </cert>
+  <cert>
+    <refid>5a04208c7c65a</refid>
+    <descr>FreeRADIUS Server Certificate</descr>
+    <type>server</type>
+    <caref>5a04208c70f14</caref>
+    <crt>[REDACTED_CERT_OR_KEY]</crt>
+    <prv>[REDACTED]</prv>
+  </cert>
+  <ppps />
+  <gateways />
+  <installedpackages>
+    <package>
+      <name>snort</name>
+      <pkginfolink>https://doc.pfsense.org/index.php/Setup_Snort_Package</pkginfolink>
+      <website>http://www.snort.org</website>
+      <descr>Snort is an open source network intrusion prevention and detection system (IDS/IPS). Combining the benefits of signature, protocol, and anomaly-based inspection.</descr>
+      <version>3.2.9.6_1</version>
+      <configurationfile>/snort.xml</configurationfile>
+      <after_install_info>Please visit Services - Snort - Interfaces tab first and select your desired rules. Afterwards visit the Updates tab to download your configured rulesets.</after_install_info>
+      <include_file>/usr/local/pkg/snort/snort.inc</include_file>
+    </package>
+    <package>
+      <name>Lightsquid</name>
+      <descr>LightSquid is a high performance web proxy reporting tool. Includes proxy realtime statistics (SQStat).
 			&amp;lt;strong&amp;gt;Requires Squid package.&amp;lt;/strong&amp;gt;</descr>
-			<website>http://lightsquid.sf.net/</website>
-			<version>3.0.6_4</version>
-			<configurationfile>lightsquid.xml</configurationfile>
-			<noembedded>true</noembedded>
-		</package>
-		<package>
-			<name>AutoConfigBackup</name>
-			<descr>Automatically backs up your pfSense configuration. All contents are encrypted before being sent to the server.&amp;lt;br /&amp;gt;
+      <website>http://lightsquid.sf.net/</website>
+      <version>3.0.6_4</version>
+      <configurationfile>lightsquid.xml</configurationfile>
+      <noembedded>true</noembedded>
+    </package>
+    <package>
+      <name>AutoConfigBackup</name>
+      <descr>Automatically backs up your pfSense configuration. All contents are encrypted before being sent to the server.&amp;lt;br /&amp;gt;
 			Requires Gold Subscription from &amp;lt;a href=&amp;quot;https://portal.pfsense.org&amp;quot;&amp;gt;pfSense Portal&amp;lt;/a&amp;gt;.</descr>
-			<website>https://portal.pfsense.org</website>
-			<version>1.52</version>
-			<pkginfolink>https://doc.pfsense.org/index.php/AutoConfigBackup</pkginfolink>
-			<configurationfile>autoconfigbackup.xml</configurationfile>
-			<tabs>
-				<tab>
-					<text>Settings</text>
-					<url>/pkg_edit.php?xml=autoconfigbackup.xml&amp;id=0</url>
-					<active />
-				</tab>
-				<tab>
-					<text>Restore</text>
-					<url>/autoconfigbackup.php</url>
-				</tab>
-				<tab>
-					<text>Backup now</text>
-					<url>/autoconfigbackup_backup.php</url>
-				</tab>
-				<tab>
-					<text>Stats</text>
-					<url>/autoconfigbackup_stats.php</url>
-				</tab>
-			</tabs>
-			<include_file>/usr/local/pkg/autoconfigbackup.inc</include_file>
-		</package>
-		<package>
-			<name>haproxy-devel</name>
-			<pkginfolink>https://doc.pfsense.org/index.php/haproxy_package</pkginfolink>
-			<descr>The Reliable, High Performance TCP/HTTP(S) Load Balancer.&amp;lt;br /&amp;gt;
+      <website>https://portal.pfsense.org</website>
+      <version>1.52</version>
+      <pkginfolink>https://doc.pfsense.org/index.php/AutoConfigBackup</pkginfolink>
+      <configurationfile>autoconfigbackup.xml</configurationfile>
+      <tabs>
+        <tab>
+          <text>Settings</text>
+          <url>/pkg_edit.php?xml=autoconfigbackup.xml&amp;id=0</url>
+          <active />
+        </tab>
+        <tab>
+          <text>Restore</text>
+          <url>/autoconfigbackup.php</url>
+        </tab>
+        <tab>
+          <text>Backup now</text>
+          <url>/autoconfigbackup_backup.php</url>
+        </tab>
+        <tab>
+          <text>Stats</text>
+          <url>/autoconfigbackup_stats.php</url>
+        </tab>
+      </tabs>
+      <include_file>/usr/local/pkg/autoconfigbackup.inc</include_file>
+    </package>
+    <package>
+      <name>haproxy-devel</name>
+      <pkginfolink>https://doc.pfsense.org/index.php/haproxy_package</pkginfolink>
+      <descr>The Reliable, High Performance TCP/HTTP(S) Load Balancer.&amp;lt;br /&amp;gt;
 			This package implements the TCP, HTTP and HTTPS balancing features from haproxy.&amp;lt;br /&amp;gt;
 			Supports ACLs for smart backend switching.</descr>
-			<website>http://haproxy.1wt.eu/</website>
-			<version>0.58_2</version>
-			<configurationfile>haproxy.xml</configurationfile>
-			<logging>
-				<logsocket>/tmp/haproxy_chroot/var/run/log</logsocket>
-				<facilityname>haproxy</facilityname>
-				<logfilename>haproxy.log</logfilename>
-			</logging>
-			<filter_rule_function>haproxy_generate_rules</filter_rule_function>
-			<include_file>/usr/local/pkg/haproxy/haproxy.inc</include_file>
-			<plugins>
-				<item>
-					<type>plugin_carp</type>
-				</item>
-				<item>
-					<type>plugin_certificates</type>
-				</item>
-			</plugins>
-		</package>
-		<package>
-			<name>Open-VM-Tools</name>
-			<descr>VMware Tools is a suite of utilities that enhances the performance of the virtual machine's guest operating system and improves management of the virtual machine.</descr>
-			<website>http://open-vm-tools.sourceforge.net/</website>
-			<version>10.1.0,1</version>
-			<pkginfolink>https://doc.pfsense.org/index.php/Open_VM_Tools_package</pkginfolink>
-			<configurationfile>open-vm-tools.xml</configurationfile>
-			<include_file>/usr/local/pkg/open-vm-tools.inc</include_file>
-		</package>
-		<package>
-			<name>squid3</name>
-			<internal_name>squid</internal_name>
-			<descr>High performance web proxy cache (3.4 branch). It combines Squid as a proxy server with its capabilities of acting as a HTTP / HTTPS reverse proxy.&amp;lt;br /&amp;gt;
+      <website>http://haproxy.1wt.eu/</website>
+      <version>0.58_2</version>
+      <configurationfile>haproxy.xml</configurationfile>
+      <logging>
+        <logsocket>/tmp/haproxy_chroot/var/run/log</logsocket>
+        <facilityname>haproxy</facilityname>
+        <logfilename>haproxy.log</logfilename>
+      </logging>
+      <filter_rule_function>haproxy_generate_rules</filter_rule_function>
+      <include_file>/usr/local/pkg/haproxy/haproxy.inc</include_file>
+      <plugins>
+        <item>
+          <type>plugin_carp</type>
+        </item>
+        <item>
+          <type>plugin_certificates</type>
+        </item>
+      </plugins>
+    </package>
+    <package>
+      <name>Open-VM-Tools</name>
+      <descr>VMware Tools is a suite of utilities that enhances the performance of the virtual machine's guest operating system and improves management of the virtual machine.</descr>
+      <website>http://open-vm-tools.sourceforge.net/</website>
+      <version>10.1.0,1</version>
+      <pkginfolink>https://doc.pfsense.org/index.php/Open_VM_Tools_package</pkginfolink>
+      <configurationfile>open-vm-tools.xml</configurationfile>
+      <include_file>/usr/local/pkg/open-vm-tools.inc</include_file>
+    </package>
+    <package>
+      <name>squid3</name>
+      <internal_name>squid</internal_name>
+      <descr>High performance web proxy cache (3.4 branch). It combines Squid as a proxy server with its capabilities of acting as a HTTP / HTTPS reverse proxy.&amp;lt;br /&amp;gt;
 			It includes an Exchange-Web-Access (OWA) Assistant, SSL filtering and antivirus integration via C-ICAP.</descr>
-			<pkginfolink>https://forum.pfsense.org/index.php?board=60.0</pkginfolink>
-			<website>http://www.squid-cache.org/</website>
-			<version>0.4.44_1</version>
-			<configurationfile>squid.xml</configurationfile>
-			<filter_rule_function>squid_generate_rules</filter_rule_function>
-			<tabs>
-				<tab>
-					<text>General</text>
-					<url>/pkg_edit.php?xml=squid.xml&amp;id=0</url>
-					<active />
-				</tab>
-				<tab>
-					<text>Remote Cache</text>
-					<url>/pkg.php?xml=squid_upstream.xml</url>
-				</tab>
-				<tab>
-					<text>Local Cache</text>
-					<url>/pkg_edit.php?xml=squid_cache.xml&amp;id=0</url>
-				</tab>
-				<tab>
-					<text>Antivirus</text>
-					<url>/pkg_edit.php?xml=squid_antivirus.xml&amp;id=0</url>
-				</tab>
-				<tab>
-					<text>ACLs</text>
-					<url>/pkg_edit.php?xml=squid_nac.xml&amp;id=0</url>
-				</tab>
-				<tab>
-					<text>Traffic Mgmt</text>
-					<url>/pkg_edit.php?xml=squid_traffic.xml&amp;id=0</url>
-				</tab>
-				<tab>
-					<text>Authentication</text>
-					<url>/pkg_edit.php?xml=squid_auth.xml&amp;id=0</url>
-				</tab>
-				<tab>
-					<text>Users</text>
-					<url>/pkg.php?xml=squid_users.xml</url>
-				</tab>
-				<tab>
-					<text>Real Time</text>
-					<url>/squid_monitor.php</url>
-				</tab>
-				<tab>
-					<text>Sync</text>
-					<url>/pkg_edit.php?xml=squid_sync.xml</url>
-				</tab>
-			</tabs>
-			<include_file>/usr/local/pkg/squid.inc</include_file>
-		</package>
-		<package>
-			<name>squidGuard</name>
-			<descr>High performance web proxy URL filter.&amp;lt;br/&amp;gt;
+      <pkginfolink>https://forum.pfsense.org/index.php?board=60.0</pkginfolink>
+      <website>http://www.squid-cache.org/</website>
+      <version>0.4.44_1</version>
+      <configurationfile>squid.xml</configurationfile>
+      <filter_rule_function>squid_generate_rules</filter_rule_function>
+      <tabs>
+        <tab>
+          <text>General</text>
+          <url>/pkg_edit.php?xml=squid.xml&amp;id=0</url>
+          <active />
+        </tab>
+        <tab>
+          <text>Remote Cache</text>
+          <url>/pkg.php?xml=squid_upstream.xml</url>
+        </tab>
+        <tab>
+          <text>Local Cache</text>
+          <url>/pkg_edit.php?xml=squid_cache.xml&amp;id=0</url>
+        </tab>
+        <tab>
+          <text>Antivirus</text>
+          <url>/pkg_edit.php?xml=squid_antivirus.xml&amp;id=0</url>
+        </tab>
+        <tab>
+          <text>ACLs</text>
+          <url>/pkg_edit.php?xml=squid_nac.xml&amp;id=0</url>
+        </tab>
+        <tab>
+          <text>Traffic Mgmt</text>
+          <url>/pkg_edit.php?xml=squid_traffic.xml&amp;id=0</url>
+        </tab>
+        <tab>
+          <text>Authentication</text>
+          <url>/pkg_edit.php?xml=squid_auth.xml&amp;id=0</url>
+        </tab>
+        <tab>
+          <text>Users</text>
+          <url>/pkg.php?xml=squid_users.xml</url>
+        </tab>
+        <tab>
+          <text>Real Time</text>
+          <url>/squid_monitor.php</url>
+        </tab>
+        <tab>
+          <text>Sync</text>
+          <url>/pkg_edit.php?xml=squid_sync.xml</url>
+        </tab>
+      </tabs>
+      <include_file>/usr/local/pkg/squid.inc</include_file>
+    </package>
+    <package>
+      <name>squidGuard</name>
+      <descr>High performance web proxy URL filter.&amp;lt;br/&amp;gt;
 			&amp;lt;strong&amp;gt;Works with both Squid (2.7 legacy branch) and Squid3 (3.4 branch) packages.&amp;lt;/strong&amp;gt;</descr>
-			<website>http://www.squidGuard.org/</website>
-			<version>1.16.16</version>
-			<configurationfile>squidguard.xml</configurationfile>
-			<after_install_info>Please visit Services - SquidGuard Proxy Filter - Target Categories and set up at least one category there before enabling SquidGuard. See https://forum.pfsense.org/index.php?topic=94312.0 for details.</after_install_info>
-			<tabs>
-				<tab>
-					<text>General settings</text>
-					<url>/pkg_edit.php?xml=squidguard.xml&amp;id=0</url>
-					<active />
-				</tab>
-				<tab>
-					<text>Common ACL</text>
-					<url>/pkg_edit.php?xml=squidguard_default.xml&amp;id=0</url>
-				</tab>
-				<tab>
-					<text>Groups ACL</text>
-					<url>/pkg.php?xml=squidguard_acl.xml</url>
-				</tab>
-				<tab>
-					<text>Target categories</text>
-					<url>/pkg.php?xml=squidguard_dest.xml</url>
-				</tab>
-				<tab>
-					<text>Times</text>
-					<url>/pkg.php?xml=squidguard_time.xml</url>
-				</tab>
-				<tab>
-					<text>Rewrites</text>
-					<url>/pkg.php?xml=squidguard_rewr.xml</url>
-				</tab>
-				<tab>
-					<text>Blacklist</text>
-					<url>/squidGuard/squidguard_blacklist.php</url>
-				</tab>
-				<tab>
-					<text>Log</text>
-					<url>/squidGuard/squidguard_log.php</url>
-				</tab>
-				<tab>
-					<text>XMLRPC Sync</text>
-					<url>/pkg_edit.php?xml=squidguard_sync.xml</url>
-				</tab>
-			</tabs>
-			<include_file>/usr/local/pkg/squidguard.inc</include_file>
-		</package>
-		<package>
-			<name>Service Watchdog</name>
-			<internal_name>Service_Watchdog</internal_name>
-			<descr>Monitors for stopped services and restarts them.</descr>
-			<version>1.8.5</version>
-			<configurationfile>servicewatchdog.xml</configurationfile>
-			<include_file>/usr/local/pkg/servicewatchdog.inc</include_file>
-		</package>
-		<package>
-			<name>freeradius3</name>
-			<website>http://www.freeradius.org/</website>
-			<descr>A free implementation of the RADIUS protocol.&amp;lt;br /&amp;gt;
+      <website>http://www.squidGuard.org/</website>
+      <version>1.16.16</version>
+      <configurationfile>squidguard.xml</configurationfile>
+      <after_install_info>Please visit Services - SquidGuard Proxy Filter - Target Categories and set up at least one category there before enabling SquidGuard. See https://forum.pfsense.org/index.php?topic=94312.0 for details.</after_install_info>
+      <tabs>
+        <tab>
+          <text>General settings</text>
+          <url>/pkg_edit.php?xml=squidguard.xml&amp;id=0</url>
+          <active />
+        </tab>
+        <tab>
+          <text>Common ACL</text>
+          <url>/pkg_edit.php?xml=squidguard_default.xml&amp;id=0</url>
+        </tab>
+        <tab>
+          <text>Groups ACL</text>
+          <url>/pkg.php?xml=squidguard_acl.xml</url>
+        </tab>
+        <tab>
+          <text>Target categories</text>
+          <url>/pkg.php?xml=squidguard_dest.xml</url>
+        </tab>
+        <tab>
+          <text>Times</text>
+          <url>/pkg.php?xml=squidguard_time.xml</url>
+        </tab>
+        <tab>
+          <text>Rewrites</text>
+          <url>/pkg.php?xml=squidguard_rewr.xml</url>
+        </tab>
+        <tab>
+          <text>Blacklist</text>
+          <url>/squidGuard/squidguard_blacklist.php</url>
+        </tab>
+        <tab>
+          <text>Log</text>
+          <url>/squidGuard/squidguard_log.php</url>
+        </tab>
+        <tab>
+          <text>XMLRPC Sync</text>
+          <url>/pkg_edit.php?xml=squidguard_sync.xml</url>
+        </tab>
+      </tabs>
+      <include_file>/usr/local/pkg/squidguard.inc</include_file>
+    </package>
+    <package>
+      <name>Service Watchdog</name>
+      <internal_name>Service_Watchdog</internal_name>
+      <descr>Monitors for stopped services and restarts them.</descr>
+      <version>1.8.5</version>
+      <configurationfile>servicewatchdog.xml</configurationfile>
+      <include_file>/usr/local/pkg/servicewatchdog.inc</include_file>
+    </package>
+    <package>
+      <name>freeradius3</name>
+      <website>http://www.freeradius.org/</website>
+      <descr>A free implementation of the RADIUS protocol.&amp;lt;br /&amp;gt;
 			Supports MySQL, PostgreSQL, LDAP, Kerberos.</descr>
-			<pkginfolink>https://doc.pfsense.org/index.php/FreeRADIUS_2.x_package</pkginfolink>
-			<version>0.15.5_1</version>
-			<configurationfile>freeradius.xml</configurationfile>
-			<tabs>
-				<tab>
-					<text>Users</text>
-					<url>/pkg.php?xml=freeradius.xml</url>
-					<active />
-				</tab>
-				<tab>
-					<text>MACs</text>
-					<url>/pkg.php?xml=freeradiusauthorizedmacs.xml</url>
-				</tab>
-				<tab>
-					<text>NAS / Clients</text>
-					<url>/pkg.php?xml=freeradiusclients.xml</url>
-				</tab>
-				<tab>
-					<text>Interfaces</text>
-					<url>/pkg.php?xml=freeradiusinterfaces.xml</url>
-				</tab>
-				<tab>
-					<text>Settings</text>
-					<url>/pkg_edit.php?xml=freeradiussettings.xml&amp;id=0</url>
-				</tab>
-				<tab>
-					<text>EAP</text>
-					<url>/pkg_edit.php?xml=freeradiuseapconf.xml&amp;id=0</url>
-				</tab>
-				<tab>
-					<text>SQL</text>
-					<url>/pkg_edit.php?xml=freeradiussqlconf.xml&amp;id=0</url>
-				</tab>
-				<tab>
-					<text>LDAP</text>
-					<url>/pkg_edit.php?xml=freeradiusmodulesldap.xml&amp;id=0</url>
-				</tab>
-				<tab>
-					<text>View config</text>
-					<url>/freeradius_view_config.php</url>
-				</tab>
-				<tab>
-					<text>XMLRPC Sync</text>
-					<url>/pkg_edit.php?xml=freeradiussync.xml&amp;id=0</url>
-				</tab>
-			</tabs>
-			<include_file>/usr/local/pkg/freeradius.inc</include_file>
-		</package>
-		<package>
-			<name>FRR</name>
-			<internal_name>frr</internal_name>
-			<descr>FRR routing daemon for BGP, OSPF, and OSPF6.&amp;lt;br /&amp;gt;
+      <pkginfolink>https://doc.pfsense.org/index.php/FreeRADIUS_2.x_package</pkginfolink>
+      <version>0.15.5_1</version>
+      <configurationfile>freeradius.xml</configurationfile>
+      <tabs>
+        <tab>
+          <text>Users</text>
+          <url>/pkg.php?xml=freeradius.xml</url>
+          <active />
+        </tab>
+        <tab>
+          <text>MACs</text>
+          <url>/pkg.php?xml=freeradiusauthorizedmacs.xml</url>
+        </tab>
+        <tab>
+          <text>NAS / Clients</text>
+          <url>/pkg.php?xml=freeradiusclients.xml</url>
+        </tab>
+        <tab>
+          <text>Interfaces</text>
+          <url>/pkg.php?xml=freeradiusinterfaces.xml</url>
+        </tab>
+        <tab>
+          <text>Settings</text>
+          <url>/pkg_edit.php?xml=freeradiussettings.xml&amp;id=0</url>
+        </tab>
+        <tab>
+          <text>EAP</text>
+          <url>/pkg_edit.php?xml=freeradiuseapconf.xml&amp;id=0</url>
+        </tab>
+        <tab>
+          <text>SQL</text>
+          <url>/pkg_edit.php?xml=freeradiussqlconf.xml&amp;id=0</url>
+        </tab>
+        <tab>
+          <text>LDAP</text>
+          <url>/pkg_edit.php?xml=freeradiusmodulesldap.xml&amp;id=0</url>
+        </tab>
+        <tab>
+          <text>View config</text>
+          <url>/freeradius_view_config.php</url>
+        </tab>
+        <tab>
+          <text>XMLRPC Sync</text>
+          <url>/pkg_edit.php?xml=freeradiussync.xml&amp;id=0</url>
+        </tab>
+      </tabs>
+      <include_file>/usr/local/pkg/freeradius.inc</include_file>
+    </package>
+    <package>
+      <name>FRR</name>
+      <internal_name>frr</internal_name>
+      <descr>FRR routing daemon for BGP, OSPF, and OSPF6.&amp;lt;br /&amp;gt;
 			&amp;lt;strong&amp;gt;Conflicts with Quagga OSPF and OpenBGPD; these packages cannot be installed at the same time.&amp;lt;/strong&amp;gt;</descr>
-			<version>0.2_1</version>
-			<configurationfile>frr.xml</configurationfile>
-			<tabs>
-				<tab>
-					<text>Global Settings</text>
-					<url>pkg_edit.php?xml=frr.xml</url>
-					<active />
-				</tab>
-				<tab>
-					<text>Access Lists</text>
-					<url>pkg.php?xml=frr/frr_global_acls.xml</url>
-				</tab>
-				<tab>
-					<text>Prefix Lists</text>
-					<url>pkg.php?xml=frr/frr_global_prefixes.xml</url>
-				</tab>
-				<tab>
-					<text>Route Maps</text>
-					<url>pkg.php?xml=frr/frr_global_routemaps.xml</url>
-				</tab>
-				<tab>
-					<text>Raw Config</text>
-					<url>pkg_edit.php?xml=frr/frr_global_raw.xml</url>
-				</tab>
-				<tab>
-					<text>[BGP]</text>
-					<url>pkg_edit.php?xml=frr/frr_bgp.xml</url>
-				</tab>
-				<tab>
-					<text>[OSPF]</text>
-					<url>pkg_edit.php?xml=frr/frr_ospf.xml</url>
-				</tab>
-				<tab>
-					<text>[OSPF6]</text>
-					<url>pkg_edit.php?xml=frr/frr_ospf6.xml</url>
-				</tab>
-				<tab>
-					<text>Status</text>
-					<url>/status_frr.php</url>
-				</tab>
-			</tabs>
-			<include_file>/usr/local/pkg/frr.inc</include_file>
-			<plugins>
-				<item>
-					<type>plugin_carp</type>
-				</item>
-			</plugins>
-		</package>
-		<package>
-			<name>mailreport</name>
-			<descr>Allows you to setup periodic e-mail reports containing command output and log file contents.</descr>
-			<version>3.3</version>
-			<configurationfile>mailreport.xml</configurationfile>
-		</package>
-		<package>
-			<name>ntopng</name>
-			<website>http://www.ntop.org/</website>
-			<descr>ntopng (replaces ntop) is a network probe that shows network usage in a way similar to what top does for processes. In interactive mode, it displays the network status on the user's terminal. In Web mode it acts as a Web server, creating an HTML dump of the network status. It sports a NetFlow/sFlow emitter/collector, an HTTP-based client interface for creating ntop-centric monitoring applications, and RRD for persistently storing traffic statistics.</descr>
-			<version>0.8.12</version>
-			<configurationfile>ntopng.xml</configurationfile>
-			<noembedded>true</noembedded>
-			<tabs>
-				<tab>
-					<text>ntopng Settings</text>
-					<url>/pkg_edit.php?xml=ntopng.xml</url>
-					<active />
-				</tab>
-				<tab>
-					<text>Access ntopng</text>
-					<url>/ntopng_redirect.php</url>
-				</tab>
-			</tabs>
-			<include_file>/usr/local/pkg/ntopng.inc</include_file>
-		</package>
-		<package>
-			<name>pfBlockerNG-devel</name>
-			<descr>pfBlockerNG is the Next Generation of pfBlocker.&amp;lt;br /&amp;gt;
+      <version>0.2_1</version>
+      <configurationfile>frr.xml</configurationfile>
+      <tabs>
+        <tab>
+          <text>Global Settings</text>
+          <url>pkg_edit.php?xml=frr.xml</url>
+          <active />
+        </tab>
+        <tab>
+          <text>Access Lists</text>
+          <url>pkg.php?xml=frr/frr_global_acls.xml</url>
+        </tab>
+        <tab>
+          <text>Prefix Lists</text>
+          <url>pkg.php?xml=frr/frr_global_prefixes.xml</url>
+        </tab>
+        <tab>
+          <text>Route Maps</text>
+          <url>pkg.php?xml=frr/frr_global_routemaps.xml</url>
+        </tab>
+        <tab>
+          <text>Raw Config</text>
+          <url>pkg_edit.php?xml=frr/frr_global_raw.xml</url>
+        </tab>
+        <tab>
+          <text>[BGP]</text>
+          <url>pkg_edit.php?xml=frr/frr_bgp.xml</url>
+        </tab>
+        <tab>
+          <text>[OSPF]</text>
+          <url>pkg_edit.php?xml=frr/frr_ospf.xml</url>
+        </tab>
+        <tab>
+          <text>[OSPF6]</text>
+          <url>pkg_edit.php?xml=frr/frr_ospf6.xml</url>
+        </tab>
+        <tab>
+          <text>Status</text>
+          <url>/status_frr.php</url>
+        </tab>
+      </tabs>
+      <include_file>/usr/local/pkg/frr.inc</include_file>
+      <plugins>
+        <item>
+          <type>plugin_carp</type>
+        </item>
+      </plugins>
+    </package>
+    <package>
+      <name>mailreport</name>
+      <descr>Allows you to setup periodic e-mail reports containing command output and log file contents.</descr>
+      <version>3.3</version>
+      <configurationfile>mailreport.xml</configurationfile>
+    </package>
+    <package>
+      <name>ntopng</name>
+      <website>http://www.ntop.org/</website>
+      <descr>ntopng (replaces ntop) is a network probe that shows network usage in a way similar to what top does for processes. In interactive mode, it displays the network status on the user's terminal. In Web mode it acts as a Web server, creating an HTML dump of the network status. It sports a NetFlow/sFlow emitter/collector, an HTTP-based client interface for creating ntop-centric monitoring applications, and RRD for persistently storing traffic statistics.</descr>
+      <version>0.8.12</version>
+      <configurationfile>ntopng.xml</configurationfile>
+      <noembedded>true</noembedded>
+      <tabs>
+        <tab>
+          <text>ntopng Settings</text>
+          <url>/pkg_edit.php?xml=ntopng.xml</url>
+          <active />
+        </tab>
+        <tab>
+          <text>Access ntopng</text>
+          <url>/ntopng_redirect.php</url>
+        </tab>
+      </tabs>
+      <include_file>/usr/local/pkg/ntopng.inc</include_file>
+    </package>
+    <package>
+      <name>pfBlockerNG-devel</name>
+      <descr>pfBlockerNG is the Next Generation of pfBlocker.&amp;lt;br /&amp;gt;
 			Manage IPv4/v6 List Sources into 'Deny, Permit or Match' formats.&amp;lt;br /&amp;gt;
 			GeoIP database by MaxMind Inc. (GeoLite2 Free version).&amp;lt;br /&amp;gt;
 			De-Duplication, Suppression, and Reputation enhancements.&amp;lt;br /&amp;gt;
 			Provision to download from diverse List formats.&amp;lt;br /&amp;gt;
 			Advanced Integration for Proofpoint ET IQRisk IP Reputation Threat Sources.&amp;lt;br /&amp;gt;
 			Domain Name (DNSBL) blocking via Unbound DNS Resolver.</descr>
-			<pkginfolink>https://forum.pfsense.org/index.php?topic=102470.0</pkginfolink>
-			<version>2.2.1</version>
-			<configurationfile>pfblockerng.xml</configurationfile>
-			<include_file>/usr/local/pkg/pfblockerng/pfblockerng.inc</include_file>
-		</package>
-		<pfblockernglistsv4>
-			<config>
-				<aliasname>Whitelist</aliasname>
-				<description />
-				<row>
-					<format>auto</format>
-					<state>Enabled</state>
-					<url />
-					<header />
-				</row>
-				<action>Permit_Both</action>
-				<cron>Never</cron>
-				<dow>1</dow>
-				<aliaslog>enabled</aliaslog>
-				<stateremoval>enabled</stateremoval>
-				<autoaddrnot_in />
-				<autoports_in />
-				<aliasports_in />
-				<autoaddr_in />
-				<autonot_in />
-				<aliasaddr_in />
-				<autoproto_in />
-				<agateway_in>default</agateway_in>
-				<autoaddrnot_out />
-				<autoports_out />
-				<aliasports_out />
-				<autoaddr_out />
-				<autonot_out />
-				<aliasaddr_out />
-				<autoproto_out />
-				<agateway_out>default</agateway_out>
-				<whois_convert />
-				<custom>OC44LjguOA==</custom>
-				<custom_update>disabled</custom_update>
-			</config>
-			<config>
-				<aliasname>Blacklist</aliasname>
-				<description />
-				<row>
-					<format>auto</format>
-					<state>Enabled</state>
-					<url>http://osint.bambenekconsulting.com/feeds/c2-ipmasterlist.txt</url>
-					<header>C2_IP_Feed</header>
-				</row>
-				<row>
-					<format>auto</format>
-					<state>Enabled</state>
-					<url>http://osint.bambenekconsulting.com/feeds/c2-masterlist.txt</url>
-					<header>C2_All_Indicator_Feed</header>
-				</row>
-				<action>Deny_Inbound</action>
-				<cron>EveryDay</cron>
-				<dow>1</dow>
-				<aliaslog>enabled</aliaslog>
-				<stateremoval>enabled</stateremoval>
-				<autoaddrnot_in />
-				<autoports_in />
-				<aliasports_in />
-				<autoaddr_in />
-				<autonot_in />
-				<aliasaddr_in />
-				<autoproto_in />
-				<agateway_in>default</agateway_in>
-				<autoaddrnot_out />
-				<autoports_out />
-				<aliasports_out />
-				<autoaddr_out />
-				<autonot_out />
-				<aliasaddr_out />
-				<autoproto_out />
-				<agateway_out>default</agateway_out>
-				<whois_convert />
-				<custom />
-				<custom_update>disabled</custom_update>
-			</config>
-			<config>
-				<aliasname>PRI1</aliasname>
-				<description>PRI1 - Collection of Feeds from the most reputable blocklist providers. (Primary tier)</description>
-				<action>Disabled</action>
-				<cron>01hour</cron>
-				<dow>1</dow>
-				<aliaslog>enabled</aliaslog>
-				<stateremoval>enabled</stateremoval>
-				<autoaddrnot_in />
-				<autoports_in />
-				<aliasports_in />
-				<autoaddr_in />
-				<autonot_in />
-				<aliasaddr_in />
-				<autoproto_in />
-				<agateway_in>default</agateway_in>
-				<autoaddrnot_out />
-				<autoports_out />
-				<aliasports_out />
-				<autoaddr_out />
-				<autonot_out />
-				<aliasaddr_out />
-				<autoproto_out />
-				<agateway_out>default</agateway_out>
-				<suppression_cidr>Disabled</suppression_cidr>
-				<whois_convert />
-				<custom />
-				<row>
-					<format>auto</format>
-					<state>Disabled</state>
-					<url>https://sslbl.abuse.ch/blacklist/dyre_sslipblacklist.csv</url>
-					<header>Abuse_DYRE</header>
-				</row>
-			</config>
-		</pfblockernglistsv4>
-		<pfblockernglistsv6>
-			<config />
-		</pfblockernglistsv6>
-		<pfblockerngdnsblsettings>
-			<config>
-				<pfb_dnsbl>on</pfb_dnsbl>
-				<pfb_tld />
-				<pfb_dnsvip>10.10.10.1</pfb_dnsvip>
-				<pfb_dnsport>8081</pfb_dnsport>
-				<pfb_dnsport_ssl>8443</pfb_dnsport_ssl>
-				<dnsbl_interface>lan</dnsbl_interface>
-				<pfb_dnsbl_rule />
-				<dnsbl_allow_int />
-				<action>Deny_Outbound</action>
-				<aliaslog>enabled</aliaslog>
-				<autoaddrnot_in />
-				<autoports_in />
-				<aliasports_in />
-				<autoaddr_in />
-				<autonot_in />
-				<aliasaddr_in />
-				<autoproto_in />
-				<agateway_in>default</agateway_in>
-				<autoaddrnot_out />
-				<autoports_out />
-				<aliasports_out />
-				<autoaddr_out />
-				<autonot_out />
-				<aliasaddr_out />
-				<autoproto_out />
-				<agateway_out>default</agateway_out>
-				<alexa_enable>on</alexa_enable>
-				<alexa_count>1000</alexa_count>
-				<alexa_inclusion>ca,co,com,io,net,org</alexa_inclusion>
-				<suppression />
-				<tldexclusion />
-				<tldblacklist />
-				<tldwhitelist />
-			</config>
-		</pfblockerngdnsblsettings>
-		<pfblockerngafrica>
-			<config />
-		</pfblockerngafrica>
-		<pfblockerngantarctica>
-			<config />
-		</pfblockerngantarctica>
-		<pfblockerngasia>
-			<config>
-				<countries4>6255147,6255147_rep,CN,CN_rep</countries4>
-				<countries6 />
-				<action>Deny_Both</action>
-				<aliaslog>enabled</aliaslog>
-				<autoaddrnot_in />
-				<autoports_in />
-				<aliasports_in />
-				<autoaddr_in />
-				<autonot_in />
-				<aliasaddr_in />
-				<autoproto_in />
-				<agateway_in>default</agateway_in>
-				<autoaddrnot_out />
-				<autoports_out />
-				<aliasports_out />
-				<autoaddr_out />
-				<autonot_out />
-				<aliasaddr_out />
-				<autoproto_out />
-				<agateway_out>default</agateway_out>
-			</config>
-		</pfblockerngasia>
-		<pfblockerngeurope>
-			<config />
-		</pfblockerngeurope>
-		<pfblockerngnorthamerica>
-			<config />
-		</pfblockerngnorthamerica>
-		<pfblockerngoceania>
-			<config />
-		</pfblockerngoceania>
-		<pfblockerngsouthamerica>
-			<config />
-		</pfblockerngsouthamerica>
-		<pfblockerngtopspammers>
-			<config />
-		</pfblockerngtopspammers>
-		<pfblockerngproxyandsatellite>
-			<config />
-		</pfblockerngproxyandsatellite>
-		<pfblockerng>
-			<config>
-				<enable_cb>on</enable_cb>
-				<pfb_keep>on</pfb_keep>
-				<pfb_interval>12</pfb_interval>
-				<pfb_min />
-				<pfb_hour />
-				<pfb_dailystart />
-				<skipfeed />
-				<credits />
-				<log_max_log>20000</log_max_log>
-				<log_max_errlog>20000</log_max_errlog>
-				<log_max_extraslog>20000</log_max_extraslog>
-				<log_max_ip_blocklog>20000</log_max_ip_blocklog>
-				<log_max_ip_permitlog>20000</log_max_ip_permitlog>
-				<log_max_ip_matchlog>20000</log_max_ip_matchlog>
-				<log_max_dnslog>20000</log_max_dnslog>
-				<log_max_dnsbl_parse_err>20000</log_max_dnsbl_parse_err>
-			</config>
-		</pfblockerng>
-		<pfblockerngdnsbl>
-			<config>
-				<aliasname>Blacklist</aliasname>
-				<description />
-				<infolists />
-				<row>
-					<format>auto</format>
-					<state>Enabled</state>
-					<url>https://adaway.org/hosts.txt</url>
-					<header>Adaway</header>
-				</row>
-				<row>
-					<format>auto</format>
-					<state>Enabled</state>
-					<url>http://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&amp;mimetype=plaintext</url>
-					<header>yoyo</header>
-				</row>
-				<row>
-					<format>auto</format>
-					<state>Enabled</state>
-					<url>http://hosts-file.net/ad_servers.txt</url>
-					<header>hpHosts_ads</header>
-				</row>
-				<row>
-					<format>auto</format>
-					<state>Enabled</state>
-					<url>sysctl.org/cameleon/hosts</url>
-					<header>Cameleon</header>
-				</row>
-				<action>unbound</action>
-				<cron>EveryDay</cron>
-				<dow>1</dow>
-				<filter_alexa />
-				<custom />
-				<custom_update>disabled</custom_update>
-			</config>
-			<config>
-				<aliasname>ADs</aliasname>
-				<description>ADs - Collection of ADvertisement Domain Feeds.</description>
-				<action>Disabled</action>
-				<cron>EveryDay</cron>
-				<dow>1</dow>
-				<logging>enabled</logging>
-				<order>default</order>
-				<filter_alexa />
-				<custom />
-				<row>
-					<format>auto</format>
-					<state>Disabled</state>
-					<url>https://www.squidblacklist.org/downloads/dg-ads.acl</url>
-					<header>SBL_ADs</header>
-				</row>
-			</config>
-			<config>
-				<aliasname>BBcan177</aliasname>
-				<description>BBcan177 - Feed as provided by BBcan177.</description>
-				<action>Disabled</action>
-				<cron>EveryDay</cron>
-				<dow>1</dow>
-				<logging>enabled</logging>
-				<order>default</order>
-				<filter_alexa />
-				<custom />
-				<row>
-					<format>auto</format>
-					<state>Disabled</state>
-					<url>https://gist.githubusercontent.com/BBcan177/4a8bf37c131be4803cb2/raw</url>
-					<header>MS_2</header>
-				</row>
-			</config>
-		</pfblockerngdnsbl>
-		<snortglobal>
-			<snort_config_ver>3.2.9.6_1</snort_config_ver>
-			<snortdownload>on</snortdownload>
-			<snortcommunityrules>off</snortcommunityrules>
-			<emergingthreats>off</emergingthreats>
-			<emergingthreats_pro>off</emergingthreats_pro>
-			<clearblocks>on</clearblocks>
-			<verbose_logging>off</verbose_logging>
-			<openappid_detectors>on</openappid_detectors>
-			<openappid_rules_detectors>on</openappid_rules_detectors>
-			<hide_deprecated_rules>off</hide_deprecated_rules>
-			<curl_no_verify_ssl_peer>off</curl_no_verify_ssl_peer>
-			<oinkmastercode>c4e000842278df905ba5795132288ddc7c996d14</oinkmastercode>
-			<etpro_code />
-			<rm_blocked>never_b</rm_blocked>
-			<autorulesupdate7>12h_up</autorulesupdate7>
-			<rule_update_starttime>00:05</rule_update_starttime>
-			<forcekeepsettings>on</forcekeepsettings>
-			<last_rule_upd_status>success</last_rule_upd_status>
-			<last_rule_upd_time>1532952490</last_rule_upd_time>
-			<rule>
-				<interface>wan</interface>
-				<enable>on</enable>
-				<uuid>53250</uuid>
-				<descr>WAN</descr>
-				<performance>ac-bnfa</performance>
-				<blockoffenders7>off</blockoffenders7>
-				<blockoffenderskill>on</blockoffenderskill>
-				<blockoffendersip>both</blockoffendersip>
-				<whitelistname>default</whitelistname>
-				<homelistname>default</homelistname>
-				<externallistname>default</externallistname>
-				<suppresslistname>wansuppress_5a82ea740612f</suppresslistname>
-				<alertsystemlog>on</alertsystemlog>
-				<alertsystemlog_facility>log_auth</alertsystemlog_facility>
-				<alertsystemlog_priority>log_alert</alertsystemlog_priority>
-				<cksumcheck>on</cksumcheck>
-				<fpm_split_any_any>off</fpm_split_any_any>
-				<fpm_search_optimize>off</fpm_search_optimize>
-				<fpm_no_stream_inserts>off</fpm_no_stream_inserts>
-				<max_attribute_hosts>10000</max_attribute_hosts>
-				<max_attribute_services_per_host>10</max_attribute_services_per_host>
-				<max_paf>16000</max_paf>
-				<ftp_preprocessor>on</ftp_preprocessor>
-				<ftp_telnet_inspection_type>stateful</ftp_telnet_inspection_type>
-				<ftp_telnet_alert_encrypted>off</ftp_telnet_alert_encrypted>
-				<ftp_telnet_check_encrypted>on</ftp_telnet_check_encrypted>
-				<ftp_telnet_normalize>on</ftp_telnet_normalize>
-				<ftp_telnet_detect_anomalies>on</ftp_telnet_detect_anomalies>
-				<ftp_telnet_ayt_attack_threshold>20</ftp_telnet_ayt_attack_threshold>
-				<ftp_client_engine>
-					<item>
-						<name>default</name>
-						<bind_to>all</bind_to>
-						<max_resp_len>256</max_resp_len>
-						<telnet_cmds>no</telnet_cmds>
-						<ignore_telnet_erase_cmds>yes</ignore_telnet_erase_cmds>
-						<bounce>yes</bounce>
-						<bounce_to_net />
-						<bounce_to_port />
-					</item>
-				</ftp_client_engine>
-				<ftp_server_engine>
-					<item>
-						<name>default</name>
-						<bind_to>all</bind_to>
-						<ports>default</ports>
-						<telnet_cmds>no</telnet_cmds>
-						<ignore_telnet_erase_cmds>yes</ignore_telnet_erase_cmds>
-						<ignore_data_chan>no</ignore_data_chan>
-						<def_max_param_len>100</def_max_param_len>
-					</item>
-				</ftp_server_engine>
-				<smtp_preprocessor>on</smtp_preprocessor>
-				<smtp_memcap>838860</smtp_memcap>
-				<smtp_max_mime_mem>838860</smtp_max_mime_mem>
-				<smtp_b64_decode_depth>0</smtp_b64_decode_depth>
-				<smtp_qp_decode_depth>0</smtp_qp_decode_depth>
-				<smtp_bitenc_decode_depth>0</smtp_bitenc_decode_depth>
-				<smtp_uu_decode_depth>0</smtp_uu_decode_depth>
-				<smtp_email_hdrs_log_depth>1464</smtp_email_hdrs_log_depth>
-				<smtp_ignore_data>off</smtp_ignore_data>
-				<smtp_ignore_tls_data>on</smtp_ignore_tls_data>
-				<smtp_log_mail_from>on</smtp_log_mail_from>
-				<smtp_log_rcpt_to>on</smtp_log_rcpt_to>
-				<smtp_log_filename>on</smtp_log_filename>
-				<smtp_log_email_hdrs>on</smtp_log_email_hdrs>
-				<dce_rpc_2>on</dce_rpc_2>
-				<dns_preprocessor>on</dns_preprocessor>
-				<ssl_preproc>on</ssl_preproc>
-				<pop_preproc>on</pop_preproc>
-				<pop_memcap>838860</pop_memcap>
-				<pop_b64_decode_depth>0</pop_b64_decode_depth>
-				<pop_qp_decode_depth>0</pop_qp_decode_depth>
-				<pop_bitenc_decode_depth>0</pop_bitenc_decode_depth>
-				<pop_uu_decode_depth>0</pop_uu_decode_depth>
-				<imap_preproc>on</imap_preproc>
-				<imap_memcap>838860</imap_memcap>
-				<imap_b64_decode_depth>0</imap_b64_decode_depth>
-				<imap_qp_decode_depth>0</imap_qp_decode_depth>
-				<imap_bitenc_decode_depth>0</imap_bitenc_decode_depth>
-				<imap_uu_decode_depth>0</imap_uu_decode_depth>
-				<sip_preproc>on</sip_preproc>
-				<other_preprocs>on</other_preprocs>
-				<pscan_protocol>all</pscan_protocol>
-				<pscan_type>all</pscan_type>
-				<pscan_memcap>10000000</pscan_memcap>
-				<pscan_sense_level>medium</pscan_sense_level>
-				<http_inspect>on</http_inspect>
-				<http_inspect_proxy_alert>off</http_inspect_proxy_alert>
-				<http_inspect_memcap>150994944</http_inspect_memcap>
-				<http_inspect_max_gzip_mem>838860</http_inspect_max_gzip_mem>
-				<http_inspect_engine>
-					<item>
-						<name>default</name>
-						<bind_to>all</bind_to>
-						<server_profile>all</server_profile>
-						<enable_xff>off</enable_xff>
-						<log_uri>off</log_uri>
-						<log_hostname>off</log_hostname>
-						<server_flow_depth>65535</server_flow_depth>
-						<enable_cookie>on</enable_cookie>
-						<client_flow_depth>1460</client_flow_depth>
-						<extended_response_inspection>on</extended_response_inspection>
-						<no_alerts>off</no_alerts>
-						<unlimited_decompress>on</unlimited_decompress>
-						<inspect_gzip>on</inspect_gzip>
-						<normalize_cookies>on</normalize_cookies>
-						<normalize_headers>on</normalize_headers>
-						<normalize_utf>on</normalize_utf>
-						<normalize_javascript>on</normalize_javascript>
-						<allow_proxy_use>off</allow_proxy_use>
-						<inspect_uri_only>off</inspect_uri_only>
-						<max_javascript_whitespaces>200</max_javascript_whitespaces>
-						<post_depth>-1</post_depth>
-						<max_headers>0</max_headers>
-						<max_spaces>0</max_spaces>
-						<max_header_length>0</max_header_length>
-						<ports>default</ports>
-						<decompress_swf>off</decompress_swf>
-						<decompress_pdf>off</decompress_pdf>
-					</item>
-				</http_inspect_engine>
-				<frag3_max_frags>8192</frag3_max_frags>
-				<frag3_memcap>4194304</frag3_memcap>
-				<frag3_detection>on</frag3_detection>
-				<frag3_engine>
-					<item>
-						<name>default</name>
-						<bind_to>all</bind_to>
-						<policy>bsd</policy>
-						<timeout>60</timeout>
-						<min_ttl>1</min_ttl>
-						<detect_anomalies>on</detect_anomalies>
-						<overlap_limit>0</overlap_limit>
-						<min_frag_len>0</min_frag_len>
-					</item>
-				</frag3_engine>
-				<stream5_reassembly>on</stream5_reassembly>
-				<stream5_flush_on_alert>off</stream5_flush_on_alert>
-				<stream5_prune_log_max>1048576</stream5_prune_log_max>
-				<stream5_track_tcp>on</stream5_track_tcp>
-				<stream5_max_tcp>262144</stream5_max_tcp>
-				<stream5_track_udp>on</stream5_track_udp>
-				<stream5_max_udp>131072</stream5_max_udp>
-				<stream5_udp_timeout>30</stream5_udp_timeout>
-				<stream5_track_icmp>off</stream5_track_icmp>
-				<stream5_max_icmp>65536</stream5_max_icmp>
-				<stream5_icmp_timeout>30</stream5_icmp_timeout>
-				<stream5_mem_cap>8388608</stream5_mem_cap>
-				<stream5_tcp_engine>
-					<item>
-						<name>default</name>
-						<bind_to>all</bind_to>
-						<policy>bsd</policy>
-						<timeout>30</timeout>
-						<max_queued_bytes>1048576</max_queued_bytes>
-						<detect_anomalies>off</detect_anomalies>
-						<overlap_limit>0</overlap_limit>
-						<max_queued_segs>2621</max_queued_segs>
-						<require_3whs>off</require_3whs>
-						<startup_3whs_timeout>0</startup_3whs_timeout>
-						<no_reassemble_async>off</no_reassemble_async>
-						<max_window>0</max_window>
-						<use_static_footprint_sizes>off</use_static_footprint_sizes>
-						<check_session_hijacking>off</check_session_hijacking>
-						<dont_store_lg_pkts>off</dont_store_lg_pkts>
-						<ports_client>default</ports_client>
-						<ports_both>default</ports_both>
-						<ports_server>none</ports_server>
-					</item>
-				</stream5_tcp_engine>
-				<appid_preproc>on</appid_preproc>
-				<sf_appid_mem_cap>256</sf_appid_mem_cap>
-				<sf_appid_statslog>on</sf_appid_statslog>
-				<sf_appid_stats_period>300</sf_appid_stats_period>
-				<sdf_alert_data_type>Credit Card,Email Addresses,U.S. Phone Numbers,U.S. Social Security Numbers</sdf_alert_data_type>
-				<sdf_alert_threshold>25</sdf_alert_threshold>
-				<sdf_mask_output>off</sdf_mask_output>
-				<ssh_preproc>on</ssh_preproc>
-				<pscan_ignore_scanners />
-				<pscan_ignore_scanned />
-				<perform_stat>off</perform_stat>
-				<host_attribute_table>off</host_attribute_table>
-				<sf_portscan>on</sf_portscan>
-				<sensitive_data>off</sensitive_data>
-				<dnp3_preproc>off</dnp3_preproc>
-				<modbus_preproc>off</modbus_preproc>
-				<gtp_preproc>off</gtp_preproc>
-				<preproc_auto_rule_disable>off</preproc_auto_rule_disable>
-				<protect_preproc_rules>off</protect_preproc_rules>
-				<ips_policy_enable>on</ips_policy_enable>
-				<rulesets />
-				<autoflowbitrules>on</autoflowbitrules>
-				<ips_policy>connectivity</ips_policy>
-				<arp_spoof_engine />
-				<arpspoof_preproc>off</arpspoof_preproc>
-				<arp_unicast_detection>off</arp_unicast_detection>
-			</rule>
-			<dashboard_widget>snort_alerts:col2:open:0</dashboard_widget>
-			<auto_manage_sids>off</auto_manage_sids>
-			<enable_log_mgmt>on</enable_log_mgmt>
-			<alert_log_limit_size>500</alert_log_limit_size>
-			<alert_log_retention>336</alert_log_retention>
-			<appid_stats_log_limit_size>1000</appid_stats_log_limit_size>
-			<appid_stats_log_retention>168</appid_stats_log_retention>
-			<event_pkts_log_limit_size>0</event_pkts_log_limit_size>
-			<event_pkts_log_retention>336</event_pkts_log_retention>
-			<sid_changes_log_limit_size>250</sid_changes_log_limit_size>
-			<sid_changes_log_retention>336</sid_changes_log_retention>
-			<stats_log_limit_size>500</stats_log_limit_size>
-			<stats_log_retention>168</stats_log_retention>
-			<suppress />
-			<whitelist>
-				<item>
-					<name>passlist_40695</name>
-					<uuid>38194</uuid>
-					<localnets>no</localnets>
-					<wangateips>no</wangateips>
-					<wandnsips>no</wandnsips>
-					<vips>no</vips>
-					<vpnips>no</vpnips>
-					<address>Test</address>
-					<descr />
-				</item>
-			</whitelist>
-		</snortglobal>
-		<autoconfigbackup>
-			<config>
-				<enable_acb>enabled</enable_acb>
-				<username>azamat</username>
-				<password>[REDACTED]</password>
-				<passwordagain>j0klpSGf</passwordagain>
-				<crypto_password>cisco</crypto_password>
-				<crypto_password2>cisco</crypto_password2>
-			</config>
-		</autoconfigbackup>
-		<haproxy>
-			<configversion>00.32</configversion>
-			<ha_backends />
-			<ha_pools />
-			<email_mailers />
-			<dns_resolvers />
-			<files>
-				<item />
-			</files>
-		</haproxy>
-		<service />
-		<service>
-			<name>vmware-guestd</name>
-			<rcfile>vmware-guestd.sh</rcfile>
-			<custom_php_service_status_command>mwexec("/usr/local/etc/rc.d/vmware-guestd status") == 0;</custom_php_service_status_command>
-			<description>VMware Guest Daemon</description>
-		</service>
-		<service>
-			<name>vmware-kmod</name>
-			<rcfile>vmware-kmod.sh</rcfile>
-			<custom_php_service_status_command>mwexec("/usr/local/etc/rc.d/vmware-kmod status") == 0;</custom_php_service_status_command>
-			<description>VMware Kernel Modules</description>
-		</service>
-		<service>
-			<name>snort</name>
-			<rcfile>snort.sh</rcfile>
-			<executable>snort</executable>
-			<description>Snort IDS/IPS Daemon</description>
-		</service>
-		<service>
-			<name>ntopng</name>
-			<rcfile>ntopng.sh</rcfile>
-			<executable>ntopng</executable>
-			<description>ntopng Network Traffic Monitor</description>
-		</service>
-		<service>
-			<name>squidGuard</name>
-			<description>Proxy server filter Service</description>
-			<executable>squidGuard</executable>
-		</service>
-		<service>
-			<name>squid</name>
-			<rcfile>squid.sh</rcfile>
-			<executable>squid</executable>
-			<description>Squid Proxy Server Service</description>
-		</service>
-		<service>
-			<name>clamd</name>
-			<rcfile>clamd.sh</rcfile>
-			<executable>clamd</executable>
-			<description>ClamAV Antivirus</description>
-		</service>
-		<service>
-			<name>c-icap</name>
-			<rcfile>c-icap.sh</rcfile>
-			<executable>c-icap</executable>
-			<description>ICAP Inteface for Squid and ClamAV integration</description>
-		</service>
-		<service>
-			<name>haproxy</name>
-			<rcfile>haproxy.sh</rcfile>
-			<executable>haproxy</executable>
-			<description>TCP/HTTP(S) Load Balancer</description>
-		</service>
-		<service>
-			<name>FRR zebra</name>
-			<rcfile>frr.sh</rcfile>
-			<executable>zebra</executable>
-			<description>FRR core/abstraction daemon</description>
-		</service>
-		<service>
-			<name>FRR bgpd</name>
-			<rcfile>frr.sh</rcfile>
-			<executable>bgpd</executable>
-			<description>FRR BGP routing daemon</description>
-		</service>
-		<service>
-			<name>FRR ospfd</name>
-			<rcfile>frr.sh</rcfile>
-			<executable>ospfd</executable>
-			<description>FRR OSPF routing daemon</description>
-		</service>
-		<service>
-			<name>FRR ospf6d</name>
-			<rcfile>frr.sh</rcfile>
-			<executable>ospf6d</executable>
-			<description>FRR OSPF6 routing daemon</description>
-		</service>
-		<service>
-			<name>radiusd</name>
-			<rcfile>radiusd.sh</rcfile>
-			<executable>radiusd</executable>
-			<description>FreeRADIUS Server</description>
-		</service>
-		<service>
-			<name>pfb_dnsbl</name>
-			<rcfile>pfb_dnsbl.sh</rcfile>
-			<executable>lighttpd_pfb</executable>
-			<description>pfBlockerNG DNSBL service</description>
-		</service>
-		<service>
-			<name>pfb_filter</name>
-			<rcfile>pfb_filter.sh</rcfile>
-			<executable>php_pfb</executable>
-			<description>pfBlockerNG firewall filter service</description>
-		</service>
-		<menu />
-		<menu>
-			<name>Snort</name>
-			<tooltiptext>Set up snort specific settings</tooltiptext>
-			<section>Services</section>
-			<url>/snort/snort_interfaces.php</url>
-		</menu>
-		<menu>
-			<name>ntopng Settings</name>
-			<tooltiptext>Set ntopng settings such as password and port.</tooltiptext>
-			<section>Diagnostics</section>
-			<url>/pkg_edit.php?xml=ntopng.xml</url>
-		</menu>
-		<menu>
-			<name>ntopng</name>
-			<tooltiptext>Access ntopng</tooltiptext>
-			<section>Diagnostics</section>
-			<url>/ntopng_redirect.php</url>
-		</menu>
-		<menu>
-			<name>AutoConfigBackup</name>
-			<tooltiptext>Set autoconfigbackup settings such as password and port.</tooltiptext>
-			<section>Diagnostics</section>
-			<url>/autoconfigbackup.php</url>
-		</menu>
-		<menu>
-			<name>SquidGuard Proxy Filter</name>
-			<tooltiptext>Modify the proxy server's filter settings</tooltiptext>
-			<section>Services</section>
-			<url>/pkg_edit.php?xml=squidguard.xml&amp;id=0</url>
-		</menu>
-		<menu>
-			<name>Squid Proxy Server</name>
-			<tooltiptext>Modify the proxy server settings</tooltiptext>
-			<section>Services</section>
-			<url>/pkg_edit.php?xml=squid.xml&amp;id=0</url>
-		</menu>
-		<menu>
-			<name>Squid Reverse Proxy</name>
-			<tooltiptext>Modify the reverse proxy server settings</tooltiptext>
-			<section>Services</section>
-			<url>/pkg_edit.php?xml=squid_reverse_general.xml&amp;id=0</url>
-		</menu>
-		<menu>
-			<name>Email Reports</name>
-			<tooltiptext>Setup periodic email reports.</tooltiptext>
-			<section>Status</section>
-			<url>/status_mail_report.php</url>
-		</menu>
-		<menu>
-			<name>HAProxy</name>
-			<tooltiptext />
-			<section>Services</section>
-			<url>/haproxy/haproxy_listeners.php</url>
-		</menu>
-		<menu>
-			<name>HAProxy Stats</name>
-			<tooltiptext>Stats of HAProxy</tooltiptext>
-			<section>Status</section>
-			<url>/haproxy/haproxy_stats.php?haproxystats=1</url>
-		</menu>
-		<menu>
-			<name>FRR Global/Zebra</name>
-			<section>Services</section>
-			<configfile>frr.xml</configfile>
-			<url>/pkg_edit.php?xml=frr.xml</url>
-		</menu>
-		<menu>
-			<name>FRR BGP</name>
-			<section>Services</section>
-			<configfile>frr.xml</configfile>
-			<url>pkg_edit.php?xml=frr/frr_bgp.xml</url>
-		</menu>
-		<menu>
-			<name>FRR OSPF</name>
-			<section>Services</section>
-			<configfile>frr.xml</configfile>
-			<url>/pkg_edit.php?xml=frr/frr_ospf.xml</url>
-		</menu>
-		<menu>
-			<name>FRR OSPF6</name>
-			<section>Services</section>
-			<configfile>frr.xml</configfile>
-			<url>/pkg_edit.php?xml=frr/frr_ospf6.xml</url>
-		</menu>
-		<menu>
-			<name>FRR</name>
-			<section>Status</section>
-			<configfile>frr.xml</configfile>
-			<url>/status_frr.php</url>
-		</menu>
-		<menu>
-			<name>FreeRADIUS</name>
-			<section>Services</section>
-			<url>/pkg.php?xml=freeradius.xml</url>
-		</menu>
-		<menu>
-			<name>Service Watchdog</name>
-			<tooltiptext />
-			<section>Services</section>
-			<url>/services_servicewatchdog.php</url>
-		</menu>
-		<menu>
-			<name>pfBlockerNG</name>
-			<section>Firewall</section>
-			<url>/pfblockerng/pfblockerng_general.php</url>
-		</menu>
-		<squidcache>
-			<config>
-				<cache_replacement_policy>heap LFUDA</cache_replacement_policy>
-				<cache_swap_low>90</cache_swap_low>
-				<cache_swap_high>95</cache_swap_high>
-				<donotcache />
-				<enable_offline />
-				<ext_cachemanager />
-				<harddisk_cache_size>1000</harddisk_cache_size>
-				<harddisk_cache_system>ufs</harddisk_cache_system>
-				<level1_subdirs>16</level1_subdirs>
-				<harddisk_cache_location>/var/squid/cache</harddisk_cache_location>
-				<minimum_object_size>0</minimum_object_size>
-				<maximum_object_size>4</maximum_object_size>
-				<memory_cache_size>64</memory_cache_size>
-				<maximum_objsize_in_mem>256</maximum_objsize_in_mem>
-				<memory_replacement_policy>heap GDSF</memory_replacement_policy>
-				<cache_dynamic_content />
-				<custom_refresh_patterns />
-			</config>
-		</squidcache>
-		<squidremote />
-		<squidauth>
-			<config>
-				<auth_method>none</auth_method>
-			</config>
-		</squidauth>
-		<servicewatchdog />
-		<freeradiuseapconf>
-			<config>
-				<ssl_ca_cert>5a04208c70f14</ssl_ca_cert>
-				<ssl_server_cert>5a04208c7c65a</ssl_server_cert>
-			</config>
-		</freeradiuseapconf>
-		<pfblockerngdnsbleasylist>
-			<config>
-				<aliasname />
-				<description />
-				<row>
-					<state>Enabled</state>
-					<url>https://easylist-downloads.adblockplus.org/easylist_noelemhide.txt</url>
-					<header>HZ</header>
-					<easycat>eap,aa,aap</easycat>
-				</row>
-				<action>unbound</action>
-				<cron>EveryDay</cron>
-				<dow>1</dow>
-				<filter_alexa />
-			</config>
-		</pfblockerngdnsbleasylist>
-		<frrbgp>
-			<config>
-				<enable>on</enable>
-				<adjacencylog />
-				<asnum>65002</asnum>
-				<routerid />
-				<timers_keepalive />
-				<timers_holdtime />
-				<timers_updatedelay />
-				<timers_peerwait />
-				<redistributeconnectedsubnets>no</redistributeconnectedsubnets>
-				<redistributestatic>no</redistributestatic>
-				<redistributekernel>no</redistributekernel>
-				<redistributeospf>no</redistributeospf>
-				<row>
-					<distributeroutevalue>192.168.125.0/24</distributeroutevalue>
-					<distributeroutemap>none</distributeroutemap>
-				</row>
-			</config>
-		</frrbgp>
-		<frrbgpneighbors>
-			<config>
-				<peer>172.21.41.129</peer>
-				<descr />
-				<peergroup>none</peergroup>
-				<password />
-				<password_type>none</password_type>
-				<asnum>65001</asnum>
-				<updatesource_type>ipv4</updatesource_type>
-				<updatesource>default</updatesource>
-				<defaultoriginate>no</defaultoriginate>
-				<sendcommunity>disabled</sendcommunity>
-				<nexthopself>disabled</nexthopself>
-				<softreconfigurationinbound />
-				<timers_keepalive />
-				<timers_holdtime />
-				<timers_connect />
-				<distribute_in>none</distribute_in>
-				<distribute_out>none</distribute_out>
-				<prefixfilter_in>none</prefixfilter_in>
-				<prefixfilter_out>none</prefixfilter_out>
-				<aspathfilter_in>none</aspathfilter_in>
-				<aspathfilter_out>none</aspathfilter_out>
-				<routemap_in>none</routemap_in>
-				<routemap_out>none</routemap_out>
-				<unsuppressmap>none</unsuppressmap>
-				<weight />
-				<passive />
-				<addpathtxallpaths />
-				<addpathtxbestpathperas />
-				<advertisementinterval />
-				<allowasin>disabled</allowasin>
-				<asoverride />
-				<attributeunchanged />
-				<attributeunchanged_aspath />
-				<attributeunchanged_med />
-				<attributeunchanged_nexthop />
-				<bfd_multiplier />
-				<bfd_minrx />
-				<bfd_mintx />
-				<capability>disabled</capability>
-				<dontcapabilitynegotiate />
-				<overridecapability />
-				<ttlsecurityhops />
-				<disableconnectedcheck />
-				<ebgpmultihop />
-				<enforcemultihop />
-				<localas_num />
-				<localas_noprepend />
-				<localas_replaceas />
-				<maximumprefix_num />
-				<maximumprefix_threshold />
-				<maximumprefix_warnonly />
-				<maximumprefix_restart />
-				<removeprivateas />
-				<removeprivateas_all />
-				<removeprivateas_replace />
-				<routeclient_reflector />
-				<routeclient_server />
-				<solo />
-			</config>
-		</frrbgpneighbors>
-		<frr>
-			<config>
-				<enable>on</enable>
-				<password>[REDACTED]</password>
-				<carpstatusvid>none</carpstatusvid>
-				<logging />
-				<routerid />
-				<row>
-					<routevalue />
-					<routetarget>none</routetarget>
-				</row>
-			</config>
-		</frr>
-		<ntopng>
-			<config>
-				<enable>on</enable>
-				<keepdata>on</keepdata>
-				<redis_password>pfsense</redis_password>
-				<redis_passwordagain>pfsense</redis_passwordagain>
-				<interface_array>lan</interface_array>
-				<interface_array>opt1</interface_array>
-				<interface_array>wan</interface_array>
-				<dns_mode>0</dns_mode>
-				<disable_alerts />
-				<local_networks>rfc1918</local_networks>
-				<row>
-					<cidr />
-				</row>
-			</config>
-		</ntopng>
-		<pfblockerngreputation>
-			<config />
-		</pfblockerngreputation>
-		<pfblockerngipsettings>
-			<config>
-				<enable_dup>on</enable_dup>
-				<enable_agg />
-				<suppression />
-				<enable_log>on</enable_log>
-				<maxmind_locale>en</maxmind_locale>
-				<database_cc />
-				<inbound_interface>wan</inbound_interface>
-				<inbound_deny_action>block</inbound_deny_action>
-				<outbound_interface>lan</outbound_interface>
-				<outbound_deny_action>reject</outbound_deny_action>
-				<enable_float />
-				<pass_order>order_0</pass_order>
-				<autorule_suffix>autorule</autorule_suffix>
-				<killstates />
-			</config>
-		</pfblockerngipsettings>
-		<squidguarddest>
-			<config>
-				<name>my</name>
-				<domains />
-				<urls />
-				<expressions />
-				<redirect_mode>rmod_none</redirect_mode>
-				<redirect />
-				<description />
-				<enablelog />
-			</config>
-		</squidguarddest>
-		<squid>
-			<config>
-				<enable_squid>on</enable_squid>
-				<keep_squid_data>on</keep_squid_data>
-				<active_interface>lan,lo0</active_interface>
-				<proxy_port>3128</proxy_port>
-				<icp_port />
-				<allow_interface>on</allow_interface>
-				<dns_v4_first />
-				<disable_pinger />
-				<dns_nameservers />
-				<transparent_proxy>on</transparent_proxy>
-				<transparent_active_interface>lan</transparent_active_interface>
-				<private_subnet_proxy_off />
-				<defined_ip_proxy_off />
-				<defined_ip_proxy_off_dest />
-				<ssl_proxy>on</ssl_proxy>
-				<sslproxy_mitm_mode>spliceall</sslproxy_mitm_mode>
-				<ssl_active_interface>lan</ssl_active_interface>
-				<ssl_proxy_port />
-				<sslproxy_compatibility_mode>modern</sslproxy_compatibility_mode>
-				<dhparams_size>2048</dhparams_size>
-				<dca>5b5f09f433185</dca>
-				<sslcrtd_children />
-				<interception_checks />
-				<interception_adapt />
-				<log_enabled>on</log_enabled>
-				<log_dir>/var/squid/logs</log_dir>
-				<log_rotate>7</log_rotate>
-				<log_sqd />
-				<visible_hostname>localhost</visible_hostname>
-				<admin_email>admin@localhost</admin_email>
-				<error_language>en</error_language>
-				<xforward_mode>delete</xforward_mode>
-				<disable_via>on</disable_via>
-				<uri_whitespace>strip</uri_whitespace>
-				<disable_squidversion>on</disable_squidversion>
-				<custom_options />
-				<custom_options_squid3 />
-				<custom_options2_squid3 />
-				<custom_options3_squid3 />
-			</config>
-		</squid>
-	</installedpackages>
-	<virtualip>
-		<vip>
-			<interface>lan</interface>
-			<descr>pfB DNSBL - DO NOT EDIT</descr>
-			<type>single</type>
-			<subnet_bits>32</subnet_bits>
-			<subnet>10.10.10.1</subnet>
-			<mode>ipalias</mode>
-		</vip>
-	</virtualip>
-	<dyndnses />
-	<ca>
-		<refid>5a030f8debd96</refid>
-		<descr>OpenVPNCA</descr>
-		<crt>[REDACTED_CERT_OR_KEY]</crt>
-		<serial>0</serial>
-	</ca>
-	<ca>
-		<refid>5a04208c70f14</refid>
-		<descr>FreeRADIUS CA</descr>
-		<serial>1</serial>
-		<crt>[REDACTED_CERT_OR_KEY]</crt>
-		<prv>[REDACTED]</prv>
-	</ca>
-	<ca>
-		<refid>5b5f09f433185</refid>
-		<descr>SquidProxyCA</descr>
-		<crt>[REDACTED_CERT_OR_KEY]</crt>
-		<prv>[REDACTED]</prv>
-		<serial>0</serial>
-	</ca>
-	<dhcrelay>
-		<interface>lan</interface>
-		<server />
-	</dhcrelay>
-	<ezshaper>
-		<step1>
-			<numberofconnections>1</numberofconnections>
-			<numberoflocalinterfaces>1</numberoflocalinterfaces>
-		</step1>
-		<step2>
-			<local0downloadscheduler>CBQ</local0downloadscheduler>
-			<local0interface>lan</local0interface>
-			<conn0uploadscheduler>CBQ</conn0uploadscheduler>
-			<conn0upload>100</conn0upload>
-			<conn0uploadspeed>Mb</conn0uploadspeed>
-			<conn0download>100</conn0download>
-			<conn0downloadspeed>Mb</conn0downloadspeed>
-			<conn0interface>wan</conn0interface>
-		</step2>
-		<step3>
-			<address>XXX.XXX.XXX.XXX</address>
-			<enable>on</enable>
-			<provider>Generic</provider>
-			<local0download>4</local0download>
-			<local0downloadspeed>Mb</local0downloadspeed>
-			<conn0upload>4</conn0upload>
-			<conn0uploadspeed>Mb</conn0uploadspeed>
-		</step3>
-	</ezshaper>
-	<mailreports>
-		<schedule>
-			<descr>as</descr>
-			<frequency>daily</frequency>
-			<timeofday>0</timeofday>
-			<submit>Save</submit>
-			<schedule_friendly>Daily at 00:00</schedule_friendly>
-		</schedule>
-	</mailreports>
+      <pkginfolink>https://forum.pfsense.org/index.php?topic=102470.0</pkginfolink>
+      <version>2.2.1</version>
+      <configurationfile>pfblockerng.xml</configurationfile>
+      <include_file>/usr/local/pkg/pfblockerng/pfblockerng.inc</include_file>
+    </package>
+    <pfblockernglistsv4>
+      <config>
+        <aliasname>Whitelist</aliasname>
+        <description />
+        <row>
+          <format>auto</format>
+          <state>Enabled</state>
+          <url />
+          <header />
+        </row>
+        <action>Permit_Both</action>
+        <cron>Never</cron>
+        <dow>1</dow>
+        <aliaslog>enabled</aliaslog>
+        <stateremoval>enabled</stateremoval>
+        <autoaddrnot_in />
+        <autoports_in />
+        <aliasports_in />
+        <autoaddr_in />
+        <autonot_in />
+        <aliasaddr_in />
+        <autoproto_in />
+        <agateway_in>default</agateway_in>
+        <autoaddrnot_out />
+        <autoports_out />
+        <aliasports_out />
+        <autoaddr_out />
+        <autonot_out />
+        <aliasaddr_out />
+        <autoproto_out />
+        <agateway_out>default</agateway_out>
+        <whois_convert />
+        <custom>OC44LjguOA==</custom>
+        <custom_update>disabled</custom_update>
+      </config>
+      <config>
+        <aliasname>Blacklist</aliasname>
+        <description />
+        <row>
+          <format>auto</format>
+          <state>Enabled</state>
+          <url>http://osint.bambenekconsulting.com/feeds/c2-ipmasterlist.txt</url>
+          <header>C2_IP_Feed</header>
+        </row>
+        <row>
+          <format>auto</format>
+          <state>Enabled</state>
+          <url>http://osint.bambenekconsulting.com/feeds/c2-masterlist.txt</url>
+          <header>C2_All_Indicator_Feed</header>
+        </row>
+        <action>Deny_Inbound</action>
+        <cron>EveryDay</cron>
+        <dow>1</dow>
+        <aliaslog>enabled</aliaslog>
+        <stateremoval>enabled</stateremoval>
+        <autoaddrnot_in />
+        <autoports_in />
+        <aliasports_in />
+        <autoaddr_in />
+        <autonot_in />
+        <aliasaddr_in />
+        <autoproto_in />
+        <agateway_in>default</agateway_in>
+        <autoaddrnot_out />
+        <autoports_out />
+        <aliasports_out />
+        <autoaddr_out />
+        <autonot_out />
+        <aliasaddr_out />
+        <autoproto_out />
+        <agateway_out>default</agateway_out>
+        <whois_convert />
+        <custom />
+        <custom_update>disabled</custom_update>
+      </config>
+      <config>
+        <aliasname>PRI1</aliasname>
+        <description>PRI1 - Collection of Feeds from the most reputable blocklist providers. (Primary tier)</description>
+        <action>Disabled</action>
+        <cron>01hour</cron>
+        <dow>1</dow>
+        <aliaslog>enabled</aliaslog>
+        <stateremoval>enabled</stateremoval>
+        <autoaddrnot_in />
+        <autoports_in />
+        <aliasports_in />
+        <autoaddr_in />
+        <autonot_in />
+        <aliasaddr_in />
+        <autoproto_in />
+        <agateway_in>default</agateway_in>
+        <autoaddrnot_out />
+        <autoports_out />
+        <aliasports_out />
+        <autoaddr_out />
+        <autonot_out />
+        <aliasaddr_out />
+        <autoproto_out />
+        <agateway_out>default</agateway_out>
+        <suppression_cidr>Disabled</suppression_cidr>
+        <whois_convert />
+        <custom />
+        <row>
+          <format>auto</format>
+          <state>Disabled</state>
+          <url>https://sslbl.abuse.ch/blacklist/dyre_sslipblacklist.csv</url>
+          <header>Abuse_DYRE</header>
+        </row>
+      </config>
+    </pfblockernglistsv4>
+    <pfblockernglistsv6>
+      <config />
+    </pfblockernglistsv6>
+    <pfblockerngdnsblsettings>
+      <config>
+        <pfb_dnsbl>on</pfb_dnsbl>
+        <pfb_tld />
+        <pfb_dnsvip>10.10.10.1</pfb_dnsvip>
+        <pfb_dnsport>8081</pfb_dnsport>
+        <pfb_dnsport_ssl>8443</pfb_dnsport_ssl>
+        <dnsbl_interface>lan</dnsbl_interface>
+        <pfb_dnsbl_rule />
+        <dnsbl_allow_int />
+        <action>Deny_Outbound</action>
+        <aliaslog>enabled</aliaslog>
+        <autoaddrnot_in />
+        <autoports_in />
+        <aliasports_in />
+        <autoaddr_in />
+        <autonot_in />
+        <aliasaddr_in />
+        <autoproto_in />
+        <agateway_in>default</agateway_in>
+        <autoaddrnot_out />
+        <autoports_out />
+        <aliasports_out />
+        <autoaddr_out />
+        <autonot_out />
+        <aliasaddr_out />
+        <autoproto_out />
+        <agateway_out>default</agateway_out>
+        <alexa_enable>on</alexa_enable>
+        <alexa_count>1000</alexa_count>
+        <alexa_inclusion>ca,co,com,io,net,org</alexa_inclusion>
+        <suppression />
+        <tldexclusion />
+        <tldblacklist />
+        <tldwhitelist />
+      </config>
+    </pfblockerngdnsblsettings>
+    <pfblockerngafrica>
+      <config />
+    </pfblockerngafrica>
+    <pfblockerngantarctica>
+      <config />
+    </pfblockerngantarctica>
+    <pfblockerngasia>
+      <config>
+        <countries4>6255147,6255147_rep,CN,CN_rep</countries4>
+        <countries6 />
+        <action>Deny_Both</action>
+        <aliaslog>enabled</aliaslog>
+        <autoaddrnot_in />
+        <autoports_in />
+        <aliasports_in />
+        <autoaddr_in />
+        <autonot_in />
+        <aliasaddr_in />
+        <autoproto_in />
+        <agateway_in>default</agateway_in>
+        <autoaddrnot_out />
+        <autoports_out />
+        <aliasports_out />
+        <autoaddr_out />
+        <autonot_out />
+        <aliasaddr_out />
+        <autoproto_out />
+        <agateway_out>default</agateway_out>
+      </config>
+    </pfblockerngasia>
+    <pfblockerngeurope>
+      <config />
+    </pfblockerngeurope>
+    <pfblockerngnorthamerica>
+      <config />
+    </pfblockerngnorthamerica>
+    <pfblockerngoceania>
+      <config />
+    </pfblockerngoceania>
+    <pfblockerngsouthamerica>
+      <config />
+    </pfblockerngsouthamerica>
+    <pfblockerngtopspammers>
+      <config />
+    </pfblockerngtopspammers>
+    <pfblockerngproxyandsatellite>
+      <config />
+    </pfblockerngproxyandsatellite>
+    <pfblockerng>
+      <config>
+        <enable_cb>on</enable_cb>
+        <pfb_keep>on</pfb_keep>
+        <pfb_interval>12</pfb_interval>
+        <pfb_min />
+        <pfb_hour />
+        <pfb_dailystart />
+        <skipfeed />
+        <credits />
+        <log_max_log>20000</log_max_log>
+        <log_max_errlog>20000</log_max_errlog>
+        <log_max_extraslog>20000</log_max_extraslog>
+        <log_max_ip_blocklog>20000</log_max_ip_blocklog>
+        <log_max_ip_permitlog>20000</log_max_ip_permitlog>
+        <log_max_ip_matchlog>20000</log_max_ip_matchlog>
+        <log_max_dnslog>20000</log_max_dnslog>
+        <log_max_dnsbl_parse_err>20000</log_max_dnsbl_parse_err>
+      </config>
+    </pfblockerng>
+    <pfblockerngdnsbl>
+      <config>
+        <aliasname>Blacklist</aliasname>
+        <description />
+        <infolists />
+        <row>
+          <format>auto</format>
+          <state>Enabled</state>
+          <url>https://adaway.org/hosts.txt</url>
+          <header>Adaway</header>
+        </row>
+        <row>
+          <format>auto</format>
+          <state>Enabled</state>
+          <url>http://pgl.yoyo.org/adservers/serverlist.php?hostformat=hosts&amp;mimetype=plaintext</url>
+          <header>yoyo</header>
+        </row>
+        <row>
+          <format>auto</format>
+          <state>Enabled</state>
+          <url>http://hosts-file.net/ad_servers.txt</url>
+          <header>hpHosts_ads</header>
+        </row>
+        <row>
+          <format>auto</format>
+          <state>Enabled</state>
+          <url>sysctl.org/cameleon/hosts</url>
+          <header>Cameleon</header>
+        </row>
+        <action>unbound</action>
+        <cron>EveryDay</cron>
+        <dow>1</dow>
+        <filter_alexa />
+        <custom />
+        <custom_update>disabled</custom_update>
+      </config>
+      <config>
+        <aliasname>ADs</aliasname>
+        <description>ADs - Collection of ADvertisement Domain Feeds.</description>
+        <action>Disabled</action>
+        <cron>EveryDay</cron>
+        <dow>1</dow>
+        <logging>enabled</logging>
+        <order>default</order>
+        <filter_alexa />
+        <custom />
+        <row>
+          <format>auto</format>
+          <state>Disabled</state>
+          <url>https://www.squidblacklist.org/downloads/dg-ads.acl</url>
+          <header>SBL_ADs</header>
+        </row>
+      </config>
+      <config>
+        <aliasname>BBcan177</aliasname>
+        <description>BBcan177 - Feed as provided by BBcan177.</description>
+        <action>Disabled</action>
+        <cron>EveryDay</cron>
+        <dow>1</dow>
+        <logging>enabled</logging>
+        <order>default</order>
+        <filter_alexa />
+        <custom />
+        <row>
+          <format>auto</format>
+          <state>Disabled</state>
+          <url>https://gist.githubusercontent.com/BBcan177/4a8bf37c131be4803cb2/raw</url>
+          <header>MS_2</header>
+        </row>
+      </config>
+    </pfblockerngdnsbl>
+    <snortglobal>
+      <snort_config_ver>3.2.9.6_1</snort_config_ver>
+      <snortdownload>on</snortdownload>
+      <snortcommunityrules>off</snortcommunityrules>
+      <emergingthreats>off</emergingthreats>
+      <emergingthreats_pro>off</emergingthreats_pro>
+      <clearblocks>on</clearblocks>
+      <verbose_logging>off</verbose_logging>
+      <openappid_detectors>on</openappid_detectors>
+      <openappid_rules_detectors>on</openappid_rules_detectors>
+      <hide_deprecated_rules>off</hide_deprecated_rules>
+      <curl_no_verify_ssl_peer>off</curl_no_verify_ssl_peer>
+      <oinkmastercode>c4e000842278df905ba5795132288ddc7c996d14</oinkmastercode>
+      <etpro_code />
+      <rm_blocked>never_b</rm_blocked>
+      <autorulesupdate7>12h_up</autorulesupdate7>
+      <rule_update_starttime>00:05</rule_update_starttime>
+      <forcekeepsettings>on</forcekeepsettings>
+      <last_rule_upd_status>success</last_rule_upd_status>
+      <last_rule_upd_time>1532952490</last_rule_upd_time>
+      <rule>
+        <interface>wan</interface>
+        <enable>on</enable>
+        <uuid>53250</uuid>
+        <descr>WAN</descr>
+        <performance>ac-bnfa</performance>
+        <blockoffenders7>off</blockoffenders7>
+        <blockoffenderskill>on</blockoffenderskill>
+        <blockoffendersip>both</blockoffendersip>
+        <whitelistname>default</whitelistname>
+        <homelistname>default</homelistname>
+        <externallistname>default</externallistname>
+        <suppresslistname>wansuppress_5a82ea740612f</suppresslistname>
+        <alertsystemlog>on</alertsystemlog>
+        <alertsystemlog_facility>log_auth</alertsystemlog_facility>
+        <alertsystemlog_priority>log_alert</alertsystemlog_priority>
+        <cksumcheck>on</cksumcheck>
+        <fpm_split_any_any>off</fpm_split_any_any>
+        <fpm_search_optimize>off</fpm_search_optimize>
+        <fpm_no_stream_inserts>off</fpm_no_stream_inserts>
+        <max_attribute_hosts>10000</max_attribute_hosts>
+        <max_attribute_services_per_host>10</max_attribute_services_per_host>
+        <max_paf>16000</max_paf>
+        <ftp_preprocessor>on</ftp_preprocessor>
+        <ftp_telnet_inspection_type>stateful</ftp_telnet_inspection_type>
+        <ftp_telnet_alert_encrypted>off</ftp_telnet_alert_encrypted>
+        <ftp_telnet_check_encrypted>on</ftp_telnet_check_encrypted>
+        <ftp_telnet_normalize>on</ftp_telnet_normalize>
+        <ftp_telnet_detect_anomalies>on</ftp_telnet_detect_anomalies>
+        <ftp_telnet_ayt_attack_threshold>20</ftp_telnet_ayt_attack_threshold>
+        <ftp_client_engine>
+          <item>
+            <name>default</name>
+            <bind_to>all</bind_to>
+            <max_resp_len>256</max_resp_len>
+            <telnet_cmds>no</telnet_cmds>
+            <ignore_telnet_erase_cmds>yes</ignore_telnet_erase_cmds>
+            <bounce>yes</bounce>
+            <bounce_to_net />
+            <bounce_to_port />
+          </item>
+        </ftp_client_engine>
+        <ftp_server_engine>
+          <item>
+            <name>default</name>
+            <bind_to>all</bind_to>
+            <ports>default</ports>
+            <telnet_cmds>no</telnet_cmds>
+            <ignore_telnet_erase_cmds>yes</ignore_telnet_erase_cmds>
+            <ignore_data_chan>no</ignore_data_chan>
+            <def_max_param_len>100</def_max_param_len>
+          </item>
+        </ftp_server_engine>
+        <smtp_preprocessor>on</smtp_preprocessor>
+        <smtp_memcap>838860</smtp_memcap>
+        <smtp_max_mime_mem>838860</smtp_max_mime_mem>
+        <smtp_b64_decode_depth>0</smtp_b64_decode_depth>
+        <smtp_qp_decode_depth>0</smtp_qp_decode_depth>
+        <smtp_bitenc_decode_depth>0</smtp_bitenc_decode_depth>
+        <smtp_uu_decode_depth>0</smtp_uu_decode_depth>
+        <smtp_email_hdrs_log_depth>1464</smtp_email_hdrs_log_depth>
+        <smtp_ignore_data>off</smtp_ignore_data>
+        <smtp_ignore_tls_data>on</smtp_ignore_tls_data>
+        <smtp_log_mail_from>on</smtp_log_mail_from>
+        <smtp_log_rcpt_to>on</smtp_log_rcpt_to>
+        <smtp_log_filename>on</smtp_log_filename>
+        <smtp_log_email_hdrs>on</smtp_log_email_hdrs>
+        <dce_rpc_2>on</dce_rpc_2>
+        <dns_preprocessor>on</dns_preprocessor>
+        <ssl_preproc>on</ssl_preproc>
+        <pop_preproc>on</pop_preproc>
+        <pop_memcap>838860</pop_memcap>
+        <pop_b64_decode_depth>0</pop_b64_decode_depth>
+        <pop_qp_decode_depth>0</pop_qp_decode_depth>
+        <pop_bitenc_decode_depth>0</pop_bitenc_decode_depth>
+        <pop_uu_decode_depth>0</pop_uu_decode_depth>
+        <imap_preproc>on</imap_preproc>
+        <imap_memcap>838860</imap_memcap>
+        <imap_b64_decode_depth>0</imap_b64_decode_depth>
+        <imap_qp_decode_depth>0</imap_qp_decode_depth>
+        <imap_bitenc_decode_depth>0</imap_bitenc_decode_depth>
+        <imap_uu_decode_depth>0</imap_uu_decode_depth>
+        <sip_preproc>on</sip_preproc>
+        <other_preprocs>on</other_preprocs>
+        <pscan_protocol>all</pscan_protocol>
+        <pscan_type>all</pscan_type>
+        <pscan_memcap>10000000</pscan_memcap>
+        <pscan_sense_level>medium</pscan_sense_level>
+        <http_inspect>on</http_inspect>
+        <http_inspect_proxy_alert>off</http_inspect_proxy_alert>
+        <http_inspect_memcap>150994944</http_inspect_memcap>
+        <http_inspect_max_gzip_mem>838860</http_inspect_max_gzip_mem>
+        <http_inspect_engine>
+          <item>
+            <name>default</name>
+            <bind_to>all</bind_to>
+            <server_profile>all</server_profile>
+            <enable_xff>off</enable_xff>
+            <log_uri>off</log_uri>
+            <log_hostname>off</log_hostname>
+            <server_flow_depth>65535</server_flow_depth>
+            <enable_cookie>on</enable_cookie>
+            <client_flow_depth>1460</client_flow_depth>
+            <extended_response_inspection>on</extended_response_inspection>
+            <no_alerts>off</no_alerts>
+            <unlimited_decompress>on</unlimited_decompress>
+            <inspect_gzip>on</inspect_gzip>
+            <normalize_cookies>on</normalize_cookies>
+            <normalize_headers>on</normalize_headers>
+            <normalize_utf>on</normalize_utf>
+            <normalize_javascript>on</normalize_javascript>
+            <allow_proxy_use>off</allow_proxy_use>
+            <inspect_uri_only>off</inspect_uri_only>
+            <max_javascript_whitespaces>200</max_javascript_whitespaces>
+            <post_depth>-1</post_depth>
+            <max_headers>0</max_headers>
+            <max_spaces>0</max_spaces>
+            <max_header_length>0</max_header_length>
+            <ports>default</ports>
+            <decompress_swf>off</decompress_swf>
+            <decompress_pdf>off</decompress_pdf>
+          </item>
+        </http_inspect_engine>
+        <frag3_max_frags>8192</frag3_max_frags>
+        <frag3_memcap>4194304</frag3_memcap>
+        <frag3_detection>on</frag3_detection>
+        <frag3_engine>
+          <item>
+            <name>default</name>
+            <bind_to>all</bind_to>
+            <policy>bsd</policy>
+            <timeout>60</timeout>
+            <min_ttl>1</min_ttl>
+            <detect_anomalies>on</detect_anomalies>
+            <overlap_limit>0</overlap_limit>
+            <min_frag_len>0</min_frag_len>
+          </item>
+        </frag3_engine>
+        <stream5_reassembly>on</stream5_reassembly>
+        <stream5_flush_on_alert>off</stream5_flush_on_alert>
+        <stream5_prune_log_max>1048576</stream5_prune_log_max>
+        <stream5_track_tcp>on</stream5_track_tcp>
+        <stream5_max_tcp>262144</stream5_max_tcp>
+        <stream5_track_udp>on</stream5_track_udp>
+        <stream5_max_udp>131072</stream5_max_udp>
+        <stream5_udp_timeout>30</stream5_udp_timeout>
+        <stream5_track_icmp>off</stream5_track_icmp>
+        <stream5_max_icmp>65536</stream5_max_icmp>
+        <stream5_icmp_timeout>30</stream5_icmp_timeout>
+        <stream5_mem_cap>8388608</stream5_mem_cap>
+        <stream5_tcp_engine>
+          <item>
+            <name>default</name>
+            <bind_to>all</bind_to>
+            <policy>bsd</policy>
+            <timeout>30</timeout>
+            <max_queued_bytes>1048576</max_queued_bytes>
+            <detect_anomalies>off</detect_anomalies>
+            <overlap_limit>0</overlap_limit>
+            <max_queued_segs>2621</max_queued_segs>
+            <require_3whs>off</require_3whs>
+            <startup_3whs_timeout>0</startup_3whs_timeout>
+            <no_reassemble_async>off</no_reassemble_async>
+            <max_window>0</max_window>
+            <use_static_footprint_sizes>off</use_static_footprint_sizes>
+            <check_session_hijacking>off</check_session_hijacking>
+            <dont_store_lg_pkts>off</dont_store_lg_pkts>
+            <ports_client>default</ports_client>
+            <ports_both>default</ports_both>
+            <ports_server>none</ports_server>
+          </item>
+        </stream5_tcp_engine>
+        <appid_preproc>on</appid_preproc>
+        <sf_appid_mem_cap>256</sf_appid_mem_cap>
+        <sf_appid_statslog>on</sf_appid_statslog>
+        <sf_appid_stats_period>300</sf_appid_stats_period>
+        <sdf_alert_data_type>Credit Card,Email Addresses,U.S. Phone Numbers,U.S. Social Security Numbers</sdf_alert_data_type>
+        <sdf_alert_threshold>25</sdf_alert_threshold>
+        <sdf_mask_output>off</sdf_mask_output>
+        <ssh_preproc>on</ssh_preproc>
+        <pscan_ignore_scanners />
+        <pscan_ignore_scanned />
+        <perform_stat>off</perform_stat>
+        <host_attribute_table>off</host_attribute_table>
+        <sf_portscan>on</sf_portscan>
+        <sensitive_data>off</sensitive_data>
+        <dnp3_preproc>off</dnp3_preproc>
+        <modbus_preproc>off</modbus_preproc>
+        <gtp_preproc>off</gtp_preproc>
+        <preproc_auto_rule_disable>off</preproc_auto_rule_disable>
+        <protect_preproc_rules>off</protect_preproc_rules>
+        <ips_policy_enable>on</ips_policy_enable>
+        <rulesets />
+        <autoflowbitrules>on</autoflowbitrules>
+        <ips_policy>connectivity</ips_policy>
+        <arp_spoof_engine />
+        <arpspoof_preproc>off</arpspoof_preproc>
+        <arp_unicast_detection>off</arp_unicast_detection>
+      </rule>
+      <dashboard_widget>snort_alerts:col2:open:0</dashboard_widget>
+      <auto_manage_sids>off</auto_manage_sids>
+      <enable_log_mgmt>on</enable_log_mgmt>
+      <alert_log_limit_size>500</alert_log_limit_size>
+      <alert_log_retention>336</alert_log_retention>
+      <appid_stats_log_limit_size>1000</appid_stats_log_limit_size>
+      <appid_stats_log_retention>168</appid_stats_log_retention>
+      <event_pkts_log_limit_size>0</event_pkts_log_limit_size>
+      <event_pkts_log_retention>336</event_pkts_log_retention>
+      <sid_changes_log_limit_size>250</sid_changes_log_limit_size>
+      <sid_changes_log_retention>336</sid_changes_log_retention>
+      <stats_log_limit_size>500</stats_log_limit_size>
+      <stats_log_retention>168</stats_log_retention>
+      <suppress />
+      <whitelist>
+        <item>
+          <name>passlist_40695</name>
+          <uuid>38194</uuid>
+          <localnets>no</localnets>
+          <wangateips>no</wangateips>
+          <wandnsips>no</wandnsips>
+          <vips>no</vips>
+          <vpnips>no</vpnips>
+          <address>Test</address>
+          <descr />
+        </item>
+      </whitelist>
+    </snortglobal>
+    <autoconfigbackup>
+      <config>
+        <enable_acb>enabled</enable_acb>
+        <username>azamat</username>
+        <password>[REDACTED]</password>
+        <passwordagain>j0klpSGf</passwordagain>
+        <crypto_password>cisco</crypto_password>
+        <crypto_password2>cisco</crypto_password2>
+      </config>
+    </autoconfigbackup>
+    <haproxy>
+      <configversion>00.32</configversion>
+      <ha_backends />
+      <ha_pools />
+      <email_mailers />
+      <dns_resolvers />
+      <files>
+        <item />
+      </files>
+    </haproxy>
+    <service />
+    <service>
+      <name>vmware-guestd</name>
+      <rcfile>vmware-guestd.sh</rcfile>
+      <custom_php_service_status_command>mwexec("/usr/local/etc/rc.d/vmware-guestd status") == 0;</custom_php_service_status_command>
+      <description>VMware Guest Daemon</description>
+    </service>
+    <service>
+      <name>vmware-kmod</name>
+      <rcfile>vmware-kmod.sh</rcfile>
+      <custom_php_service_status_command>mwexec("/usr/local/etc/rc.d/vmware-kmod status") == 0;</custom_php_service_status_command>
+      <description>VMware Kernel Modules</description>
+    </service>
+    <service>
+      <name>snort</name>
+      <rcfile>snort.sh</rcfile>
+      <executable>snort</executable>
+      <description>Snort IDS/IPS Daemon</description>
+    </service>
+    <service>
+      <name>ntopng</name>
+      <rcfile>ntopng.sh</rcfile>
+      <executable>ntopng</executable>
+      <description>ntopng Network Traffic Monitor</description>
+    </service>
+    <service>
+      <name>squidGuard</name>
+      <description>Proxy server filter Service</description>
+      <executable>squidGuard</executable>
+    </service>
+    <service>
+      <name>squid</name>
+      <rcfile>squid.sh</rcfile>
+      <executable>squid</executable>
+      <description>Squid Proxy Server Service</description>
+    </service>
+    <service>
+      <name>clamd</name>
+      <rcfile>clamd.sh</rcfile>
+      <executable>clamd</executable>
+      <description>ClamAV Antivirus</description>
+    </service>
+    <service>
+      <name>c-icap</name>
+      <rcfile>c-icap.sh</rcfile>
+      <executable>c-icap</executable>
+      <description>ICAP Inteface for Squid and ClamAV integration</description>
+    </service>
+    <service>
+      <name>haproxy</name>
+      <rcfile>haproxy.sh</rcfile>
+      <executable>haproxy</executable>
+      <description>TCP/HTTP(S) Load Balancer</description>
+    </service>
+    <service>
+      <name>FRR zebra</name>
+      <rcfile>frr.sh</rcfile>
+      <executable>zebra</executable>
+      <description>FRR core/abstraction daemon</description>
+    </service>
+    <service>
+      <name>FRR bgpd</name>
+      <rcfile>frr.sh</rcfile>
+      <executable>bgpd</executable>
+      <description>FRR BGP routing daemon</description>
+    </service>
+    <service>
+      <name>FRR ospfd</name>
+      <rcfile>frr.sh</rcfile>
+      <executable>ospfd</executable>
+      <description>FRR OSPF routing daemon</description>
+    </service>
+    <service>
+      <name>FRR ospf6d</name>
+      <rcfile>frr.sh</rcfile>
+      <executable>ospf6d</executable>
+      <description>FRR OSPF6 routing daemon</description>
+    </service>
+    <service>
+      <name>radiusd</name>
+      <rcfile>radiusd.sh</rcfile>
+      <executable>radiusd</executable>
+      <description>FreeRADIUS Server</description>
+    </service>
+    <service>
+      <name>pfb_dnsbl</name>
+      <rcfile>pfb_dnsbl.sh</rcfile>
+      <executable>lighttpd_pfb</executable>
+      <description>pfBlockerNG DNSBL service</description>
+    </service>
+    <service>
+      <name>pfb_filter</name>
+      <rcfile>pfb_filter.sh</rcfile>
+      <executable>php_pfb</executable>
+      <description>pfBlockerNG firewall filter service</description>
+    </service>
+    <menu />
+    <menu>
+      <name>Snort</name>
+      <tooltiptext>Set up snort specific settings</tooltiptext>
+      <section>Services</section>
+      <url>/snort/snort_interfaces.php</url>
+    </menu>
+    <menu>
+      <name>ntopng Settings</name>
+      <tooltiptext>Set ntopng settings such as password and port.</tooltiptext>
+      <section>Diagnostics</section>
+      <url>/pkg_edit.php?xml=ntopng.xml</url>
+    </menu>
+    <menu>
+      <name>ntopng</name>
+      <tooltiptext>Access ntopng</tooltiptext>
+      <section>Diagnostics</section>
+      <url>/ntopng_redirect.php</url>
+    </menu>
+    <menu>
+      <name>AutoConfigBackup</name>
+      <tooltiptext>Set autoconfigbackup settings such as password and port.</tooltiptext>
+      <section>Diagnostics</section>
+      <url>/autoconfigbackup.php</url>
+    </menu>
+    <menu>
+      <name>SquidGuard Proxy Filter</name>
+      <tooltiptext>Modify the proxy server's filter settings</tooltiptext>
+      <section>Services</section>
+      <url>/pkg_edit.php?xml=squidguard.xml&amp;id=0</url>
+    </menu>
+    <menu>
+      <name>Squid Proxy Server</name>
+      <tooltiptext>Modify the proxy server settings</tooltiptext>
+      <section>Services</section>
+      <url>/pkg_edit.php?xml=squid.xml&amp;id=0</url>
+    </menu>
+    <menu>
+      <name>Squid Reverse Proxy</name>
+      <tooltiptext>Modify the reverse proxy server settings</tooltiptext>
+      <section>Services</section>
+      <url>/pkg_edit.php?xml=squid_reverse_general.xml&amp;id=0</url>
+    </menu>
+    <menu>
+      <name>Email Reports</name>
+      <tooltiptext>Setup periodic email reports.</tooltiptext>
+      <section>Status</section>
+      <url>/status_mail_report.php</url>
+    </menu>
+    <menu>
+      <name>HAProxy</name>
+      <tooltiptext />
+      <section>Services</section>
+      <url>/haproxy/haproxy_listeners.php</url>
+    </menu>
+    <menu>
+      <name>HAProxy Stats</name>
+      <tooltiptext>Stats of HAProxy</tooltiptext>
+      <section>Status</section>
+      <url>/haproxy/haproxy_stats.php?haproxystats=1</url>
+    </menu>
+    <menu>
+      <name>FRR Global/Zebra</name>
+      <section>Services</section>
+      <configfile>frr.xml</configfile>
+      <url>/pkg_edit.php?xml=frr.xml</url>
+    </menu>
+    <menu>
+      <name>FRR BGP</name>
+      <section>Services</section>
+      <configfile>frr.xml</configfile>
+      <url>pkg_edit.php?xml=frr/frr_bgp.xml</url>
+    </menu>
+    <menu>
+      <name>FRR OSPF</name>
+      <section>Services</section>
+      <configfile>frr.xml</configfile>
+      <url>/pkg_edit.php?xml=frr/frr_ospf.xml</url>
+    </menu>
+    <menu>
+      <name>FRR OSPF6</name>
+      <section>Services</section>
+      <configfile>frr.xml</configfile>
+      <url>/pkg_edit.php?xml=frr/frr_ospf6.xml</url>
+    </menu>
+    <menu>
+      <name>FRR</name>
+      <section>Status</section>
+      <configfile>frr.xml</configfile>
+      <url>/status_frr.php</url>
+    </menu>
+    <menu>
+      <name>FreeRADIUS</name>
+      <section>Services</section>
+      <url>/pkg.php?xml=freeradius.xml</url>
+    </menu>
+    <menu>
+      <name>Service Watchdog</name>
+      <tooltiptext />
+      <section>Services</section>
+      <url>/services_servicewatchdog.php</url>
+    </menu>
+    <menu>
+      <name>pfBlockerNG</name>
+      <section>Firewall</section>
+      <url>/pfblockerng/pfblockerng_general.php</url>
+    </menu>
+    <squidcache>
+      <config>
+        <cache_replacement_policy>heap LFUDA</cache_replacement_policy>
+        <cache_swap_low>90</cache_swap_low>
+        <cache_swap_high>95</cache_swap_high>
+        <donotcache />
+        <enable_offline />
+        <ext_cachemanager />
+        <harddisk_cache_size>1000</harddisk_cache_size>
+        <harddisk_cache_system>ufs</harddisk_cache_system>
+        <level1_subdirs>16</level1_subdirs>
+        <harddisk_cache_location>/var/squid/cache</harddisk_cache_location>
+        <minimum_object_size>0</minimum_object_size>
+        <maximum_object_size>4</maximum_object_size>
+        <memory_cache_size>64</memory_cache_size>
+        <maximum_objsize_in_mem>256</maximum_objsize_in_mem>
+        <memory_replacement_policy>heap GDSF</memory_replacement_policy>
+        <cache_dynamic_content />
+        <custom_refresh_patterns />
+      </config>
+    </squidcache>
+    <squidremote />
+    <squidauth>
+      <config>
+        <auth_method>none</auth_method>
+      </config>
+    </squidauth>
+    <servicewatchdog />
+    <freeradiuseapconf>
+      <config>
+        <ssl_ca_cert>5a04208c70f14</ssl_ca_cert>
+        <ssl_server_cert>5a04208c7c65a</ssl_server_cert>
+      </config>
+    </freeradiuseapconf>
+    <pfblockerngdnsbleasylist>
+      <config>
+        <aliasname />
+        <description />
+        <row>
+          <state>Enabled</state>
+          <url>https://easylist-downloads.adblockplus.org/easylist_noelemhide.txt</url>
+          <header>HZ</header>
+          <easycat>eap,aa,aap</easycat>
+        </row>
+        <action>unbound</action>
+        <cron>EveryDay</cron>
+        <dow>1</dow>
+        <filter_alexa />
+      </config>
+    </pfblockerngdnsbleasylist>
+    <frrbgp>
+      <config>
+        <enable>on</enable>
+        <adjacencylog />
+        <asnum>65002</asnum>
+        <routerid />
+        <timers_keepalive />
+        <timers_holdtime />
+        <timers_updatedelay />
+        <timers_peerwait />
+        <redistributeconnectedsubnets>no</redistributeconnectedsubnets>
+        <redistributestatic>no</redistributestatic>
+        <redistributekernel>no</redistributekernel>
+        <redistributeospf>no</redistributeospf>
+        <row>
+          <distributeroutevalue>192.168.125.0/24</distributeroutevalue>
+          <distributeroutemap>none</distributeroutemap>
+        </row>
+      </config>
+    </frrbgp>
+    <frrbgpneighbors>
+      <config>
+        <peer>172.21.41.129</peer>
+        <descr />
+        <peergroup>none</peergroup>
+        <password />
+        <password_type>none</password_type>
+        <asnum>65001</asnum>
+        <updatesource_type>ipv4</updatesource_type>
+        <updatesource>default</updatesource>
+        <defaultoriginate>no</defaultoriginate>
+        <sendcommunity>disabled</sendcommunity>
+        <nexthopself>disabled</nexthopself>
+        <softreconfigurationinbound />
+        <timers_keepalive />
+        <timers_holdtime />
+        <timers_connect />
+        <distribute_in>none</distribute_in>
+        <distribute_out>none</distribute_out>
+        <prefixfilter_in>none</prefixfilter_in>
+        <prefixfilter_out>none</prefixfilter_out>
+        <aspathfilter_in>none</aspathfilter_in>
+        <aspathfilter_out>none</aspathfilter_out>
+        <routemap_in>none</routemap_in>
+        <routemap_out>none</routemap_out>
+        <unsuppressmap>none</unsuppressmap>
+        <weight />
+        <passive />
+        <addpathtxallpaths />
+        <addpathtxbestpathperas />
+        <advertisementinterval />
+        <allowasin>disabled</allowasin>
+        <asoverride />
+        <attributeunchanged />
+        <attributeunchanged_aspath />
+        <attributeunchanged_med />
+        <attributeunchanged_nexthop />
+        <bfd_multiplier />
+        <bfd_minrx />
+        <bfd_mintx />
+        <capability>disabled</capability>
+        <dontcapabilitynegotiate />
+        <overridecapability />
+        <ttlsecurityhops />
+        <disableconnectedcheck />
+        <ebgpmultihop />
+        <enforcemultihop />
+        <localas_num />
+        <localas_noprepend />
+        <localas_replaceas />
+        <maximumprefix_num />
+        <maximumprefix_threshold />
+        <maximumprefix_warnonly />
+        <maximumprefix_restart />
+        <removeprivateas />
+        <removeprivateas_all />
+        <removeprivateas_replace />
+        <routeclient_reflector />
+        <routeclient_server />
+        <solo />
+      </config>
+    </frrbgpneighbors>
+    <frr>
+      <config>
+        <enable>on</enable>
+        <password>[REDACTED]</password>
+        <carpstatusvid>none</carpstatusvid>
+        <logging />
+        <routerid />
+        <row>
+          <routevalue />
+          <routetarget>none</routetarget>
+        </row>
+      </config>
+    </frr>
+    <ntopng>
+      <config>
+        <enable>on</enable>
+        <keepdata>on</keepdata>
+        <redis_password>pfsense</redis_password>
+        <redis_passwordagain>pfsense</redis_passwordagain>
+        <interface_array>lan</interface_array>
+        <interface_array>opt1</interface_array>
+        <interface_array>wan</interface_array>
+        <dns_mode>0</dns_mode>
+        <disable_alerts />
+        <local_networks>rfc1918</local_networks>
+        <row>
+          <cidr />
+        </row>
+      </config>
+    </ntopng>
+    <pfblockerngreputation>
+      <config />
+    </pfblockerngreputation>
+    <pfblockerngipsettings>
+      <config>
+        <enable_dup>on</enable_dup>
+        <enable_agg />
+        <suppression />
+        <enable_log>on</enable_log>
+        <maxmind_locale>en</maxmind_locale>
+        <database_cc />
+        <inbound_interface>wan</inbound_interface>
+        <inbound_deny_action>block</inbound_deny_action>
+        <outbound_interface>lan</outbound_interface>
+        <outbound_deny_action>reject</outbound_deny_action>
+        <enable_float />
+        <pass_order>order_0</pass_order>
+        <autorule_suffix>autorule</autorule_suffix>
+        <killstates />
+      </config>
+    </pfblockerngipsettings>
+    <squidguarddest>
+      <config>
+        <name>my</name>
+        <domains />
+        <urls />
+        <expressions />
+        <redirect_mode>rmod_none</redirect_mode>
+        <redirect />
+        <description />
+        <enablelog />
+      </config>
+    </squidguarddest>
+    <squid>
+      <config>
+        <enable_squid>on</enable_squid>
+        <keep_squid_data>on</keep_squid_data>
+        <active_interface>lan,lo0</active_interface>
+        <proxy_port>3128</proxy_port>
+        <icp_port />
+        <allow_interface>on</allow_interface>
+        <dns_v4_first />
+        <disable_pinger />
+        <dns_nameservers />
+        <transparent_proxy>on</transparent_proxy>
+        <transparent_active_interface>lan</transparent_active_interface>
+        <private_subnet_proxy_off />
+        <defined_ip_proxy_off />
+        <defined_ip_proxy_off_dest />
+        <ssl_proxy>on</ssl_proxy>
+        <sslproxy_mitm_mode>spliceall</sslproxy_mitm_mode>
+        <ssl_active_interface>lan</ssl_active_interface>
+        <ssl_proxy_port />
+        <sslproxy_compatibility_mode>modern</sslproxy_compatibility_mode>
+        <dhparams_size>2048</dhparams_size>
+        <dca>5b5f09f433185</dca>
+        <sslcrtd_children />
+        <interception_checks />
+        <interception_adapt />
+        <log_enabled>on</log_enabled>
+        <log_dir>/var/squid/logs</log_dir>
+        <log_rotate>7</log_rotate>
+        <log_sqd />
+        <visible_hostname>localhost</visible_hostname>
+        <admin_email>admin@localhost</admin_email>
+        <error_language>en</error_language>
+        <xforward_mode>delete</xforward_mode>
+        <disable_via>on</disable_via>
+        <uri_whitespace>strip</uri_whitespace>
+        <disable_squidversion>on</disable_squidversion>
+        <custom_options />
+        <custom_options_squid3 />
+        <custom_options2_squid3 />
+        <custom_options3_squid3 />
+      </config>
+    </squid>
+  </installedpackages>
+  <virtualip>
+    <vip>
+      <interface>lan</interface>
+      <descr>pfB DNSBL - DO NOT EDIT</descr>
+      <type>single</type>
+      <subnet_bits>32</subnet_bits>
+      <subnet>10.10.10.1</subnet>
+      <mode>ipalias</mode>
+    </vip>
+  </virtualip>
+  <dyndnses />
+  <ca>
+    <refid>5a030f8debd96</refid>
+    <descr>OpenVPNCA</descr>
+    <crt>[REDACTED_CERT_OR_KEY]</crt>
+    <serial>0</serial>
+  </ca>
+  <ca>
+    <refid>5a04208c70f14</refid>
+    <descr>FreeRADIUS CA</descr>
+    <serial>1</serial>
+    <crt>[REDACTED_CERT_OR_KEY]</crt>
+    <prv>[REDACTED]</prv>
+  </ca>
+  <ca>
+    <refid>5b5f09f433185</refid>
+    <descr>SquidProxyCA</descr>
+    <crt>[REDACTED_CERT_OR_KEY]</crt>
+    <prv>[REDACTED]</prv>
+    <serial>0</serial>
+  </ca>
+  <dhcrelay>
+    <interface>lan</interface>
+    <server />
+  </dhcrelay>
+  <ezshaper>
+    <step1>
+      <numberofconnections>1</numberofconnections>
+      <numberoflocalinterfaces>1</numberoflocalinterfaces>
+    </step1>
+    <step2>
+      <local0downloadscheduler>CBQ</local0downloadscheduler>
+      <local0interface>lan</local0interface>
+      <conn0uploadscheduler>CBQ</conn0uploadscheduler>
+      <conn0upload>100</conn0upload>
+      <conn0uploadspeed>Mb</conn0uploadspeed>
+      <conn0download>100</conn0download>
+      <conn0downloadspeed>Mb</conn0downloadspeed>
+      <conn0interface>wan</conn0interface>
+    </step2>
+    <step3>
+      <address>XXX.XXX.XXX.XXX</address>
+      <enable>on</enable>
+      <provider>Generic</provider>
+      <local0download>4</local0download>
+      <local0downloadspeed>Mb</local0downloadspeed>
+      <conn0upload>4</conn0upload>
+      <conn0uploadspeed>Mb</conn0uploadspeed>
+    </step3>
+  </ezshaper>
+  <mailreports>
+    <schedule>
+      <descr>as</descr>
+      <frequency>daily</frequency>
+      <timeofday>0</timeofday>
+      <submit>Save</submit>
+      <schedule_friendly>Daily at 00:00</schedule_friendly>
+    </schedule>
+  </mailreports>
 </pfsense>

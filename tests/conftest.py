@@ -5,7 +5,6 @@ import os
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Dict, List, Tuple
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -73,9 +72,9 @@ class CLIRunner:
         self,
         input_file: str,
         output_file: str = None,
-        flags: List[str] = None,
+        flags: list[str] = None,
         expect_success: bool = True
-    ) -> Tuple[int, str, str]:
+    ) -> tuple[int, str, str]:
         """
         Run the CLI with specified arguments
 
@@ -109,8 +108,8 @@ class CLIRunner:
     def run_to_stdout(
         self,
         input_file: str,
-        flags: List[str] = None
-    ) -> Tuple[int, str, str]:
+        flags: list[str] = None
+    ) -> tuple[int, str, str]:
         """Run with --stdout flag and capture XML output"""
         flags = flags or []
         if "--stdout" not in flags:
@@ -129,7 +128,7 @@ class StatsParser:
     """Helper to parse statistics from CLI output"""
 
     @staticmethod
-    def parse(output: str) -> Dict[str, int]:
+    def parse(output: str) -> dict[str, int]:
         """
         Parse redaction statistics from stdout/stderr
 

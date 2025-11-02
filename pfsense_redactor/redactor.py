@@ -11,14 +11,13 @@ import ipaddress
 from pathlib import Path
 from collections import defaultdict
 from urllib.parse import urlsplit, urlunsplit, SplitResult
-from typing import Optional, Set, List, Dict, Tuple, DefaultDict, Union, FrozenSet
 
 # Type aliases for clarity
-IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
-IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
+IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
+IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 # Module-level constants (immutable for safety)
-ALWAYS_PRESERVE_IPS: FrozenSet[str] = frozenset({
+ALWAYS_PRESERVE_IPS: frozenset[str] = frozenset({
     '255.255.255.0', '255.255.0.0', '255.0.0.0',
     '255.255.255.128', '255.255.255.192', '255.255.255.224',
     '255.255.255.240', '255.255.255.248', '255.255.255.252',
@@ -26,7 +25,7 @@ ALWAYS_PRESERVE_IPS: FrozenSet[str] = frozenset({
     '0.0.0.0', '::'
 })
 
-REDACT_ELEMENTS: FrozenSet[str] = frozenset({
+REDACT_ELEMENTS: frozenset[str] = frozenset({
     'password', 'passwordenc', 'bcrypt-hash', 'md5-hash', 'nt-hash',
     'pre-shared-key', 'shared_key', 'psk', 'privatekey',
     'prv',  # Private keys are secrets, not just certs
@@ -37,13 +36,13 @@ REDACT_ELEMENTS: FrozenSet[str] = frozenset({
     # Note: 'key' handled specially - can be short secret or PEM blob
 })
 
-CERT_KEY_ELEMENTS: FrozenSet[str] = frozenset({
+CERT_KEY_ELEMENTS: frozenset[str] = frozenset({
     'crt',
     'cert',  # Can contain PEM directly in some configs
     'public-key',
 })
 
-IP_CONTAINING_ELEMENTS: FrozenSet[str] = frozenset({
+IP_CONTAINING_ELEMENTS: frozenset[str] = frozenset({
     'ipaddr', 'ipaddrv6', 'gateway', 'dnsserver', 'hostname', 'domain',
     'remote-gateway', 'tunnel_network', 'local_network', 'remote_network',
     'server', 'host', 'address', 'subnet', 'subnetv6',
@@ -58,7 +57,7 @@ IP_CONTAINING_ELEMENTS: FrozenSet[str] = frozenset({
     'mac',  # MAC addresses in <mac> tags
 })
 
-SENSITIVE_ATTR_TOKENS: Tuple[str, ...] = (
+SENSITIVE_ATTR_TOKENS: tuple[str, ...] = (
     'password', 'passwd', 'pass', 'key', 'secret', 'token', 'bearer',
     'cookie', 'client_secret', 'client-key', 'api_key', 'apikey', 'auth', 'signature'
 )
@@ -79,9 +78,9 @@ class PfSenseRedactor:
         anonymise: bool = False,
         aggressive: bool = False,
         fail_on_warn: bool = False,
-        allowlist_ips: Optional[Set[str]] = None,
-        allowlist_domains: Optional[Set[str]] = None,
-        allowlist_networks: Optional[List[IPNetwork]] = None,
+        allowlist_ips: set[str] | None = None,
+        allowlist_domains: set[str] | None = None,
+        allowlist_networks: list[IPNetwork] | None = None,
         dry_run_verbose: bool = False
     ) -> None:
         self.keep_private_ips = keep_private_ips
@@ -92,7 +91,7 @@ class PfSenseRedactor:
 
         # Allow-lists (opt-in, empty by default)
         # IP allow-lists: support both individual IPs and CIDR networks
-        self.allowlist_ip_addrs: Set[IPAddress] = set()
+        self.allowlist_ip_addrs: set[IPAddress] = set()
         if allowlist_ips:
             for ip_str in allowlist_ips:
                 try:
@@ -100,13 +99,13 @@ class PfSenseRedactor:
                 except ValueError:
                     pass  # Will be handled as network or error elsewhere
 
-        self.allowlist_ip_networks: List[IPNetwork] = []
+        self.allowlist_ip_networks: list[IPNetwork] = []
         if allowlist_networks:
             self.allowlist_ip_networks = list(allowlist_networks)
 
         # Domain allow-lists: store both normalised Unicode and IDNA forms
-        self.allowlist_domains: Set[str] = set()
-        self.allowlist_domains_idna: Set[str] = set()
+        self.allowlist_domains: set[str] = set()
+        self.allowlist_domains_idna: set[str] = set()
         if allowlist_domains:
             for domain in allowlist_domains:
                 norm_domain, idna_domain = self._normalise_domain(domain)
@@ -118,17 +117,17 @@ class PfSenseRedactor:
 
         # Sample collection for --dry-run-verbose
         self.sample_limit: int = self.SAMPLE_LIMIT
-        self.samples: DefaultDict[str, List[Tuple[str, str]]] = defaultdict(list)
-        self.sample_seen: DefaultDict[str, Set[str]] = defaultdict(set)
+        self.samples: defaultdict[str, list[tuple[str, str]]] = defaultdict(list)
+        self.sample_seen: defaultdict[str, set[str]] = defaultdict(set)
 
         # Anonymisation maps
-        self.ip_aliases: Dict[str, str] = {}
-        self.domain_aliases: Dict[str, str] = {}
+        self.ip_aliases: dict[str, str] = {}
+        self.domain_aliases: dict[str, str] = {}
         self.ip_counter: int = 0
         self.domain_counter: int = 0
 
         # Statistics
-        self.stats: DefaultDict[str, int] = defaultdict(int)
+        self.stats: defaultdict[str, int] = defaultdict(int)
 
         # Reference module-level constants
         self.always_preserve_ips = ALWAYS_PRESERVE_IPS
@@ -160,7 +159,7 @@ class PfSenseRedactor:
             r'-----BEGIN (?:CERTIFICATE|RSA PRIVATE KEY|EC PRIVATE KEY|ENCRYPTED PRIVATE KEY|PRIVATE KEY|PUBLIC KEY|OPENVPN STATIC KEY|OPENSSH PRIVATE KEY)-----'
         )
 
-    def _normalise_domain(self, domain: str) -> Tuple[Optional[str], Optional[str]]:
+    def _normalise_domain(self, domain: str) -> tuple[str | None, str | None]:
         """Normalise domain: lowercase, strip leading and trailing dots, handle wildcards, compute IDNA
 
         Returns:
@@ -352,7 +351,7 @@ class PfSenseRedactor:
             before_masked = self._safe_mask_for_sample(before, category)
             self.samples[category].append((before_masked, after))
 
-    def _parse_ip_token(self, token: str) -> Tuple[Optional[IPAddress], bool, str]:
+    def _parse_ip_token(self, token: str) -> tuple[IPAddress | None, bool, str]:
         """Parse IP token, handling brackets and zone identifiers"""
         # Strip brackets and split off zone id if present
         bracketed = token.startswith('[') and token.endswith(']')
@@ -474,7 +473,7 @@ class PfSenseRedactor:
             self.domain_aliases[norm] = f"domain{self.domain_counter}.example"
         return self.domain_aliases[norm]
 
-    def _parse_url_safely(self, url: str) -> Optional[SplitResult]:
+    def _parse_url_safely(self, url: str) -> SplitResult | None:
         """Parse URL, returning None if parsing fails"""
         try:
             return urlsplit(url)
@@ -501,7 +500,7 @@ class PfSenseRedactor:
         netloc = self._build_netloc(parts, masked_host, False)
         return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
 
-    def _mask_url_host(self, host: str) -> Tuple[str, bool, bool]:
+    def _mask_url_host(self, host: str) -> tuple[str, bool, bool]:
         """Mask URL host. Returns (masked_host, changed, is_ipv6)"""
         # Try as IP address
         try:
@@ -511,7 +510,7 @@ class PfSenseRedactor:
             # Treat as domain
             return self._mask_domain_host(host)
 
-    def _mask_ip_host(self, ip: IPAddress) -> Tuple[str, bool, bool]:
+    def _mask_ip_host(self, ip: IPAddress) -> tuple[str, bool, bool]:
         """Mask IP address in URL. Returns (masked, changed, is_ipv6)"""
         is_ipv6 = ip.version == 6
 
@@ -534,7 +533,7 @@ class PfSenseRedactor:
         self.stats['ips_redacted'] += 1
         return masked, True, is_ipv6
 
-    def _mask_domain_host(self, host: str) -> Tuple[str, bool, bool]:
+    def _mask_domain_host(self, host: str) -> tuple[str, bool, bool]:
         """Mask domain in URL. Returns (masked, changed, is_ipv6=False)"""
         if self._is_domain_allowed(host):
             return host, False, False
@@ -837,7 +836,7 @@ class PfSenseRedactor:
     def redact_config(
         self,
         input_file: str,
-        output_file: Optional[str],
+        output_file: str | None,
         redact_ips: bool = True,
         redact_domains: bool = True,
         dry_run: bool = False,
@@ -875,10 +874,7 @@ class PfSenseRedactor:
                 return True
 
             # Pretty print (Python 3.9+)
-            try:
-                ET.indent(tree, space="  ")
-            except AttributeError:
-                pass  # Older Python version
+            ET.indent(tree, space="  ")
 
             # Write redacted configuration
             if stdout_mode:
@@ -956,7 +952,7 @@ class PfSenseRedactor:
                 print("    (no examples collected)", file=output)
 
 
-def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> Tuple[Set[str], List[IPNetwork], Set[str]]:
+def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> tuple[set[str], list[IPNetwork], set[str]]:
     """Parse allow-list file containing IPs, CIDR networks, and domains (one per line)
 
     Format:
@@ -1019,7 +1015,7 @@ def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> Tupl
     return ips, networks, domains
 
 
-def find_default_allowlist_files() -> List[Path]:
+def find_default_allowlist_files() -> list[Path]:
     """Find default allow-list files in standard locations
 
     Checks in order:
