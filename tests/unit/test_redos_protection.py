@@ -77,7 +77,8 @@ class TestReDoSProtection:
         text = "Server at server.example.org"
         result = redactor.redact_text(text, redact_domains=True)
 
-        assert "example.com" in result
+        # Verify the domain was redacted (not URL sanitization - this is a redaction tool test)
+        assert result == "Server at example.com"
         assert "server.example.org" not in result
 
     def test_max_text_chunk_protection(self):
