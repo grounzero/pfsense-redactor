@@ -34,18 +34,30 @@ class ColouredFormatter(logging.Formatter):
         'RESET': '\033[0m'      # Reset
     }
 
+    def __init__(self, fmt=None, datefmt=None, style='%', stream=None):
+        """Initialise formatter with optional stream for TTY detection"""
+        super().__init__(fmt, datefmt, style)
+        self.stream = stream
+
     def format(self, record):
-        """Format log record with colours if outputting to a TTY"""
+        """Format log record with colours if outputting to a TTY
+
+        Note: We colour the final formatted string rather than mutating
+        the record to avoid issues with multiple handlers.
+        """
+        # Get the formatted message without colours
+        formatted = super().format(record)
+
         # Only add colours if outputting to a TTY
-        if hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
+        if self.stream and hasattr(self.stream, 'isatty') and self.stream.isatty():
             levelname = record.levelname
             if levelname in self.COLOURS:
-                # Colour the level name and message
                 colour = self.COLOURS[levelname]
                 reset = self.COLOURS['RESET']
-                record.levelname = f"{colour}{levelname}{reset}"
-                record.msg = f"{colour}{record.msg}{reset}"
-        return super().format(record)
+                # Colour the entire formatted message
+                formatted = f"{colour}{formatted}{reset}"
+
+        return formatted
 
 
 def setup_logging(level: int = logging.INFO, use_stderr: bool = False) -> logging.Logger:
@@ -62,13 +74,11 @@ def setup_logging(level: int = logging.INFO, use_stderr: bool = False) -> loggin
     logger.setLevel(level)
     logger.handlers.clear()  # Remove any existing handlers
 
-    formatter = ColouredFormatter('%(message)s')
-
     if use_stderr:
         # In --stdout mode, route everything to stderr
         handler = logging.StreamHandler(sys.stderr)
         handler.setLevel(level)
-        handler.setFormatter(formatter)
+        handler.setFormatter(ColouredFormatter('%(message)s', stream=sys.stderr))
         logger.addHandler(handler)
     else:
         # Normal mode: INFO/DEBUG to stdout, WARNING/ERROR to stderr
@@ -76,13 +86,13 @@ def setup_logging(level: int = logging.INFO, use_stderr: bool = False) -> loggin
         stdout_handler = logging.StreamHandler(sys.stdout)
         stdout_handler.setLevel(logging.DEBUG)
         stdout_handler.addFilter(lambda record: record.levelno < logging.WARNING)
-        stdout_handler.setFormatter(formatter)
+        stdout_handler.setFormatter(ColouredFormatter('%(message)s', stream=sys.stdout))
         logger.addHandler(stdout_handler)
 
         # Handler for WARNING and ERROR messages -> stderr
         stderr_handler = logging.StreamHandler(sys.stderr)
         stderr_handler.setLevel(logging.WARNING)
-        stderr_handler.setFormatter(formatter)
+        stderr_handler.setFormatter(ColouredFormatter('%(message)s', stream=sys.stderr))
         logger.addHandler(stderr_handler)
 
     return logger
@@ -1166,15 +1176,18 @@ def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> tupl
 
     except FileNotFoundError:
         if not silent_if_missing:
-            print(f"[!] Error: Allow-list file '{filepath}' not found", file=sys.stderr)
+            logger = logging.getLogger('pfsense_redactor')
+            logger.error("[!] Error: Allow-list file '%s' not found", filepath)
             sys.exit(1)
         # Silent if missing for default files
         return set(), [], set()
     except (IOError, OSError) as e:
-        print(f"[!] Error reading allow-list file: {e}", file=sys.stderr)
+        logger = logging.getLogger('pfsense_redactor')
+        logger.error("[!] Error reading allow-list file: %s", e)
         sys.exit(1)
     except (ValueError, UnicodeDecodeError) as e:
-        print(f"[!] Error parsing allow-list file: {e}", file=sys.stderr)
+        logger = logging.getLogger('pfsense_redactor')
+        logger.error("[!] Error parsing allow-list file: %s", e)
         sys.exit(1)
 
     return ips, networks, domains
@@ -1306,21 +1319,23 @@ CDATA sections are not preserved.
         input_path = Path(args.input)
         args.output = str(input_path.parent / f"{input_path.stem}-redacted{input_path.suffix}")
 
+    # Get logger for error messages
+    logger = logging.getLogger('pfsense_redactor')
+
     # Check if input file exists
     if not Path(args.input).exists():
-        print(f"[!] Error: Input file '{args.input}' not found", file=sys.stderr)
+        logger.error("[!] Error: Input file '%s' not found", args.input)
         sys.exit(1)
 
     # Check if input file is empty
     if Path(args.input).stat().st_size == 0:
-        print("[!] Error: Input file is empty", file=sys.stderr)
+        logger.error("[!] Error: Input file is empty")
         sys.exit(1)
 
     # Check if output file exists (unless force or special modes)
     if args.output and not args.force and not args.dry_run:
         if Path(args.output).exists():
-            print(f"[!] Error: Output file '{args.output}' already exists. Use --force to overwrite.",
-                  file=sys.stderr)
+            logger.error("[!] Error: Output file '%s' already exists. Use --force to overwrite.", args.output)
             sys.exit(1)
 
     # Default keep_private_ips to True when anonymise is used (better AI context)
@@ -1349,7 +1364,7 @@ CDATA sections are not preserved.
             allowlist_networks.extend(file_networks)
             allowlist_domains.update(file_domains)
             if not args.dry_run and not args.stdout:
-                print(f"[+] Loaded default allow-list: {default_file}")
+                logger.info("[+] Loaded default allow-list: %s", default_file)
 
     # 2. Load explicit allow-list file if provided
     if args.allowlist_file:
@@ -1378,7 +1393,7 @@ CDATA sections are not preserved.
                 pass
 
             # Invalid entry
-            print(f"[!] Error: Invalid IP or CIDR in --allowlist-ip: {entry}", file=sys.stderr)
+            logger.error("[!] Error: Invalid IP or CIDR in --allowlist-ip: %s", entry)
             sys.exit(1)
 
     # 4. Add domains from CLI (case-insensitive)
