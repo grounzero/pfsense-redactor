@@ -16,10 +16,10 @@ class TestSensitiveAttributeAnchoring:
         """Verify 'compass_heading' attribute is not redacted (contains 'pass' substring)"""
         xml = '<config><device compass_heading="north"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         # compass_heading should NOT be redacted (doesn't match \bpass\b)
         assert root.find('device').get('compass_heading') == 'north'
         assert redactor.stats['secrets_redacted'] == 0
@@ -28,10 +28,10 @@ class TestSensitiveAttributeAnchoring:
         """Verify 'author' attribute is not redacted (contains 'auth' substring)"""
         xml = '<config><document author="John Doe"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         # author should NOT be redacted (doesn't match \bauth\b or \bauthentication\b)
         assert root.find('document').get('author') == 'John Doe'
         assert redactor.stats['secrets_redacted'] == 0
@@ -40,10 +40,10 @@ class TestSensitiveAttributeAnchoring:
         """Verify 'bypass' attribute is not redacted (contains 'pass' substring)"""
         xml = '<config><rule bypass="true"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         # bypass should NOT be redacted
         assert root.find('rule').get('bypass') == 'true'
         assert redactor.stats['secrets_redacted'] == 0
@@ -52,10 +52,10 @@ class TestSensitiveAttributeAnchoring:
         """Verify 'password' attribute IS redacted (exact match)"""
         xml = '<config><user password="secret123"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         # password SHOULD be redacted
         assert root.find('user').get('password') == '[REDACTED]'
         assert redactor.stats['secrets_redacted'] == 1
@@ -64,10 +64,10 @@ class TestSensitiveAttributeAnchoring:
         """Verify 'passwd' attribute IS redacted"""
         xml = '<config><user passwd="secret123"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         assert root.find('user').get('passwd') == '[REDACTED]'
         assert redactor.stats['secrets_redacted'] == 1
 
@@ -75,10 +75,10 @@ class TestSensitiveAttributeAnchoring:
         """Verify 'pass' attribute IS redacted (whole word)"""
         xml = '<config><user pass="secret123"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         assert root.find('user').get('pass') == '[REDACTED]'
         assert redactor.stats['secrets_redacted'] == 1
 
@@ -88,10 +88,10 @@ class TestSensitiveAttributeAnchoring:
             <service api_key="key1" api-key="key2" apikey="key3"/>
         </config>'''
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         service = root.find('service')
         assert service.get('api_key') == '[REDACTED]'
         assert service.get('api-key') == '[REDACTED]'
@@ -104,10 +104,10 @@ class TestSensitiveAttributeAnchoring:
             <service auth="val1" auth_key="val2" auth_token="val3" authentication="val4"/>
         </config>'''
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         service = root.find('service')
         assert service.get('auth') == '[REDACTED]'
         assert service.get('auth_key') == '[REDACTED]'
@@ -119,10 +119,10 @@ class TestSensitiveAttributeAnchoring:
         """Verify client_secret and client-secret are redacted"""
         xml = '<config><oauth client_secret="s1" client-secret="s2"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         oauth = root.find('oauth')
         assert oauth.get('client_secret') == '[REDACTED]'
         assert oauth.get('client-secret') == '[REDACTED]'
@@ -141,21 +141,21 @@ class TestSensitiveAttributeAnchoring:
             />
         </config>'''
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         device = root.find('device')
         # Safe attributes preserved
         assert device.get('compass_heading') == 'north'
         assert device.get('author') == 'John'
         assert device.get('bypass') == 'true'
-        
+
         # Sensitive attributes redacted
         assert device.get('password') == '[REDACTED]'
         assert device.get('api_key') == '[REDACTED]'
         assert device.get('token') == '[REDACTED]'
-        
+
         # Should have redacted exactly 3 attributes
         assert redactor.stats['secrets_redacted'] == 3
 
@@ -165,10 +165,10 @@ class TestSensitiveAttributeAnchoring:
             <service PASSWORD="s1" ApiKey="s2" AUTH="s3"/>
         </config>'''
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         service = root.find('service')
         assert service.get('PASSWORD') == '[REDACTED]'
         assert service.get('ApiKey') == '[REDACTED]'
@@ -179,10 +179,10 @@ class TestSensitiveAttributeAnchoring:
         """Verify 'key' attribute is redacted"""
         xml = '<config><item key="secret"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         assert root.find('item').get('key') == '[REDACTED]'
         assert redactor.stats['secrets_redacted'] == 1
 
@@ -190,10 +190,10 @@ class TestSensitiveAttributeAnchoring:
         """Verify 'secret' attribute is redacted"""
         xml = '<config><item secret="value"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         assert root.find('item').get('secret') == '[REDACTED]'
         assert redactor.stats['secrets_redacted'] == 1
 
@@ -201,10 +201,10 @@ class TestSensitiveAttributeAnchoring:
         """Verify 'bearer' and 'token' attributes are redacted"""
         xml = '<config><auth bearer="xyz" token="abc"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         auth = root.find('auth')
         assert auth.get('bearer') == '[REDACTED]'
         assert auth.get('token') == '[REDACTED]'
@@ -214,10 +214,10 @@ class TestSensitiveAttributeAnchoring:
         """Verify 'cookie' attribute is redacted"""
         xml = '<config><session cookie="sessionid=xyz"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         assert root.find('session').get('cookie') == '[REDACTED]'
         assert redactor.stats['secrets_redacted'] == 1
 
@@ -225,9 +225,9 @@ class TestSensitiveAttributeAnchoring:
         """Verify 'signature' attribute is redacted"""
         xml = '<config><message signature="abc123"/></config>'
         root = ET.fromstring(xml)
-        
+
         redactor = PfSenseRedactor()
         redactor.redact_element(root)
-        
+
         assert root.find('message').get('signature') == '[REDACTED]'
         assert redactor.stats['secrets_redacted'] == 1
