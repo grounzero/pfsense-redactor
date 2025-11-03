@@ -5,7 +5,6 @@ These tests run the CLI with various flag combinations and compare outputs
 to reference files. Set UPDATE_REFERENCE=1 to regenerate snapshots.
 """
 import pytest
-from pathlib import Path
 
 
 # Test modes with their corresponding CLI flags

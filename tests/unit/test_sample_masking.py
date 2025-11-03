@@ -6,9 +6,6 @@ These tests verify the correctness of targeted bug fixes and improvements.
 
 import io
 import logging
-import pytest
-import subprocess
-from pathlib import Path
 
 
 class TestIPv6URLReconstruction:

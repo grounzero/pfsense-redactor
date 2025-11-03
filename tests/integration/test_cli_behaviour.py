@@ -3,8 +3,6 @@ CLI behaviour and safety tests
 
 Test command-line interface behaviour, error handling, and safety features
 """
-import pytest
-from pathlib import Path
 import subprocess
 
 

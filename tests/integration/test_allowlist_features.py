@@ -9,8 +9,6 @@ Tests for IP and domain allow-list functionality including:
 - Case-insensitive matching
 - Statistics accuracy with allow-lists
 """
-import pytest
-from pathlib import Path
 import re
 
 

@@ -7,7 +7,6 @@ parsed and preserved, including complex interface names with dots, dashes, and c
 """
 
 import pytest
-import sys
 from pathlib import Path
 import importlib.util
 
