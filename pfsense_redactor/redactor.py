@@ -24,7 +24,7 @@ IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 
 class ColouredFormatter(logging.Formatter):
     """Add ANSI colour codes to log messages for TTY output"""
-    
+
     # ANSI colour codes
     COLOURS = {
         'DEBUG': '\033[36m',    # Cyan
@@ -138,10 +138,10 @@ SENSITIVE_ATTR_TOKENS: tuple[str, ...] = (
 @functools.lru_cache(maxsize=256)
 def _idna_encode(domain: str) -> str:
     """Cache IDNA encoding for performance (domains are often repeated)
-    
+
     Args:
         domain: Domain name to encode
-        
+
     Returns:
         IDNA-encoded (punycode) ASCII string, or original if encoding fails
     """
@@ -155,7 +155,7 @@ def _idna_encode(domain: str) -> str:
 
 class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     """pfSense configuration redactor for sensitive data handling
-    
+
     Note: This class intentionally has many instance attributes to maintain
     clear separation of concerns and avoid premature optimization. The attributes
     are logically grouped and well-documented.
