@@ -19,6 +19,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Previously only checked for presence of dots, not valid IP format
   - Added 4 tests in `TestPortStrippingSecurity`
 
+### Fixed
+- **CRITICAL FIX**: Fixed whitespace corruption in URL/email/FQDN redaction
+  - `_redact_urls_safe`, `_redact_emails_safe`, and `_redact_fqdns_safe` were using `text.split()` and `' '.join()`
+  - This collapsed all whitespace (including newlines) into single spaces, corrupting XML text content
+  - Now uses `re.sub()` with callbacks to preserve original whitespace structure
+  - Maintains ReDoS protection via length pre-filtering in the callback functions
+
 ### Added
 - New `--redact-url-usernames` CLI flag for enhanced URL credential redaction
   - Allows redacting sensitive usernames (e.g., `admin`, `root`) in URLs
@@ -29,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - Domain normalisation now strips whitespace before processing dots
 - Port stripping now requires valid IPv4 address validation
+- URL/email/FQDN redaction now uses `re.sub()` instead of tokenization to preserve whitespace
 
 ## [1.0.6][] - 2025-11-02
 

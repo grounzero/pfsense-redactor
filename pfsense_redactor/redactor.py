@@ -13,11 +13,12 @@ import functools
 from pathlib import Path
 from collections import defaultdict
 from collections.abc import Callable
+from typing import Union
 from urllib.parse import urlsplit, urlunsplit, SplitResult
 
-# Type aliases for clarity
-IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
-IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
+# Type aliases for clarity (using Union for Python 3.9 compatibility)
+IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
+IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 
 # Module-level constants (immutable for safety)
 ALWAYS_PRESERVE_IPS: frozenset[str] = frozenset({
@@ -637,29 +638,21 @@ class PfSenseRedactor:
 
     def _redact_urls_safe(self, text: str) -> str:
         """Redact URLs with ReDoS protection via length pre-filtering"""
-        # Split on whitespace to get URL candidates
-        tokens = text.split()
-        result_tokens = []
+        def url_replacer(match):
+            url = match.group(0)
+            # Pre-filter: Skip obviously too-long URLs
+            if len(url) > self.MAX_URL_LENGTH:
+                return url  # Too long, don't process
+            return self._mask_url(url)
         
-        for token in tokens:
-            # Pre-filter: Skip obviously too-long strings before regex
-            if len(token) > self.MAX_URL_LENGTH:
-                # Too long to be legitimate URL, skip regex entirely
-                result_tokens.append(token)
-                continue
-            
-            # Safe to run regex on reasonable-length strings
-            result_tokens.append(
-                self.URL_RE.sub(lambda m: self._mask_url(m.group(0)), token)
-            )
-        
-        return ' '.join(result_tokens)
+        # Use re.sub directly to preserve whitespace
+        return self.URL_RE.sub(url_replacer, text)
 
     def _redact_emails_safe(self, text: str) -> str:
         """Redact emails with ReDoS protection via length pre-filtering"""
         def email_mask_safe(match):
             email = match.group(0)
-            # Double-check length (defence in depth)
+            # Pre-filter: Skip obviously too-long emails
             if len(email) > self.MAX_EMAIL_LENGTH:
                 return email  # Don't process suspiciously long "emails"
             
@@ -670,25 +663,14 @@ class PfSenseRedactor:
                 return f'user@{token}'
             return 'user@example.com'
         
-        # Split text into tokens and only process reasonable-length ones
-        tokens = text.split()
-        result_tokens = []
-        
-        for token in tokens:
-            if len(token) > self.MAX_EMAIL_LENGTH:
-                # Too long, skip regex
-                result_tokens.append(token)
-            else:
-                # Safe to run regex
-                result_tokens.append(self.EMAIL_RE.sub(email_mask_safe, token))
-        
-        return ' '.join(result_tokens)
+        # Use re.sub directly to preserve whitespace
+        return self.EMAIL_RE.sub(email_mask_safe, text)
 
     def _redact_fqdns_safe(self, text: str) -> str:
         """Redact FQDNs with ReDoS protection via length pre-filtering"""
         def fqdn_mask_safe(match):
             domain = match.group(0)
-            # Double-check length
+            # Pre-filter: Skip obviously too-long domains
             if len(domain) > self.MAX_FQDN_LENGTH:
                 return domain  # Don't process suspiciously long "domains"
             
@@ -701,17 +683,8 @@ class PfSenseRedactor:
                 self._add_sample('FQDN', domain, replacement)
             return replacement
         
-        # Split and pre-filter
-        tokens = text.split()
-        result_tokens = []
-        
-        for token in tokens:
-            if len(token) > self.MAX_FQDN_LENGTH:
-                result_tokens.append(token)
-            else:
-                result_tokens.append(self.FQDN_RE.sub(fqdn_mask_safe, token))
-        
-        return ' '.join(result_tokens)
+        # Use re.sub directly to preserve whitespace
+        return self.FQDN_RE.sub(fqdn_mask_safe, text)
 
     def redact_text(self, text: str, redact_ips: bool = True, redact_domains: bool = True) -> str:
         """Redact sensitive patterns from text"""
