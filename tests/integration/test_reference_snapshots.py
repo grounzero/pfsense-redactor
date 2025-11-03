@@ -142,7 +142,7 @@ def test_stats_stderr_mode(sample_files, cli_runner, stats_parser):
         # Run with --stdout --stats-stderr
         exit_code, stdout, stderr = cli_runner.run_to_stdout(
             str(sample_file),
-            flags=["--stats-stderr"]
+            flags=[]
         )
 
         assert exit_code == 0

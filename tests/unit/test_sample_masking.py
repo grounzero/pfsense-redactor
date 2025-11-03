@@ -243,14 +243,26 @@ class TestPrintStatsDefaultdictFix:
     def test_empty_samples_prints_no_examples_collected(self, basic_redactor):
         """Verify that empty samples dict prints '(no examples collected)'"""
         import io
+        import logging
+        import sys
         redactor = basic_redactor
         redactor.dry_run_verbose = True
 
-        # Capture output
-        output = io.StringIO()
-        redactor._print_stats(output=output)
-
-        result = output.getvalue()
+        # Capture output - clear existing handlers and add our own
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setLevel(logging.DEBUG)
+        
+        # Clear existing handlers and add our test handler
+        redactor.logger.handlers.clear()
+        redactor.logger.addHandler(handler)
+        redactor.logger.setLevel(logging.DEBUG)
+        
+        redactor._print_stats()
+        result = stream.getvalue()
+        
+        # Clean up
+        redactor.logger.removeHandler(handler)
 
         # Should print the message about no examples
         assert "(no examples collected)" in result
@@ -259,17 +271,29 @@ class TestPrintStatsDefaultdictFix:
     def test_with_samples_does_not_print_no_examples(self, basic_redactor):
         """Verify that when samples exist, we don't print '(no examples collected)'"""
         import io
+        import logging
+        import sys
         redactor = basic_redactor
         redactor.dry_run_verbose = True
 
         # Add a sample
         redactor._add_sample('IP', '192.168.1.1', 'XXX.XXX.XXX.XXX')
 
-        # Capture output
-        output = io.StringIO()
-        redactor._print_stats(output=output)
-
-        result = output.getvalue()
+        # Capture output - clear existing handlers and add our own
+        stream = io.StringIO()
+        handler = logging.StreamHandler(stream)
+        handler.setLevel(logging.DEBUG)
+        
+        # Clear existing handlers and add our test handler
+        redactor.logger.handlers.clear()
+        redactor.logger.addHandler(handler)
+        redactor.logger.setLevel(logging.DEBUG)
+        
+        redactor._print_stats()
+        result = stream.getvalue()
+        
+        # Clean up
+        redactor.logger.removeHandler(handler)
 
         # Should NOT print the no examples message
         assert "(no examples collected)" not in result

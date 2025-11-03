@@ -24,7 +24,7 @@ IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 
 class ColoredFormatter(logging.Formatter):
     """Add ANSI colour codes to log messages for TTY output"""
-    
+
     # ANSI colour codes
     COLORS = {
         'DEBUG': '\033[36m',    # Cyan
@@ -33,7 +33,7 @@ class ColoredFormatter(logging.Formatter):
         'ERROR': '\033[31m',    # Red
         'RESET': '\033[0m'      # Reset
     }
-    
+
     def format(self, record):
         """Format log record with colours if outputting to a TTY"""
         # Only add colours if outputting to a TTY
@@ -50,28 +50,41 @@ class ColoredFormatter(logging.Formatter):
 
 def setup_logging(level: int = logging.INFO, use_stderr: bool = False) -> logging.Logger:
     """Configure logging for pfSense redactor
-    
+
     Args:
         level: Logging level (DEBUG, INFO, WARNING, ERROR)
-        use_stderr: If True, route logs to stderr (for --stdout mode)
-    
+        use_stderr: If True, route all logs to stderr (for --stdout mode)
+
     Returns:
         Configured logger instance
     """
     logger = logging.getLogger('pfsense_redactor')
     logger.setLevel(level)
     logger.handlers.clear()  # Remove any existing handlers
-    
-    # Route to stderr for --stdout mode, otherwise stdout
-    stream = sys.stderr if use_stderr else sys.stdout
-    handler = logging.StreamHandler(stream)
-    handler.setLevel(level)
-    
-    # Simple format - just the message (we include [+]/[!] in the message itself)
+
     formatter = ColoredFormatter('%(message)s')
-    handler.setFormatter(formatter)
-    logger.addHandler(handler)
-    
+
+    if use_stderr:
+        # In --stdout mode, route everything to stderr
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setLevel(level)
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+    else:
+        # Normal mode: INFO/DEBUG to stdout, WARNING/ERROR to stderr
+        # Handler for INFO and DEBUG messages -> stdout
+        stdout_handler = logging.StreamHandler(sys.stdout)
+        stdout_handler.setLevel(logging.DEBUG)
+        stdout_handler.addFilter(lambda record: record.levelno < logging.WARNING)
+        stdout_handler.setFormatter(formatter)
+        logger.addHandler(stdout_handler)
+
+        # Handler for WARNING and ERROR messages -> stderr
+        stderr_handler = logging.StreamHandler(sys.stderr)
+        stderr_handler.setLevel(logging.WARNING)
+        stderr_handler.setFormatter(formatter)
+        logger.addHandler(stderr_handler)
+
     return logger
 
 
@@ -172,7 +185,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self.fail_on_warn = fail_on_warn
         self.dry_run_verbose = dry_run_verbose
         self.redact_url_usernames = redact_url_usernames
-        
+
         # Get logger instance
         self.logger = logging.getLogger('pfsense_redactor')
 
@@ -1049,9 +1062,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 tree.write(output_file, encoding='utf-8', xml_declaration=True)
                 self.logger.info("[+] Redacted configuration written to: %s", output_file)
 
-            # Print summary
-            if not stdout_mode:
-                self._print_stats()
+            # Print summary (always print, logger routes to correct stream)
+            self._print_stats()
 
             return True
 
@@ -1264,11 +1276,11 @@ CDATA sections are not preserved.
                         help='Redact usernames in URLs (e.g., ftp://user@host becomes ftp://REDACTED@host). By default, usernames are preserved while passwords are always redacted.')
 
     args = parser.parse_args()
-    
+
     # Validate mutually exclusive flags
     if args.quiet and args.verbose:
         parser.error("--quiet and --verbose are mutually exclusive")
-    
+
     # Determine log level
     if args.verbose:
         log_level = logging.DEBUG
@@ -1276,7 +1288,7 @@ CDATA sections are not preserved.
         log_level = logging.WARNING
     else:
         log_level = logging.INFO
-    
+
     # Setup logging (route to stderr when using --stdout)
     use_stderr = args.stdout
     setup_logging(log_level, use_stderr)

@@ -90,8 +90,7 @@ def test_stats_stderr_with_stdout(cli_runner, create_xml_file):
 """)
 
     exit_code, stdout, stderr = cli_runner.run_to_stdout(
-        str(xml_file),
-        flags=["--stats-stderr"]
+        str(xml_file)
     )
 
     assert exit_code == 0
