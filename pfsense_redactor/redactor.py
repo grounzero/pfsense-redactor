@@ -15,9 +15,9 @@ from collections import defaultdict
 from collections.abc import Callable
 from urllib.parse import urlsplit, urlunsplit, SplitResult
 
-# Type aliases for clarity (using string annotations for Python 3.9 compatibility)
-IPAddress = "ipaddress.IPv4Address | ipaddress.IPv6Address"
-IPNetwork = "ipaddress.IPv4Network | ipaddress.IPv6Network"
+# Type aliases for clarity
+IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
+IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 # Module-level constants (immutable for safety)
 ALWAYS_PRESERVE_IPS: frozenset[str] = frozenset({
@@ -78,12 +78,13 @@ def _idna_encode(domain: str) -> str:
     """
     try:
         return domain.encode('idna').decode('ascii')
-    except Exception:
+    except (UnicodeError, UnicodeDecodeError, UnicodeEncodeError):
+        # IDNA encoding failed (malformed domain or unsupported characters)
         return domain
 
 
 class PfSenseRedactor:
-    """pfSense configuration redactor with comprehensive sensitive data handling"""
+    """pfSense configuration redactor for sensitive data handling"""
 
     # Class constants for magic numbers
     SAMPLE_LIMIT: int = 5  # Maximum number of samples to collect per category
@@ -100,17 +101,25 @@ class PfSenseRedactor:
         allowlist_ips: set[str] | None = None,
         allowlist_domains: set[str] | None = None,
         allowlist_networks: list[IPNetwork] | None = None,
-        dry_run_verbose: bool = False
+        dry_run_verbose: bool = False,
+        redact_url_usernames: bool = False
     ) -> None:
         self.keep_private_ips = keep_private_ips
         self.anonymise = anonymise
         self.aggressive = aggressive
         self.fail_on_warn = fail_on_warn
         self.dry_run_verbose = dry_run_verbose
+        self.redact_url_usernames = redact_url_usernames
+        
+        # ReDoS protection constants (instance attributes for easy access)
+        self.MAX_URL_LENGTH: int = 2048  # RFC 2616 suggests 2048 as reasonable max
+        self.MAX_EMAIL_LENGTH: int = 320  # RFC 5321: 64 (local) + @ + 255 (domain)
+        self.MAX_FQDN_LENGTH: int = 253  # RFC 1035: max DNS name length
+        self.MAX_TEXT_CHUNK: int = 1048576  # 1MB max for any text element
 
         # Allow-lists (opt-in, empty by default)
         # IP allow-lists: support both individual IPs and CIDR networks
-        self.allowlist_ip_addrs: set[IPAddress] = set()
+        self.allowlist_ip_addrs: set[ipaddress.IPv4Address | ipaddress.IPv6Address] = set()
         if allowlist_ips:
             for ip_str in allowlist_ips:
                 try:
@@ -188,8 +197,8 @@ class PfSenseRedactor:
         Returns:
             tuple: (normalised_unicode, normalised_idna) or (None, None) if invalid
         """
-        # Strip leading and trailing dots
-        domain = domain.lstrip('.').rstrip('.')
+        # Strip whitespace first, then leading and trailing dots
+        domain = domain.strip().lstrip('.').rstrip('.')
 
         # Handle wildcard prefix (*.example.org -> example.org for suffix matching)
         if domain.startswith('*.'):
@@ -201,7 +210,8 @@ class PfSenseRedactor:
         # CRITICAL: Reject empty domains to prevent bypass vulnerability
         # Malformed entries like ".", "*.", or "*.*" would normalise to empty string
         # which could match ANY domain in suffix matching
-        if not domain_lower:
+        # Also reject domains with internal whitespace
+        if not domain_lower or ' ' in domain_lower:
             return None, None
 
         # Compute IDNA (punycode) form using cached function
@@ -389,7 +399,7 @@ class PfSenseRedactor:
         return self.ip_aliases[ip_str]
 
     def _mask_ip_like_tokens(self, text: str) -> str:
-        """Robust IP address masking using ipaddress module"""
+        """IP address masking using ipaddress module"""
         def repl(token: str) -> str:
             # Skip already-masked tokens
             if token in ('XXX.XXX.XXX.XXX', 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX', '[XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX]'):
@@ -405,15 +415,19 @@ class PfSenseRedactor:
                 m_port = re.match(r'^(.*?)(:\d{1,5})$', token)
                 if m_port:
                     potential_ip, potential_port = m_port.group(1), m_port.group(2)
-                    # Only treat as port if it's an IPv4 address (contains dots)
-                    # IPv6 addresses should not have ports stripped here (use brackets for IPv6:port)
+                    # Only treat as port if it's a valid IPv4 address
+                    # This prevents stripping ports from non-IP tokens like "foo.bar.baz:8080"
                     if '.' in potential_ip:
-                        token, port_suffix = potential_ip, potential_port
+                        try:
+                            ipaddress.ip_address(potential_ip)
+                            token, port_suffix = potential_ip, potential_port
+                        except ValueError:
+                            pass  # Not a valid IP, don't strip port
 
             # Handle bracketed IPv6 with optional zone identifier and port: [fe80::1%em0]:51820
             # This handles: [IPv6], [IPv6%zone], [IPv6]:port, [IPv6%zone]:port
             if token.startswith('['):
-                # More robust pattern matching for bracketed IPv6 with port
+                # Pattern match for bracketed IPv6 with port
                 if ']:' in token:
                     # Extract port from bracketed IPv6
                     bracket_end = token.index(']:')
@@ -558,7 +572,10 @@ class PfSenseRedactor:
         """Build netloc with userinfo, host, and port"""
         userinfo = ''
         if parts.username:
-            userinfo = parts.username
+            if self.redact_url_usernames:
+                userinfo = 'REDACTED'
+            else:
+                userinfo = parts.username
             if parts.password:
                 userinfo += ':REDACTED'
             userinfo += '@'
@@ -618,10 +635,95 @@ class PfSenseRedactor:
 
         return result
 
+    def _redact_urls_safe(self, text: str) -> str:
+        """Redact URLs with ReDoS protection via length pre-filtering"""
+        # Split on whitespace to get URL candidates
+        tokens = text.split()
+        result_tokens = []
+        
+        for token in tokens:
+            # Pre-filter: Skip obviously too-long strings before regex
+            if len(token) > self.MAX_URL_LENGTH:
+                # Too long to be legitimate URL, skip regex entirely
+                result_tokens.append(token)
+                continue
+            
+            # Safe to run regex on reasonable-length strings
+            result_tokens.append(
+                self.URL_RE.sub(lambda m: self._mask_url(m.group(0)), token)
+            )
+        
+        return ' '.join(result_tokens)
+
+    def _redact_emails_safe(self, text: str) -> str:
+        """Redact emails with ReDoS protection via length pre-filtering"""
+        def email_mask_safe(match):
+            email = match.group(0)
+            # Double-check length (defence in depth)
+            if len(email) > self.MAX_EMAIL_LENGTH:
+                return email  # Don't process suspiciously long "emails"
+            
+            self.stats['emails_redacted'] += 1
+            if self.anonymise:
+                domain = email.split('@')[1]
+                token = self._anonymise_domain(domain)
+                return f'user@{token}'
+            return 'user@example.com'
+        
+        # Split text into tokens and only process reasonable-length ones
+        tokens = text.split()
+        result_tokens = []
+        
+        for token in tokens:
+            if len(token) > self.MAX_EMAIL_LENGTH:
+                # Too long, skip regex
+                result_tokens.append(token)
+            else:
+                # Safe to run regex
+                result_tokens.append(self.EMAIL_RE.sub(email_mask_safe, token))
+        
+        return ' '.join(result_tokens)
+
+    def _redact_fqdns_safe(self, text: str) -> str:
+        """Redact FQDNs with ReDoS protection via length pre-filtering"""
+        def fqdn_mask_safe(match):
+            domain = match.group(0)
+            # Double-check length
+            if len(domain) > self.MAX_FQDN_LENGTH:
+                return domain  # Don't process suspiciously long "domains"
+            
+            if self._is_domain_allowed(domain):
+                return domain
+            
+            replacement = self._anonymise_domain(domain) if self.anonymise else 'example.com'
+            if replacement != domain:
+                self.stats['domains_redacted'] += 1
+                self._add_sample('FQDN', domain, replacement)
+            return replacement
+        
+        # Split and pre-filter
+        tokens = text.split()
+        result_tokens = []
+        
+        for token in tokens:
+            if len(token) > self.MAX_FQDN_LENGTH:
+                result_tokens.append(token)
+            else:
+                result_tokens.append(self.FQDN_RE.sub(fqdn_mask_safe, token))
+        
+        return ' '.join(result_tokens)
+
     def redact_text(self, text: str, redact_ips: bool = True, redact_domains: bool = True) -> str:
         """Redact sensitive patterns from text"""
         if not text:
             return text
+
+        # ReDoS protection - reject absurdly long text chunks
+        if len(text) > self.MAX_TEXT_CHUNK:
+            # Log warning and truncate
+            print(f"[!] Warning: Text chunk too long ({len(text)} chars), truncating",
+                  file=sys.stderr)
+            text = text[:self.MAX_TEXT_CHUNK]
 
         result = text
 
@@ -644,24 +746,15 @@ class PfSenseRedactor:
         if redact_domains:
             # Redact URLs FIRST before bare IPs (to preserve URL structure)
             # Note: _mask_url now handles its own counting
-            result = self.URL_RE.sub(lambda m: self._mask_url(m.group(0)), result)
+            result = self._redact_urls_safe(result)
 
         # Redact IP addresses (robust) - done after URLs to avoid breaking URL structure
         if redact_ips:
             result = self._mask_ip_like_tokens(result)
 
         if redact_domains:
-
-            # Redact emails
-            def email_mask(m):
-                self.stats['emails_redacted'] += 1
-                if self.anonymise:
-                    email = m.group(0)
-                    domain = email.split('@')[1]
-                    token = self._anonymise_domain(domain)
-                    return f'user@{token}'
-                return 'user@example.com'
-            result = self.EMAIL_RE.sub(email_mask, result)
+            # Redact emails with ReDoS protection
+            result = self._redact_emails_safe(result)
 
             # Protect IPv4 mask and Cisco MAC format before FQDN pass
             # (prevent XXX.XXX.XXX.XXX → example.com and XXXX.XXXX.XXXX → example.com)
@@ -670,21 +763,8 @@ class PfSenseRedactor:
             result = result.replace('XXX.XXX.XXX.XXX', ipv4_mask_placeholder)
             result = result.replace('XXXX.XXXX.XXXX', cisco_mac_placeholder)
 
-            # Redact remaining bare FQDNs
-            def fqdn_mask(m):
-                domain = m.group(0)
-                # Preserve allow-listed domains (with suffix and IDNA matching)
-                if self._is_domain_allowed(domain):
-                    return domain
-                # Otherwise redact and count
-                replacement = self._anonymise_domain(domain) if self.anonymise else 'example.com'
-                # Only count if actually changed
-                if replacement != domain:
-                    self.stats['domains_redacted'] += 1
-                    # Collect sample for dry-run-verbose
-                    self._add_sample('FQDN', domain, replacement)
-                return replacement
-            result = self.FQDN_RE.sub(fqdn_mask, result)
+            # Redact remaining bare FQDNs with ReDoS protection
+            result = self._redact_fqdns_safe(result)
 
             # Restore IPv4 mask and Cisco MAC format
             result = result.replace(ipv4_mask_placeholder, 'XXX.XXX.XXX.XXX')
@@ -1156,6 +1236,8 @@ CDATA sections are not preserved.
                         help='Do not load default allow-list files (.pfsense-allowlist in current directory or ~/.pfsense-allowlist)')
     parser.add_argument('--dry-run-verbose', action='store_true',
                         help='Like --dry-run, but also show examples of what would be redacted')
+    parser.add_argument('--redact-url-usernames', action='store_true',
+                        help='Redact usernames in URLs (e.g., ftp://user@host becomes ftp://REDACTED@host). By default, usernames are preserved while passwords are always redacted.')
 
     args = parser.parse_args()
 
@@ -1258,7 +1340,8 @@ CDATA sections are not preserved.
         allowlist_ips=allowlist_ips,
         allowlist_domains=allowlist_domains,
         allowlist_networks=allowlist_networks,
-        dry_run_verbose=args.dry_run_verbose
+        dry_run_verbose=args.dry_run_verbose,
+        redact_url_usernames=args.redact_url_usernames
     )
 
     success = redactor.redact_config(
