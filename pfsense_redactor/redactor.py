@@ -126,7 +126,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         # Allow-lists (opt-in, empty by default)
         # IP allow-lists: support both individual IPs and CIDR networks
-        self.allowlist_ip_addrs: set[ipaddress.IPv4Address | ipaddress.IPv6Address] = set()
+        self.allowlist_ip_addrs: set[IPAddress] = set()
         if allowlist_ips:
             for ip_str in allowlist_ips:
                 try:
