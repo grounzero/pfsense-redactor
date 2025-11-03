@@ -490,6 +490,68 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             self.ip_aliases[ip_str] = f"IP_{self.ip_counter}"
         return self.ip_aliases[ip_str]
 
+    def _counter_to_rfc_ip(self, counter: int, is_ipv6: bool) -> str:
+        """Convert counter to RFC documentation IP address
+
+        Maps counter values to sequential IPs within RFC documentation ranges:
+        - IPv4: RFC 5737 ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
+        - IPv6: RFC 3849 range (2001:db8::/32)
+
+        Args:
+            counter: The IP counter value (1-based)
+            is_ipv6: True for IPv6, False for IPv4
+
+        Returns:
+            str: RFC documentation IP address
+        """
+        if is_ipv6:
+            # RFC 3849: 2001:db8::/32
+            # Use counter to generate addresses like 2001:db8::1, 2001:db8::2, etc.
+            # For larger counters, spread across the /32 range
+            return f"2001:db8::{counter:x}"
+
+        # RFC 5737 IPv4 documentation ranges (768 total addresses):
+        # - 192.0.2.0/24 (TEST-NET-1): 254 usable
+        # - 198.51.100.0/24 (TEST-NET-2): 254 usable
+        # - 203.0.113.0/24 (TEST-NET-3): 254 usable
+        # Skip .0 and .255 in each range (network/broadcast)
+
+        if counter <= 254:
+            # First range: 192.0.2.1 to 192.0.2.254
+            return f"192.0.2.{counter}"
+        if counter <= 508:
+            # Second range: 198.51.100.1 to 198.51.100.254
+            return f"198.51.100.{counter - 254}"
+        if counter <= 762:
+            # Third range: 203.0.113.1 to 203.0.113.254
+            return f"203.0.113.{counter - 508}"
+        # Wrap around if we exceed available addresses
+        # This is unlikely in practice but provides graceful handling
+        wrapped = ((counter - 1) % 762) + 1
+        return self._counter_to_rfc_ip(wrapped, False)
+
+    def _anonymise_ip_for_url(self, ip_str: str, is_ipv6: bool) -> str:
+        """Generate RFC documentation IP for URL contexts
+
+        Unlike _anonymise_ip which returns IP_n format for bare text,
+        this returns valid RFC documentation IPs suitable for URL hosts.
+
+        Args:
+            ip_str: The original IP address string
+            is_ipv6: True if this is an IPv6 address
+
+        Returns:
+            str: RFC documentation IP address
+        """
+        # Reuse the same counter as _anonymise_ip for consistency
+        if ip_str not in self.ip_aliases:
+            self.ip_counter += 1
+            self.ip_aliases[ip_str] = f"IP_{self.ip_counter}"
+
+        # Extract counter from the alias (e.g., "IP_5" -> 5)
+        counter = self.ip_counter
+        return self._counter_to_rfc_ip(counter, is_ipv6)
+
     def _mask_ip_like_tokens(self, text: str) -> str:
         """IP address masking using ipaddress module"""
         def repl(token: str) -> str:
@@ -645,7 +707,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         # Mask the IP
         if self.anonymise:
-            masked = self._anonymise_ip(str(ip))
+            # Use RFC documentation IPs for URL hosts (parseable)
+            masked = self._anonymise_ip_for_url(str(ip), is_ipv6)
         else:
             masked = 'example.com' if ip.version == 4 else 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX'
 
