@@ -251,15 +251,15 @@ class TestPrintStatsDefaultdictFix:
         stream = io.StringIO()
         handler = logging.StreamHandler(stream)
         handler.setLevel(logging.DEBUG)
-        
+
         # Clear existing handlers and add our test handler
         redactor.logger.handlers.clear()
         redactor.logger.addHandler(handler)
         redactor.logger.setLevel(logging.DEBUG)
-        
+
         redactor._print_stats()
         result = stream.getvalue()
-        
+
         # Clean up
         redactor.logger.removeHandler(handler)
 
@@ -279,15 +279,15 @@ class TestPrintStatsDefaultdictFix:
         stream = io.StringIO()
         handler = logging.StreamHandler(stream)
         handler.setLevel(logging.DEBUG)
-        
+
         # Clear existing handlers and add our test handler
         redactor.logger.handlers.clear()
         redactor.logger.addHandler(handler)
         redactor.logger.setLevel(logging.DEBUG)
-        
+
         redactor._print_stats()
         result = stream.getvalue()
-        
+
         # Clean up
         redactor.logger.removeHandler(handler)
 
