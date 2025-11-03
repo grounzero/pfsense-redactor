@@ -15,6 +15,7 @@ if sys.version_info < (3, 9):
 
 __version__ = "1.0.6"
 
-from .redactor import PfSenseRedactor, main, parse_allowlist_file  # noqa: E402
+# pylint: disable=wrong-import-position
+from .redactor import PfSenseRedactor, main, parse_allowlist_file
 
 __all__ = ["PfSenseRedactor", "main", "parse_allowlist_file"]

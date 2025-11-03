@@ -862,12 +862,11 @@ class PfSenseRedactor:
         except (ImportError, AttributeError):
             # Fallback: try to get version from pyproject.toml or use unknown
             try:
-                from pathlib import Path
-                import re as version_re
-                pyproject = Path(__file__).parent.parent / "pyproject.toml"
-                if pyproject.exists():
-                    content = pyproject.read_text(encoding='utf-8')
-                    match = version_re.search(r'version\s*=\s*["\']([^"\']+)["\']', content)
+                # pylint: disable=import-outside-toplevel,reimported,redefined-outer-name
+                pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+                if pyproject_path.exists():
+                    content = pyproject_path.read_text(encoding='utf-8')
+                    match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', content)
                     version = match.group(1) if match else "unknown"
                 else:
                     version = "unknown"
