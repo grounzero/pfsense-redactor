@@ -57,7 +57,8 @@ class TestReDoSProtection:
         text = "Visit https://firmware.netgate.com for updates"
         result = redactor.redact_text(text, redact_domains=True)
 
-        assert "example.com" in result or "domain" in result.lower()
+        # Verify URL was redacted (not URL sanitization - this is a redaction tool test)
+        assert result == "Visit https://example.com for updates"
         assert "netgate.com" not in result
 
     def test_legitimate_emails_still_work(self):
@@ -67,7 +68,8 @@ class TestReDoSProtection:
         text = "Contact admin@example.org for help"
         result = redactor.redact_text(text, redact_domains=True)
 
-        assert "user@example.com" in result
+        # Verify email was redacted (not URL sanitization - this is a redaction tool test)
+        assert result == "Contact user@example.com for help"
         assert "admin@example.org" not in result
 
     def test_legitimate_fqdns_still_work(self):
