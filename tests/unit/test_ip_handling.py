@@ -118,7 +118,7 @@ class TestPortStrippingSecurity:
             ("some.thing:9999", "XXX.XXX.XXX.XXX:9999"),       # Should NOT become this
             ("999.999.999.999:80", "XXX.XXX.XXX.XXX:80"),      # Should NOT become this
         ]
-        
+
         for text, should_not_be in test_cases:
             result = basic_redactor.redact_text(text)
             # The key assertion: should NOT be treated as IP:port
@@ -139,7 +139,7 @@ class TestPortStrippingSecurity:
             ("10.0.0.1:443", "XXX.XXX.XXX.XXX:443"),
             ("172.16.0.1:22", "XXX.XXX.XXX.XXX:22"),
         ]
-        
+
         for text, expected in test_cases:
             result = basic_redactor.redact_text(text)
             assert expected in result, f"'{text}' should become '{expected}'"
