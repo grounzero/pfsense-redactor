@@ -6,6 +6,7 @@ Tests for URL masking, reconstruction, and IPv6 URL handling
 """
 
 import pytest
+from urllib.parse import urlparse
 
 
 class TestNormaliseMaskedURLAnonymise:
@@ -158,7 +159,7 @@ class TestNonHTTPProtocolURLs:
 
         # Should mask the hostname
         assert "fileserver.local" not in result
-        assert "example.com" in result
+        assert urlparse(result).hostname == "example.com"
         assert "file://" in result
 
     def test_nfs_url_without_hostname_preserved(self, basic_redactor):
