@@ -1079,7 +1079,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
     def _print_stats(self) -> None:
         """Print redaction statistics using logger"""
-        self.logger.info("\n[+] Redaction summary:")
+        self.logger.info("")
+        self.logger.info("[+] Redaction summary:")
         if self.stats['secrets_redacted']:
             self.logger.info("    - Passwords/keys/secrets: %d", self.stats['secrets_redacted'])
         if self.stats['certs_redacted']:
@@ -1096,13 +1097,15 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             self.logger.info("    - URLs: %d", self.stats['urls_redacted'])
 
         if self.anonymise:
-            self.logger.info("\n[+] Anonymisation stats:")
+            self.logger.info("")
+            self.logger.info("[+] Anonymisation stats:")
             self.logger.info("    - Unique IPs anonymised: %d", len(self.ip_aliases))
             self.logger.info("    - Unique domains anonymised: %d", len(self.domain_aliases))
 
         # Print samples if in dry-run-verbose mode
         if self.dry_run_verbose:
-            self.logger.info("\n[+] Samples of changes (limit N=%d):", self.sample_limit)
+            self.logger.info("")
+            self.logger.info("[+] Samples of changes (limit N=%d):", self.sample_limit)
             has_any = any(self.samples.get(cat) for cat in ['IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key'])
             if has_any:
                 # Print in consistent order
