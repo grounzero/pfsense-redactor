@@ -13,11 +13,12 @@ import functools
 from pathlib import Path
 from collections import defaultdict
 from collections.abc import Callable
+from typing import TypeAlias
 from urllib.parse import urlsplit, urlunsplit, SplitResult
 
 # Type aliases for clarity
-IPAddress = "ipaddress.IPv4Address | ipaddress.IPv6Address"
-IPNetwork = "ipaddress.IPv4Network | ipaddress.IPv6Network"
+IPAddress: TypeAlias = ipaddress.IPv4Address | ipaddress.IPv6Address
+IPNetwork: TypeAlias = ipaddress.IPv4Network | ipaddress.IPv6Network
 
 # Module-level constants (immutable for safety)
 ALWAYS_PRESERVE_IPS: frozenset[str] = frozenset({

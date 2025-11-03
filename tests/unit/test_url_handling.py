@@ -142,7 +142,6 @@ class TestNonHTTPProtocolURLs:
 
         # file:// URLs without hostnames should be preserved exactly
         assert result == url
-        assert "example.com" not in result
 
     def test_file_url_windows_path_preserved(self, basic_redactor):
         """Verify that file:// URLs with Windows paths are preserved"""
@@ -151,7 +150,6 @@ class TestNonHTTPProtocolURLs:
 
         # Should be preserved exactly, not transformed to network path
         assert result == url
-        assert "example.com" not in result
 
     def test_file_url_with_hostname_redacted(self, basic_redactor):
         """Verify that file:// URLs with actual hostnames are redacted"""
@@ -170,7 +168,6 @@ class TestNonHTTPProtocolURLs:
 
         # Should be preserved unchanged
         assert result == url
-        assert "example.com" not in result
 
     def test_smb_url_without_hostname_preserved(self, basic_redactor):
         """Verify that SMB URLs without hostnames are preserved"""
@@ -179,7 +176,6 @@ class TestNonHTTPProtocolURLs:
 
         # Should be preserved unchanged
         assert result == url
-        assert "example.com" not in result
 
     def test_smb_url_with_credentials_redacted(self, basic_redactor):
         """Verify that SMB URLs with credentials are properly redacted"""
