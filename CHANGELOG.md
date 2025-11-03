@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7][] - 2025-11-03
+
+### Security
+- **CRITICAL FIX**: Fixed whitespace domain handling vulnerability in allowlist validation
+  - Added `.strip()` to prevent allowlist bypass with whitespace-only domains (e.g., `"   "`)
+  - Whitespace-only domains could previously match ANY domain in suffix matching
+  - Added validation to reject domains with internal whitespace
+  - Added 6 comprehensive tests in `TestDomainNormalisationSecurity`
+- **MEDIUM FIX**: Fixed port stripping logic to validate IPv4 addresses
+  - Now validates IP addresses using `ipaddress.ip_address()` before stripping ports
+  - Prevents incorrect port stripping from non-IP tokens like `foo.bar.baz:8080`
+  - Previously only checked for presence of dots, not valid IP format
+  - Added 4 tests in `TestPortStrippingSecurity`
+
+### Fixed
+- **CRITICAL FIX**: Fixed whitespace corruption in URL/email/FQDN redaction
+  - `_redact_urls_safe`, `_redact_emails_safe`, and `_redact_fqdns_safe` were using `text.split()` and `' '.join()`
+  - This collapsed all whitespace (including newlines) into single spaces, corrupting XML text content
+  - Now uses `re.sub()` with callbacks to preserve original whitespace structure
+  - Maintains ReDoS protection via length pre-filtering in the callback functions
+
+### Added
+- New `--redact-url-usernames` CLI flag for enhanced URL credential redaction
+  - Allows redacting sensitive usernames (e.g., `admin`, `root`) in URLs
+  - Default behaviour: preserve usernames, always redact passwords (`ftp://user:REDACTED@host`)
+  - With flag: redact both (`ftp://REDACTED:REDACTED@host`)
+  - Added 7 tests in `TestURLUsernameRedaction`
+
+### Changed
+- Domain normalisation now strips whitespace before processing dots
+- Port stripping now requires valid IPv4 address validation
+- URL/email/FQDN redaction now uses `re.sub()` instead of tokenization to preserve whitespace
+
 ## [1.0.6][] - 2025-11-02
 
 ### Security
@@ -135,6 +168,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.0.7]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.7
 [1.0.6]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.6
 [1.0.5]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.5
 [1.0.4]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.4

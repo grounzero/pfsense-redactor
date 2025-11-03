@@ -209,5 +209,107 @@ class TestNonHTTPProtocolURLs:
         assert "sftp://" in result
 
 
+class TestURLUsernameRedaction:
+    """Test URL username redaction feature"""
+
+    def test_username_preserved_by_default(self, basic_redactor):
+        """Verify that usernames are preserved by default"""
+        url = "ftp://admin:password@ftp.example.com/files"
+        result = basic_redactor._mask_url(url)
+        
+        # Username should be preserved
+        assert "admin" in result
+        # Password should be redacted
+        assert "password" not in result
+        assert "REDACTED" in result
+
+    def test_username_redacted_with_flag(self, redactor_factory):
+        """Verify that usernames are redacted when flag is set"""
+        redactor = redactor_factory(redact_url_usernames=True)
+        url = "ftp://admin:password@ftp.example.com/files"
+        result = redactor._mask_url(url)
+        
+        # Username should be redacted
+        assert "admin" not in result
+        # Should have REDACTED for both username and password
+        assert "REDACTED" in result
+        # Should have the pattern REDACTED:REDACTED@
+        assert "REDACTED:REDACTED@" in result
+
+    def test_username_only_url_preserved_by_default(self, basic_redactor):
+        """Verify that username-only URLs preserve username by default"""
+        url = "ftp://anonymous@ftp.example.com/pub"
+        result = basic_redactor._mask_url(url)
+        
+        # Username should be preserved (no password)
+        assert "anonymous" in result
+        assert "REDACTED" not in result
+
+    def test_username_only_url_redacted_with_flag(self, redactor_factory):
+        """Verify that username-only URLs redact username with flag"""
+        redactor = redactor_factory(redact_url_usernames=True)
+        url = "ftp://anonymous@ftp.example.com/pub"
+        result = redactor._mask_url(url)
+        
+        # Username should be redacted
+        assert "anonymous" not in result
+        assert "REDACTED@" in result
+        # Should not have :REDACTED since there's no password
+        assert ":REDACTED" not in result
+
+    def test_multiple_urls_with_different_usernames(self, redactor_factory):
+        """Verify that multiple URLs with different usernames are handled correctly"""
+        redactor = redactor_factory(redact_url_usernames=True)
+        
+        text = """
+        ftp://admin:pass1@server1.com/data
+        ftp://backup:pass2@server2.com/files
+        ftp://guest@server3.com/public
+        """
+        result = redactor.redact_text(text)
+        
+        # All usernames should be redacted
+        assert "admin" not in result
+        assert "backup" not in result
+        assert "guest" not in result
+        # All passwords should be redacted
+        assert "pass1" not in result
+        assert "pass2" not in result
+
+    def test_sensitive_usernames_redacted(self, redactor_factory):
+        """Verify that sensitive usernames like 'root' and 'admin' can be redacted"""
+        redactor = redactor_factory(redact_url_usernames=True)
+        
+        test_cases = [
+            "ssh://root:toor@server.local",
+            "ftp://admin:admin@router.local",
+            "telnet://administrator:pass@switch.local",
+        ]
+        
+        for url in test_cases:
+            result = redactor._mask_url(url)
+            # Usernames should be redacted
+            assert "root" not in result
+            assert "admin" not in result
+            assert "administrator" not in result
+            assert "REDACTED" in result
+
+    def test_http_basic_auth_username_handling(self, redactor_factory):
+        """Verify that HTTP basic auth usernames are handled correctly"""
+        # Without flag - preserve username
+        redactor_preserve = redactor_factory(redact_url_usernames=False)
+        url = "https://apiuser:apikey@api.example.com/v1/data"
+        result = redactor_preserve._mask_url(url)
+        assert "apiuser" in result
+        assert "apikey" not in result
+        
+        # With flag - redact username
+        redactor_redact = redactor_factory(redact_url_usernames=True)
+        result = redactor_redact._mask_url(url)
+        assert "apiuser" not in result
+        assert "apikey" not in result
+        assert "REDACTED:REDACTED@" in result
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
