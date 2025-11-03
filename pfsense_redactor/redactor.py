@@ -9,11 +9,13 @@ import argparse
 import re
 import sys
 import ipaddress
+import functools
 from pathlib import Path
 from collections import defaultdict
+from collections.abc import Callable
 from urllib.parse import urlsplit, urlunsplit, SplitResult
 
-# Type aliases for clarity
+# Type aliases for clarity (using string annotations for Python 3.9 compatibility)
 IPAddress = "ipaddress.IPv4Address | ipaddress.IPv6Address"
 IPNetwork = "ipaddress.IPv4Network | ipaddress.IPv6Network"
 
@@ -62,6 +64,22 @@ SENSITIVE_ATTR_TOKENS: tuple[str, ...] = (
     'password', 'passwd', 'pass', 'key', 'secret', 'token', 'bearer',
     'cookie', 'client_secret', 'client-key', 'api_key', 'apikey', 'auth', 'signature'
 )
+
+
+@functools.lru_cache(maxsize=256)
+def _idna_encode(domain: str) -> str:
+    """Cache IDNA encoding for performance (domains are often repeated)
+    
+    Args:
+        domain: Domain name to encode
+        
+    Returns:
+        IDNA-encoded (punycode) ASCII string, or original if encoding fails
+    """
+    try:
+        return domain.encode('idna').decode('ascii')
+    except Exception:
+        return domain
 
 
 class PfSenseRedactor:
@@ -143,8 +161,12 @@ class PfSenseRedactor:
 
         # Domain/email/URL patterns
         # ReDoS mitigation: limit repetitions to prevent catastrophic backtracking
-        self.EMAIL_RE = re.compile(r'(?<!:)\b[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.){1,10}[A-Za-z]{2,}\b')
-        self.URL_RE = re.compile(r'\bhttps?://[^\s<>"\']+\b')
+        # RFC 5322 local-part chars: alphanumeric + ._%+- and !#$&'*/=?^`{|}~
+        # Note: Backslash and quotes require special handling (not included for simplicity)
+        self.EMAIL_RE = re.compile(r"(?<!:)\b[A-Za-z0-9._%+\-!#$&'*/=?^`{|}~]+@(?:[A-Za-z0-9-]+\.){1,10}[A-Za-z]{2,}\b")
+        # URL pattern: matches common protocols (http, https, ftp, ftps, sftp, ssh, telnet, etc.)
+        # This ensures credentials in URLs like ftp://user:pass@host are properly redacted
+        self.URL_RE = re.compile(r'\b(?:https?|ftps?|sftp|ssh|telnet|file|smb|nfs)://[^\s<>"\']+\b')
         # FQDN pattern is intentionally broad for security (better to over-redact than under-redact)
         # Matches: label.label.tld where labels are alphanumeric with hyphens, TLD is 2+ letters
         # Note: This may match some non-domains (e.g., version numbers like 1.2.3a) but that's acceptable
@@ -182,11 +204,8 @@ class PfSenseRedactor:
         if not domain_lower:
             return None, None
 
-        # Compute IDNA (punycode) form
-        try:
-            domain_idna = domain_lower.encode('idna').decode('ascii')
-        except (UnicodeError, UnicodeDecodeError):
-            domain_idna = domain_lower
+        # Compute IDNA (punycode) form using cached function
+        domain_idna = _idna_encode(domain_lower)
 
         return domain_lower, domain_idna
 
@@ -197,11 +216,8 @@ class PfSenseRedactor:
 
         host_l = host.lower().rstrip('.')
 
-        # Compute IDNA form
-        try:
-            host_idna = host_l.encode('idna').decode('ascii')
-        except (UnicodeError, UnicodeDecodeError):
-            host_idna = host_l
+        # Compute IDNA form using cached function
+        host_idna = _idna_encode(host_l)
 
         # Check exact match or suffix match against Unicode forms
         for allow_domain in self.allowlist_domains:
@@ -324,7 +340,7 @@ class PfSenseRedactor:
         if not value:
             return value
 
-        maskers = {
+        maskers: dict[str, Callable[[str], str]] = {
             'IP': self._mask_ip_sample,
             'URL': self._mask_url_sample,
             'FQDN': self._mask_fqdn_sample,
@@ -463,11 +479,7 @@ class PfSenseRedactor:
         raw = domain.rstrip('.').lower()
 
         # Convert to IDNA (punycode) for consistent aliasing across Unicode/ASCII forms
-        try:
-            norm = raw.encode('idna').decode('ascii')
-        except Exception:
-            # If IDNA encoding fails, use the raw normalised form
-            norm = raw
+        norm = _idna_encode(raw)
 
         if norm not in self.domain_aliases:
             self.domain_counter += 1
@@ -583,6 +595,11 @@ class PfSenseRedactor:
             return url
 
         host = parts.hostname or ''
+
+        # Skip URLs without hostnames (e.g., file:///path, about:blank)
+        # These have no network location to redact and no credentials to leak
+        if not host:
+            return url
 
         # Check if already masked
         if self._is_already_masked_host(host):
@@ -834,6 +851,33 @@ class PfSenseRedactor:
         if self.aggressive:
             self._apply_aggressive_redaction(element, text_already_processed, redact_ips, redact_domains)
 
+    def _add_redaction_comment(self, root: ET.Element) -> None:
+        """Add a comment to the XML indicating it was redacted"""
+        # Import version from package
+        # Handle circular import gracefully - version may not be available during module init
+        try:
+            from . import __version__  # pylint: disable=import-outside-toplevel,cyclic-import
+            version = __version__
+        except (ImportError, AttributeError):
+            # Fallback: try to get version from pyproject.toml or use unknown
+            try:
+                # pylint: disable=import-outside-toplevel,reimported,redefined-outer-name
+                pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+                if pyproject_path.exists():
+                    content = pyproject_path.read_text(encoding='utf-8')
+                    match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', content)
+                    version = match.group(1) if match else "unknown"
+                else:
+                    version = "unknown"
+            except Exception:  # pylint: disable=broad-except
+                version = "unknown"
+
+        comment_text = f" Redacted using pfsense-redactor v{version} "
+        comment = ET.Comment(comment_text)
+
+        # Insert comment as first child of root
+        root.insert(0, comment)
+
     def redact_config(
         self,
         input_file: str,
@@ -873,6 +917,9 @@ class PfSenseRedactor:
                 print("[+] Dry run - no files modified")
                 self._print_stats()
                 return True
+
+            # Add redaction comment to the root element
+            self._add_redaction_comment(root)
 
             # Pretty print (Python 3.9+)
             ET.indent(tree, space="  ")

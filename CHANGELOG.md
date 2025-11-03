@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6][] - 2025-11-02
+
+### Security
+- **CRITICAL FIX**: Extended URL regex to handle non-HTTP protocols (FTP, FTPS, SFTP, SSH, Telnet, File, SMB, NFS)
+  - Previously only HTTP/HTTPS URLs were matched, allowing credentials in `ftp://user:pass@host` URLs to bypass redaction
+  - Credentials in non-HTTP URLs would have leaked through the bare FQDN redaction path
+  - All protocol URLs now properly redact passwords whilst preserving usernames and structure
+- **CRITICAL FIX**: URLs without hostnames (e.g., `file:///path`) are now preserved unchanged
+  - Previously `file:///path` would be incorrectly transformed to `file://example.com/path`
+  - This changed URL semantics from local filesystem to network file share
+  - Added early return in `_mask_url()` when `hostname` is `None` or empty
+- **ENHANCEMENT**: Expanded email regex to support RFC 5322 special characters
+  - Now matches emails with `!#$&'*/=?^`{|}~` in local part (e.g., `user!test@example.com`)
+  - Maintains ReDoS protection with limited repetitions
+  - Previous regex only matched `[A-Za-z0-9._%+-]`, missing many legal email addresses
+
+### Added
+- Module-level exports control via `__all__` (PfSenseRedactor, main, parse_allowlist_file)
+- Python 3.9+ version check at module import time with clear error message
+- Cached IDNA encoding using `@functools.lru_cache(maxsize=256)` for improved performance
+- Type hint for maskers dictionary: `dict[str, Callable[[str], str]]`
+- XML comment in output files: `<!-- Redacted using pfsense-redactor v1.0.6 -->`
+- 14 comprehensive tests for URL handling:
+  - 8 tests for non-HTTP protocol URL redaction
+  - 6 tests for hostnameless URL preservation
+
+### Changed
+- Updated version to 1.0.6 in both `__init__.py` and `pyproject.toml`
+- Updated all test reference files to include redaction comment
+
+
 ## [1.0.5][] - 2025-11-02
 
 ### Changed
@@ -104,6 +135,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.0.6]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.6
 [1.0.5]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.5
 [1.0.4]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.4
 [1.0.3]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.3
