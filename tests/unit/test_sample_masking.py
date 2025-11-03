@@ -4,6 +4,8 @@ Tests for specific fixes applied to pfsense-redactor.py
 These tests verify the correctness of targeted bug fixes and improvements.
 """
 
+import io
+import logging
 import pytest
 import subprocess
 from pathlib import Path
@@ -242,9 +244,6 @@ class TestPrintStatsDefaultdictFix:
 
     def test_empty_samples_prints_no_examples_collected(self, basic_redactor):
         """Verify that empty samples dict prints '(no examples collected)'"""
-        import io
-        import logging
-        import sys
         redactor = basic_redactor
         redactor.dry_run_verbose = True
 
@@ -270,9 +269,6 @@ class TestPrintStatsDefaultdictFix:
 
     def test_with_samples_does_not_print_no_examples(self, basic_redactor):
         """Verify that when samples exist, we don't print '(no examples collected)'"""
-        import io
-        import logging
-        import sys
         redactor = basic_redactor
         redactor.dry_run_verbose = True
 
