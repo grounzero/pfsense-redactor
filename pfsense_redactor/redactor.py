@@ -1002,8 +1002,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         redact_domains: bool = True,
         dry_run: bool = False,
         stdout_mode: bool = False,
-        inplace: bool = False,
-        stats_stderr: bool = False
+        inplace: bool = False
     ) -> bool:
         """Redact pfSense configuration file"""
         try:
@@ -1392,8 +1391,7 @@ CDATA sections are not preserved.
         redact_domains=not args.no_redact_domains,
         dry_run=args.dry_run,
         stdout_mode=args.stdout,
-        inplace=args.inplace,
-        stats_stderr=False  # No longer needed - logging handles routing
+        inplace=args.inplace
     )
 
     sys.exit(0 if success else 1)
