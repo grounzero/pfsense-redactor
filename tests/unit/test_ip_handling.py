@@ -105,5 +105,53 @@ class TestIPv6Handling:
         assert "[" in result and "]" in result
 
 
+class TestPortStrippingSecurity:
+    """Test port stripping security fix"""
+
+    def test_non_ip_with_port_not_stripped_as_ip(self, basic_redactor):
+        """Verify that port is not stripped from non-IP tokens (security fix)"""
+        # These should NOT have their ports stripped as if they were IPs
+        # The key test is that they don't become XXX.XXX.XXX.XXX:port
+        test_cases = [
+            ("foo.bar.baz:8080", "XXX.XXX.XXX.XXX:8080"),      # Should NOT become this
+            ("file.name.txt:123", "XXX.XXX.XXX.XXX:123"),      # Should NOT become this
+            ("some.thing:9999", "XXX.XXX.XXX.XXX:9999"),       # Should NOT become this
+            ("999.999.999.999:80", "XXX.XXX.XXX.XXX:80"),      # Should NOT become this
+        ]
+
+        for text, should_not_be in test_cases:
+            result = basic_redactor.redact_text(text)
+            # The key assertion: should NOT be treated as IP:port
+            assert should_not_be not in result, f"'{text}' should NOT become '{should_not_be}' (not a valid IP)"
+
+    def test_invalid_ip_with_port_not_treated_as_ip(self, basic_redactor):
+        """Verify that invalid IPs with ports are not treated as IP:port"""
+        # Invalid IP (only 3 octets) - should not be treated as IP
+        text = "1.2.3:8080"
+        result = basic_redactor.redact_text(text)
+        # Should NOT become XXX.XXX.XXX.XXX:8080
+        assert "XXX.XXX.XXX.XXX:8080" not in result
+
+    def test_valid_ipv4_with_port_stripped_correctly(self, basic_redactor):
+        """Verify that valid IPv4:port has port stripped correctly"""
+        test_cases = [
+            ("192.168.1.1:8080", "XXX.XXX.XXX.XXX:8080"),
+            ("10.0.0.1:443", "XXX.XXX.XXX.XXX:443"),
+            ("172.16.0.1:22", "XXX.XXX.XXX.XXX:22"),
+        ]
+
+        for text, expected in test_cases:
+            result = basic_redactor.redact_text(text)
+            assert expected in result, f"'{text}' should become '{expected}'"
+            assert text not in result
+
+    def test_ipv4_without_port_still_works(self, basic_redactor):
+        """Verify that plain IPv4 addresses still work correctly"""
+        text = "192.168.1.1"
+        result = basic_redactor.redact_text(text)
+        assert "XXX.XXX.XXX.XXX" in result
+        assert "192.168.1.1" not in result
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
