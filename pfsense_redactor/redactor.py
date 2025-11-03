@@ -139,9 +139,13 @@ IP_CONTAINING_ELEMENTS: frozenset[str] = frozenset({
     'mac',  # MAC addresses in <mac> tags
 })
 
-SENSITIVE_ATTR_TOKENS: tuple[str, ...] = (
-    'password', 'passwd', 'pass', 'key', 'secret', 'token', 'bearer',
-    'cookie', 'client_secret', 'client-key', 'api_key', 'apikey', 'auth', 'signature'
+# Compile regex for sensitive attribute matching (anchored patterns to avoid false positives)
+# Use word boundaries (\b) to match whole words or common separators (-, _)
+SENSITIVE_ATTR_PATTERN = re.compile(
+    r'\b(?:password|passwd|pass|key|secret|token|bearer|cookie|'
+    r'client[_-]?secret|client[_-]?key|api[_-]?key|apikey|'
+    r'auth(?:_key|_token|entication)?|signature)\b',
+    re.IGNORECASE
 )
 
 
@@ -924,9 +928,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         return False
 
     def _redact_sensitive_attributes(self, element: ET.Element) -> None:
-        """Redact attributes with sensitive names"""
+        """Redact attributes with sensitive names using anchored regex patterns"""
         for attr in list(element.attrib.keys()):
-            if any(token in attr.lower() for token in SENSITIVE_ATTR_TOKENS):
+            if SENSITIVE_ATTR_PATTERN.search(attr):
                 original = element.attrib[attr]
                 element.attrib[attr] = '[REDACTED]'
                 self.stats['secrets_redacted'] += 1

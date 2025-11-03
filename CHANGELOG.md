@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Prevents incorrect port stripping from non-IP tokens like `foo.bar.baz:8080`
   - Previously only checked for presence of dots, not valid IP format
   - Added 4 tests in `TestPortStrippingSecurity`
+- **MEDIUM FIX**: Fixed overly broad sensitive attribute matching
+  - Replaced substring matching with anchored regex patterns using word boundaries (`\b`)
+  - Previously `'pass'` matched `compass_heading`, `'auth'` matched `author`, etc.
+  - Now uses precise pattern: `\b(?:password|passwd|pass|key|secret|...)\b`
+  - Prevents false positives whilst maintaining security for genuine sensitive attributes
+  - Added 16 comprehensive tests in `TestSensitiveAttributeAnchoring`
 
 ### Added
 - New `--quiet` / `-q` flag: Suppress progress messages (show only warnings and errors)
