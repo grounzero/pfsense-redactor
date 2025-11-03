@@ -79,8 +79,9 @@ def _idna_encode(domain: str) -> str:
     """
     try:
         return domain.encode('idna').decode('ascii')
-    except (UnicodeError, UnicodeDecodeError, UnicodeEncodeError):
+    except UnicodeError:
         # IDNA encoding failed (malformed domain or unsupported characters)
+        # UnicodeError catches both UnicodeDecodeError and UnicodeEncodeError
         return domain
 
 
