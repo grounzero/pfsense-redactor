@@ -16,6 +16,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Previously `file:///path` would be incorrectly transformed to `file://example.com/path`
   - This changed URL semantics from local filesystem to network file share
   - Added early return in `_mask_url()` when `hostname` is `None` or empty
+- **ENHANCEMENT**: Expanded email regex to support RFC 5322 special characters
+  - Now matches emails with `!#$&'*/=?^`{|}~` in local part (e.g., `user!test@example.com`)
+  - Maintains ReDoS protection with limited repetitions
+  - Previous regex only matched `[A-Za-z0-9._%+-]`, missing many legal email addresses
 
 ### Added
 - Module-level exports control via `__all__` (PfSenseRedactor, main, parse_allowlist_file)

@@ -161,7 +161,9 @@ class PfSenseRedactor:
 
         # Domain/email/URL patterns
         # ReDoS mitigation: limit repetitions to prevent catastrophic backtracking
-        self.EMAIL_RE = re.compile(r'(?<!:)\b[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\.){1,10}[A-Za-z]{2,}\b')
+        # RFC 5322 local-part chars: alphanumeric + ._%+- and !#$&'*/=?^`{|}~
+        # Note: Backslash and quotes require special handling (not included for simplicity)
+        self.EMAIL_RE = re.compile(r"(?<!:)\b[A-Za-z0-9._%+\-!#$&'*/=?^`{|}~]+@(?:[A-Za-z0-9-]+\.){1,10}[A-Za-z]{2,}\b")
         # URL pattern: matches common protocols (http, https, ftp, ftps, sftp, ssh, telnet, etc.)
         # This ensures credentials in URLs like ftp://user:pass@host are properly redacted
         self.URL_RE = re.compile(r'\b(?:https?|ftps?|sftp|ssh|telnet|file|smb|nfs)://[^\s<>"\']+\b')
@@ -852,15 +854,28 @@ class PfSenseRedactor:
     def _add_redaction_comment(self, root: ET.Element) -> None:
         """Add a comment to the XML indicating it was redacted"""
         # Import version from package
+        # Handle circular import gracefully - version may not be available during module init
         try:
-            from . import __version__
+            from . import __version__  # pylint: disable=import-outside-toplevel,cyclic-import
             version = __version__
-        except ImportError:
-            version = "unknown"
-        
+        except (ImportError, AttributeError):
+            # Fallback: try to get version from pyproject.toml or use unknown
+            try:
+                from pathlib import Path
+                import re as version_re
+                pyproject = Path(__file__).parent.parent / "pyproject.toml"
+                if pyproject.exists():
+                    content = pyproject.read_text(encoding='utf-8')
+                    match = version_re.search(r'version\s*=\s*["\']([^"\']+)["\']', content)
+                    version = match.group(1) if match else "unknown"
+                else:
+                    version = "unknown"
+            except Exception:  # pylint: disable=broad-except
+                version = "unknown"
+
         comment_text = f" Redacted using pfsense-redactor v{version} "
         comment = ET.Comment(comment_text)
-        
+
         # Insert comment as first child of root
         root.insert(0, comment)
 

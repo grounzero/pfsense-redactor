@@ -13,7 +13,8 @@ if sys.version_info < (3, 9):
         f"You are using Python {sys.version_info.major}.{sys.version_info.minor}."
     )
 
-from .redactor import PfSenseRedactor, main, parse_allowlist_file
-
 __version__ = "1.0.6"
+
+from .redactor import PfSenseRedactor, main, parse_allowlist_file  # noqa: E402
+
 __all__ = ["PfSenseRedactor", "main", "parse_allowlist_file"]
