@@ -84,8 +84,13 @@ def _idna_encode(domain: str) -> str:
         return domain
 
 
-class PfSenseRedactor:
-    """pfSense configuration redactor for sensitive data handling"""
+class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
+    """pfSense configuration redactor for sensitive data handling
+    
+    Note: This class intentionally has many instance attributes to maintain
+    clear separation of concerns and avoid premature optimization. The attributes
+    are logically grouped and well-documented.
+    """
 
     # Class constants for magic numbers
     SAMPLE_LIMIT: int = 5  # Maximum number of samples to collect per category
@@ -111,7 +116,7 @@ class PfSenseRedactor:
         self.fail_on_warn = fail_on_warn
         self.dry_run_verbose = dry_run_verbose
         self.redact_url_usernames = redact_url_usernames
-        
+
         # ReDoS protection constants (instance attributes for easy access)
         self.MAX_URL_LENGTH: int = 2048  # RFC 2616 suggests 2048 as reasonable max
         self.MAX_EMAIL_LENGTH: int = 320  # RFC 5321: 64 (local) + @ + 255 (domain)
@@ -644,7 +649,7 @@ class PfSenseRedactor:
             if len(url) > self.MAX_URL_LENGTH:
                 return url  # Too long, don't process
             return self._mask_url(url)
-        
+
         # Use re.sub directly to preserve whitespace
         return self.URL_RE.sub(url_replacer, text)
 
@@ -655,14 +660,14 @@ class PfSenseRedactor:
             # Pre-filter: Skip obviously too-long emails
             if len(email) > self.MAX_EMAIL_LENGTH:
                 return email  # Don't process suspiciously long "emails"
-            
+
             self.stats['emails_redacted'] += 1
             if self.anonymise:
                 domain = email.split('@')[1]
                 token = self._anonymise_domain(domain)
                 return f'user@{token}'
             return 'user@example.com'
-        
+
         # Use re.sub directly to preserve whitespace
         return self.EMAIL_RE.sub(email_mask_safe, text)
 
@@ -673,16 +678,16 @@ class PfSenseRedactor:
             # Pre-filter: Skip obviously too-long domains
             if len(domain) > self.MAX_FQDN_LENGTH:
                 return domain  # Don't process suspiciously long "domains"
-            
+
             if self._is_domain_allowed(domain):
                 return domain
-            
+
             replacement = self._anonymise_domain(domain) if self.anonymise else 'example.com'
             if replacement != domain:
                 self.stats['domains_redacted'] += 1
                 self._add_sample('FQDN', domain, replacement)
             return replacement
-        
+
         # Use re.sub directly to preserve whitespace
         return self.FQDN_RE.sub(fqdn_mask_safe, text)
 
