@@ -16,8 +16,8 @@ from collections.abc import Callable
 from urllib.parse import urlsplit, urlunsplit, SplitResult
 
 # Type aliases for clarity (using string annotations for Python 3.9 compatibility)
-IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
-IPNetwork = ipaddress.IPv4Network | ipaddress.IPv6Network
+IPAddress = "ipaddress.IPv4Address | ipaddress.IPv6Address"
+IPNetwork = "ipaddress.IPv4Network | ipaddress.IPv6Network"
 
 # Module-level constants (immutable for safety)
 ALWAYS_PRESERVE_IPS: frozenset[str] = frozenset({
