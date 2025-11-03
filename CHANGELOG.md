@@ -7,7 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.7][] - 2025-11-03
 
-### Security
+### Fixed
+- **CRITICAL FIX**: Fixed whitespace corruption in URL/email/FQDN redaction
+  - `_redact_urls_safe`, `_redact_emails_safe`, and `_redact_fqdns_safe` were using `text.split()` and `' '.join()`
+  - This collapsed all whitespace (including newlines) into single spaces, corrupting XML text content
+  - Now uses `re.sub()` with callbacks to preserve original whitespace structure
+  - Maintains ReDoS protection via length pre-filtering in the callback functions
 - **CRITICAL FIX**: Fixed whitespace domain handling vulnerability in allowlist validation
   - Added `.strip()` to prevent allowlist bypass with whitespace-only domains (e.g., `"   "`)
   - Whitespace-only domains could previously match ANY domain in suffix matching
@@ -19,14 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Previously only checked for presence of dots, not valid IP format
   - Added 4 tests in `TestPortStrippingSecurity`
 
-### Fixed
-- **CRITICAL FIX**: Fixed whitespace corruption in URL/email/FQDN redaction
-  - `_redact_urls_safe`, `_redact_emails_safe`, and `_redact_fqdns_safe` were using `text.split()` and `' '.join()`
-  - This collapsed all whitespace (including newlines) into single spaces, corrupting XML text content
-  - Now uses `re.sub()` with callbacks to preserve original whitespace structure
-  - Maintains ReDoS protection via length pre-filtering in the callback functions
-
 ### Added
+- New `--quiet` / `-q` flag: Suppress progress messages (show only warnings and errors)
+- New `--verbose` / `-v` flag: Show detailed debug information
+- Flags are mutually exclusive and validated at runtime
+- `ColouredFormatter` class for optional ANSI colour output
+- `setup_logging()` function for configuring log levels and output streams
 - New `--redact-url-usernames` CLI flag for enhanced URL credential redaction
   - Allows redacting sensitive usernames (e.g., `admin`, `root`) in URLs
   - Default behaviour: preserve usernames, always redact passwords (`ftp://user:REDACTED@host`)
@@ -34,9 +37,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added 7 tests in `TestURLUsernameRedaction`
 
 ### Changed
+- **BREAKING**: Replaced `print()` statements with Python's `logging` module for better integration
+  - All output now uses proper log levels (ERROR, WARNING, INFO, DEBUG)
+  - Logs route to stdout by default, stderr when using `--stdout` mode
+  - Removed `--stats-stderr` flag (no longer needed - logging handles routing automatically)
+- Coloured log output when outputting to a TTY (auto-detected, disabled for pipes/redirects)
+  - ERROR: Red, WARNING: Yellow, INFO: Green, DEBUG: Cyan
 - Domain normalisation now strips whitespace before processing dots
 - Port stripping now requires valid IPv4 address validation
 - URL/email/FQDN redaction now uses `re.sub()` instead of tokenization to preserve whitespace
+
+### Removed
+- `--stats-stderr` flag (replaced by automatic log routing in `--stdout` mode)
 
 ## [1.0.6][] - 2025-11-02
 

@@ -22,11 +22,11 @@ IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 
 
-class ColoredFormatter(logging.Formatter):
+class ColouredFormatter(logging.Formatter):
     """Add ANSI colour codes to log messages for TTY output"""
-
+    
     # ANSI colour codes
-    COLORS = {
+    COLOURS = {
         'DEBUG': '\033[36m',    # Cyan
         'INFO': '\033[32m',     # Green
         'WARNING': '\033[33m',  # Yellow
@@ -39,10 +39,10 @@ class ColoredFormatter(logging.Formatter):
         # Only add colours if outputting to a TTY
         if hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
             levelname = record.levelname
-            if levelname in self.COLORS:
+            if levelname in self.COLOURS:
                 # Colour the level name and message
-                colour = self.COLORS[levelname]
-                reset = self.COLORS['RESET']
+                colour = self.COLOURS[levelname]
+                reset = self.COLOURS['RESET']
                 record.levelname = f"{colour}{levelname}{reset}"
                 record.msg = f"{colour}{record.msg}{reset}"
         return super().format(record)
@@ -62,7 +62,7 @@ def setup_logging(level: int = logging.INFO, use_stderr: bool = False) -> loggin
     logger.setLevel(level)
     logger.handlers.clear()  # Remove any existing handlers
 
-    formatter = ColoredFormatter('%(message)s')
+    formatter = ColouredFormatter('%(message)s')
 
     if use_stderr:
         # In --stdout mode, route everything to stderr
