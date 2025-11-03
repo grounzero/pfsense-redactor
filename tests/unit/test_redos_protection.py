@@ -2,7 +2,6 @@
 Test ReDoS (Regular Expression Denial of Service) protection
 """
 import time
-import pytest
 from pfsense_redactor.redactor import PfSenseRedactor
 
 

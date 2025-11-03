@@ -7,8 +7,6 @@ Tests for the --dry-run-verbose feature including:
 - Sample format verification
 - No file creation in dry-run mode
 """
-import pytest
-from pathlib import Path
 
 
 def test_dry_run_verbose_shows_samples(cli_runner, create_xml_file):

@@ -10,6 +10,7 @@ import re
 import sys
 import ipaddress
 import functools
+import logging
 from pathlib import Path
 from collections import defaultdict
 from collections.abc import Callable
@@ -19,6 +20,83 @@ from urllib.parse import urlsplit, urlunsplit, SplitResult
 # Type aliases for clarity (using Union for Python 3.9 compatibility)
 IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
+
+
+class ColouredFormatter(logging.Formatter):
+    """Add ANSI colour codes to log messages for TTY output"""
+
+    # ANSI colour codes
+    COLOURS = {
+        'DEBUG': '\033[36m',    # Cyan
+        'INFO': '\033[32m',     # Green
+        'WARNING': '\033[33m',  # Yellow
+        'ERROR': '\033[31m',    # Red
+        'RESET': '\033[0m'      # Reset
+    }
+
+    def __init__(self, fmt=None, datefmt=None, style='%', stream=None):
+        """Initialise formatter with optional stream for TTY detection"""
+        super().__init__(fmt, datefmt, style)
+        self.stream = stream
+
+    def format(self, record):
+        """Format log record with colours if outputting to a TTY
+
+        Note: We colour the final formatted string rather than mutating
+        the record to avoid issues with multiple handlers.
+        """
+        # Get the formatted message without colours
+        formatted = super().format(record)
+
+        # Only add colours if outputting to a TTY
+        if self.stream and hasattr(self.stream, 'isatty') and self.stream.isatty():
+            levelname = record.levelname
+            if levelname in self.COLOURS:
+                colour = self.COLOURS[levelname]
+                reset = self.COLOURS['RESET']
+                # Colour the entire formatted message
+                formatted = f"{colour}{formatted}{reset}"
+
+        return formatted
+
+
+def setup_logging(level: int = logging.INFO, use_stderr: bool = False) -> logging.Logger:
+    """Configure logging for pfSense redactor
+
+    Args:
+        level: Logging level (DEBUG, INFO, WARNING, ERROR)
+        use_stderr: If True, route all logs to stderr (for --stdout mode)
+
+    Returns:
+        Configured logger instance
+    """
+    logger = logging.getLogger('pfsense_redactor')
+    logger.setLevel(level)
+    logger.handlers.clear()  # Remove any existing handlers
+
+    if use_stderr:
+        # In --stdout mode, route everything to stderr
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setLevel(level)
+        handler.setFormatter(ColouredFormatter('%(message)s', stream=sys.stderr))
+        logger.addHandler(handler)
+    else:
+        # Normal mode: INFO/DEBUG to stdout, WARNING/ERROR to stderr
+        # Handler for INFO and DEBUG messages -> stdout
+        stdout_handler = logging.StreamHandler(sys.stdout)
+        stdout_handler.setLevel(logging.DEBUG)
+        stdout_handler.addFilter(lambda record: record.levelno < logging.WARNING)
+        stdout_handler.setFormatter(ColouredFormatter('%(message)s', stream=sys.stdout))
+        logger.addHandler(stdout_handler)
+
+        # Handler for WARNING and ERROR messages -> stderr
+        stderr_handler = logging.StreamHandler(sys.stderr)
+        stderr_handler.setLevel(logging.WARNING)
+        stderr_handler.setFormatter(ColouredFormatter('%(message)s', stream=sys.stderr))
+        logger.addHandler(stderr_handler)
+
+    return logger
+
 
 # Module-level constants (immutable for safety)
 ALWAYS_PRESERVE_IPS: frozenset[str] = frozenset({
@@ -70,10 +148,10 @@ SENSITIVE_ATTR_TOKENS: tuple[str, ...] = (
 @functools.lru_cache(maxsize=256)
 def _idna_encode(domain: str) -> str:
     """Cache IDNA encoding for performance (domains are often repeated)
-    
+
     Args:
         domain: Domain name to encode
-        
+
     Returns:
         IDNA-encoded (punycode) ASCII string, or original if encoding fails
     """
@@ -87,7 +165,7 @@ def _idna_encode(domain: str) -> str:
 
 class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     """pfSense configuration redactor for sensitive data handling
-    
+
     Note: This class intentionally has many instance attributes to maintain
     clear separation of concerns and avoid premature optimization. The attributes
     are logically grouped and well-documented.
@@ -117,6 +195,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self.fail_on_warn = fail_on_warn
         self.dry_run_verbose = dry_run_verbose
         self.redact_url_usernames = redact_url_usernames
+
+        # Get logger instance
+        self.logger = logging.getLogger('pfsense_redactor')
 
         # ReDoS protection constants (instance attributes for easy access)
         self.MAX_URL_LENGTH: int = 2048  # RFC 2616 suggests 2048 as reasonable max
@@ -700,8 +781,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # ReDoS protection - reject absurdly long text chunks
         if len(text) > self.MAX_TEXT_CHUNK:
             # Log warning and truncate
-            print(f"[!] Warning: Text chunk too long ({len(text)} chars), truncating",
-                  file=sys.stderr)
+            self.logger.warning("[!] Warning: Text chunk too long (%d chars), truncating", len(text))
             text = text[:self.MAX_TEXT_CHUNK]
 
         result = text
@@ -945,8 +1025,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         redact_domains: bool = True,
         dry_run: bool = False,
         stdout_mode: bool = False,
-        inplace: bool = False,
-        stats_stderr: bool = False
+        inplace: bool = False
     ) -> bool:
         """Redact pfSense configuration file"""
         try:
@@ -959,21 +1038,21 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             if root_tag != 'pfsense':
                 msg = f"[!] Warning: Root tag is '{root.tag}', expected 'pfsense'."
                 if self.fail_on_warn:
-                    print(f"{msg} Exiting.", file=sys.stderr)
+                    self.logger.error("%s Exiting.", msg)
                     return False
-                print(f"{msg} Proceeding anyway...", file=sys.stderr)
+                self.logger.warning("%s Proceeding anyway...", msg)
 
             if not dry_run and not stdout_mode:
-                print(f"[+] Parsing XML configuration from: {input_file}")
+                self.logger.info("[+] Parsing XML configuration from: %s", input_file)
 
             # Redact the configuration
             if not dry_run and not stdout_mode:
-                print("[+] Redacting sensitive information...")
+                self.logger.info("[+] Redacting sensitive information...")
             self.redact_element(root, redact_ips, redact_domains)
 
             # Dry run mode: just print stats
             if dry_run:
-                print("[+] Dry run - no files modified")
+                self.logger.info("[+] Dry run - no files modified")
                 self._print_stats()
                 return True
 
@@ -988,75 +1067,64 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 tree.write(sys.stdout.buffer, encoding='utf-8', xml_declaration=True)
             elif inplace:
                 tree.write(input_file, encoding='utf-8', xml_declaration=True)
-                print(f"[+] Redacted configuration written in-place to: {input_file}")
+                self.logger.info("[+] Redacted configuration written in-place to: %s", input_file)
             else:
                 tree.write(output_file, encoding='utf-8', xml_declaration=True)
-                print(f"[+] Redacted configuration written to: {output_file}")
+                self.logger.info("[+] Redacted configuration written to: %s", output_file)
 
-            # Print summary
-            if stdout_mode and stats_stderr:
-                self._print_stats(output=sys.stderr)
-            elif not stdout_mode:
-                self._print_stats()
+            # Print summary (always print, logger routes to correct stream)
+            self._print_stats()
 
             return True
 
         except ET.ParseError as e:
-            print(f"[!] Error parsing XML: {e}", file=sys.stderr)
+            self.logger.error("[!] Error parsing XML: %s", e)
             return False
         except (IOError, OSError) as e:
-            print(f"[!] Error reading/writing file: {e}", file=sys.stderr)
+            self.logger.error("[!] Error reading/writing file: %s", e)
             return False
         except (ValueError, TypeError) as e:
-            print(f"[!] Error processing configuration: {e}", file=sys.stderr)
+            self.logger.error("[!] Error processing configuration: %s", e)
             return False
 
-    def _print_stats(self, output=sys.stdout) -> None:
-        """Print redaction statistics"""
-        # Ensure UTF-8 encoding for Unicode characters (e.g., arrow →)
-        # On Windows, sys.stdout may use 'charmap' encoding which doesn't support Unicode
-        try:
-            # Try to reconfigure the stream to use UTF-8
-            if hasattr(output, 'reconfigure'):
-                output.reconfigure(encoding='utf-8', errors='replace')
-        except (AttributeError, OSError):
-            # If reconfigure fails or doesn't exist, we'll use ASCII fallback for arrow
-            pass
-
-        print("\n[+] Redaction summary:", file=output)
+    def _print_stats(self) -> None:
+        """Print redaction statistics using logger"""
+        self.logger.info("")
+        self.logger.info("[+] Redaction summary:")
         if self.stats['secrets_redacted']:
-            print(f"    - Passwords/keys/secrets: {self.stats['secrets_redacted']}", file=output)
+            self.logger.info("    - Passwords/keys/secrets: %d", self.stats['secrets_redacted'])
         if self.stats['certs_redacted']:
-            print(f"    - Certificates: {self.stats['certs_redacted']}", file=output)
+            self.logger.info("    - Certificates: %d", self.stats['certs_redacted'])
         if self.stats['ips_redacted']:
-            print(f"    - IP addresses: {self.stats['ips_redacted']}", file=output)
+            self.logger.info("    - IP addresses: %d", self.stats['ips_redacted'])
         if self.stats['macs_redacted']:
-            print(f"    - MAC addresses: {self.stats['macs_redacted']}", file=output)
+            self.logger.info("    - MAC addresses: %d", self.stats['macs_redacted'])
         if self.stats['domains_redacted']:
-            print(f"    - Domain names: {self.stats['domains_redacted']}", file=output)
+            self.logger.info("    - Domain names: %d", self.stats['domains_redacted'])
         if self.stats['emails_redacted']:
-            print(f"    - Email addresses: {self.stats['emails_redacted']}", file=output)
+            self.logger.info("    - Email addresses: %d", self.stats['emails_redacted'])
         if self.stats['urls_redacted']:
-            print(f"    - URLs: {self.stats['urls_redacted']}", file=output)
+            self.logger.info("    - URLs: %d", self.stats['urls_redacted'])
 
         if self.anonymise:
-            print("\n[+] Anonymisation stats:", file=output)
-            print(f"    - Unique IPs anonymised: {len(self.ip_aliases)}", file=output)
-            print(f"    - Unique domains anonymised: {len(self.domain_aliases)}", file=output)
+            self.logger.info("")
+            self.logger.info("[+] Anonymisation stats:")
+            self.logger.info("    - Unique IPs anonymised: %d", len(self.ip_aliases))
+            self.logger.info("    - Unique domains anonymised: %d", len(self.domain_aliases))
 
         # Print samples if in dry-run-verbose mode
         if self.dry_run_verbose:
-            print(f"\n[+] Samples of changes (limit N={self.sample_limit}):", file=output)
+            self.logger.info("")
+            self.logger.info("[+] Samples of changes (limit N=%d):", self.sample_limit)
             has_any = any(self.samples.get(cat) for cat in ['IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key'])
             if has_any:
                 # Print in consistent order
-                # Use ASCII arrow '->' instead of Unicode '→' for Windows compatibility
                 for category in ['IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key']:
                     if category in self.samples and self.samples[category]:
                         for before_masked, after in self.samples[category]:
-                            print(f"    {category}: {before_masked} -> {after}", file=output)
+                            self.logger.info("    %s: %s -> %s", category, before_masked, after)
             else:
-                print("    (no examples collected)", file=output)
+                self.logger.info("    (no examples collected)")
 
 
 def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> tuple[set[str], list[IPNetwork], set[str]]:
@@ -1108,15 +1176,18 @@ def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> tupl
 
     except FileNotFoundError:
         if not silent_if_missing:
-            print(f"[!] Error: Allow-list file '{filepath}' not found", file=sys.stderr)
+            logger = logging.getLogger('pfsense_redactor')
+            logger.error("[!] Error: Allow-list file '%s' not found", filepath)
             sys.exit(1)
         # Silent if missing for default files
         return set(), [], set()
     except (IOError, OSError) as e:
-        print(f"[!] Error reading allow-list file: {e}", file=sys.stderr)
+        logger = logging.getLogger('pfsense_redactor')
+        logger.error("[!] Error reading allow-list file: %s", e)
         sys.exit(1)
     except (ValueError, UnicodeDecodeError) as e:
-        print(f"[!] Error parsing allow-list file: {e}", file=sys.stderr)
+        logger = logging.getLogger('pfsense_redactor')
+        logger.error("[!] Error parsing allow-list file: %s", e)
         sys.exit(1)
 
     return ips, networks, domains
@@ -1201,8 +1272,10 @@ CDATA sections are not preserved.
                         help='Overwrite output file if it exists')
     parser.add_argument('--aggressive', action='store_true',
                         help='Apply IP/domain redaction to all element text, not just known fields')
-    parser.add_argument('--stats-stderr', action='store_true',
-                        help='Print statistics to stderr (useful with --stdout)')
+    parser.add_argument('--quiet', '-q', action='store_true',
+                        help='Suppress progress messages (show only warnings and errors)')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help='Show detailed debug information')
     parser.add_argument('--fail-on-warn', action='store_true',
                         help='Exit with non-zero code if root tag is not pfsense (useful in CI)')
     parser.add_argument('--allowlist-ip', action='append', dest='allowlist_ips', metavar='IP_OR_CIDR',
@@ -1220,6 +1293,22 @@ CDATA sections are not preserved.
 
     args = parser.parse_args()
 
+    # Validate mutually exclusive flags
+    if args.quiet and args.verbose:
+        parser.error("--quiet and --verbose are mutually exclusive")
+
+    # Determine log level
+    if args.verbose:
+        log_level = logging.DEBUG
+    elif args.quiet:
+        log_level = logging.WARNING
+    else:
+        log_level = logging.INFO
+
+    # Setup logging (route to stderr when using --stdout)
+    use_stderr = args.stdout
+    setup_logging(log_level, use_stderr)
+
     # Handle --dry-run-verbose
     if args.dry_run_verbose:
         args.dry_run = True
@@ -1230,21 +1319,23 @@ CDATA sections are not preserved.
         input_path = Path(args.input)
         args.output = str(input_path.parent / f"{input_path.stem}-redacted{input_path.suffix}")
 
+    # Get logger for error messages
+    logger = logging.getLogger('pfsense_redactor')
+
     # Check if input file exists
     if not Path(args.input).exists():
-        print(f"[!] Error: Input file '{args.input}' not found", file=sys.stderr)
+        logger.error("[!] Error: Input file '%s' not found", args.input)
         sys.exit(1)
 
     # Check if input file is empty
     if Path(args.input).stat().st_size == 0:
-        print("[!] Error: Input file is empty", file=sys.stderr)
+        logger.error("[!] Error: Input file is empty")
         sys.exit(1)
 
     # Check if output file exists (unless force or special modes)
     if args.output and not args.force and not args.dry_run:
         if Path(args.output).exists():
-            print(f"[!] Error: Output file '{args.output}' already exists. Use --force to overwrite.",
-                  file=sys.stderr)
+            logger.error("[!] Error: Output file '%s' already exists. Use --force to overwrite.", args.output)
             sys.exit(1)
 
     # Default keep_private_ips to True when anonymise is used (better AI context)
@@ -1273,7 +1364,7 @@ CDATA sections are not preserved.
             allowlist_networks.extend(file_networks)
             allowlist_domains.update(file_domains)
             if not args.dry_run and not args.stdout:
-                print(f"[+] Loaded default allow-list: {default_file}")
+                logger.info("[+] Loaded default allow-list: %s", default_file)
 
     # 2. Load explicit allow-list file if provided
     if args.allowlist_file:
@@ -1302,7 +1393,7 @@ CDATA sections are not preserved.
                 pass
 
             # Invalid entry
-            print(f"[!] Error: Invalid IP or CIDR in --allowlist-ip: {entry}", file=sys.stderr)
+            logger.error("[!] Error: Invalid IP or CIDR in --allowlist-ip: %s", entry)
             sys.exit(1)
 
     # 4. Add domains from CLI (case-insensitive)
@@ -1330,8 +1421,7 @@ CDATA sections are not preserved.
         redact_domains=not args.no_redact_domains,
         dry_run=args.dry_run,
         stdout_mode=args.stdout,
-        inplace=args.inplace,
-        stats_stderr=args.stats_stderr
+        inplace=args.inplace
     )
 
     sys.exit(0 if success else 1)

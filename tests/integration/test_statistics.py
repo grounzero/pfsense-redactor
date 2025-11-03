@@ -3,7 +3,6 @@ Statistics assertion tests
 
 Verify that the redactor correctly counts and reports redacted items
 """
-import pytest
 import re
 import xml.etree.ElementTree as ET
 from pathlib import Path

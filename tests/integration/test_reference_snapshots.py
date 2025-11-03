@@ -5,7 +5,6 @@ These tests run the CLI with various flag combinations and compare outputs
 to reference files. Set UPDATE_REFERENCE=1 to regenerate snapshots.
 """
 import pytest
-from pathlib import Path
 
 
 # Test modes with their corresponding CLI flags
@@ -142,7 +141,7 @@ def test_stats_stderr_mode(sample_files, cli_runner, stats_parser):
         # Run with --stdout --stats-stderr
         exit_code, stdout, stderr = cli_runner.run_to_stdout(
             str(sample_file),
-            flags=["--stats-stderr"]
+            flags=[]
         )
 
         assert exit_code == 0

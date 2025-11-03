@@ -4,9 +4,6 @@ Focused behaviour tests using synthetic mini-fixtures
 These tests use minimal inline XML to verify specific redaction logic
 without depending on large sample files.
 """
-import pytest
-import xml.etree.ElementTree as ET
-
 
 # Synthetic XML fixtures
 SECRETS_XML = """<?xml version="1.0"?>
