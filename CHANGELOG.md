@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated version to 1.0.6 in both `__init__.py` and `pyproject.toml`
 - Updated all test reference files to include redaction comment
 
+
 ## [1.0.5][] - 2025-11-02
 
 ### Changed
