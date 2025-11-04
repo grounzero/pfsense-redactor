@@ -548,8 +548,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             self.ip_counter += 1
             self.ip_aliases[ip_str] = f"IP_{self.ip_counter}"
 
-        # Extract counter from the alias (e.g., "IP_5" -> 5)
-        counter = self.ip_counter
+        # Extract counter from THIS IP's alias (e.g., "IP_5" -> 5)
+        alias = self.ip_aliases[ip_str]
+        counter = int(alias.split('_')[1])
         return self._counter_to_rfc_ip(counter, is_ipv6)
 
     def _mask_ip_like_tokens(self, text: str) -> str:
