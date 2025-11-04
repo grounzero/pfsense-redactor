@@ -507,8 +507,16 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         if is_ipv6:
             # RFC 3849: 2001:db8::/32
             # Use counter to generate addresses like 2001:db8::1, 2001:db8::2, etc.
-            # For larger counters, spread across the /32 range
-            return f"2001:db8::{counter:x}"
+            # For larger counters, spread across two hextets to avoid overflow
+            # Each hextet is 16-bit (0-65535), so split counter across two hextets
+            high = (counter >> 16) & 0xFFFF  # Upper 16 bits
+            low = counter & 0xFFFF            # Lower 16 bits
+            if high == 0:
+                # Counter fits in one hextet: 2001:db8::1 to 2001:db8::ffff
+                return f"2001:db8::{low:x}"
+            else:
+                # Counter needs two hextets: 2001:db8::1:0 onwards
+                return f"2001:db8::{high:x}:{low:x}"
 
         # RFC 5737 IPv4 documentation ranges (768 total addresses):
         # - 192.0.2.0/24 (TEST-NET-1): 254 usable
