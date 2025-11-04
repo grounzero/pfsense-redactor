@@ -73,6 +73,7 @@ def setup_logging(level: int = logging.INFO, use_stderr: bool = False) -> loggin
     logger = logging.getLogger('pfsense_redactor')
     logger.setLevel(level)
     logger.handlers.clear()  # Remove any existing handlers
+    logger.propagate = False  # Prevent propagation to root logger
 
     if use_stderr:
         # In --stdout mode, route everything to stderr
@@ -269,10 +270,12 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # This ensures credentials in URLs like ftp://user:pass@host are properly redacted
         self.URL_RE = re.compile(r'\b(?:https?|ftps?|sftp|ssh|telnet|file|smb|nfs)://[^\s<>"\']+\b')
         # FQDN pattern is intentionally broad for security (better to over-redact than under-redact)
-        # Matches: label.label.tld where labels are alphanumeric with hyphens, TLD is 2+ letters
+        # Matches: label.label.tld where labels are alphanumeric with hyphens
+        # TLD can be: 2+ letters OR IDNA A-label (xn-- followed by 2+ alphanumeric/hyphens)
+        # This handles both regular TLDs and punycode domains (e.g., foo.xn--p1ai for foo.рф)
         # Note: This may match some non-domains (e.g., version numbers like 1.2.3a) but that's acceptable
         # for a redaction tool where false positives are preferable to false negatives
-        self.FQDN_RE = re.compile(r'\b(?:[A-Za-z0-9-]+\.){1,10}[A-Za-z]{2,}\b')
+        self.FQDN_RE = re.compile(r'\b(?:[A-Za-z0-9-]+\.){1,10}(?:[A-Za-z]{2,}|xn--[A-Za-z0-9-]{2,})\b')
 
         # IP pattern for token matching and splitting
         self.IP_PATTERN = re.compile(r'^[\[\]]?[0-9A-Fa-f:.]+(?:%[A-Za-z0-9_.:+-]+)?[\[\]]?(?::\d+)?$')
@@ -506,17 +509,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         """
         if is_ipv6:
             # RFC 3849: 2001:db8::/32
-            # Use counter to generate addresses like 2001:db8::1, 2001:db8::2, etc.
-            # For larger counters, spread across two hextets to avoid overflow
-            # Each hextet is 16-bit (0-65535), so split counter across two hextets
-            high = (counter >> 16) & 0xFFFF  # Upper 16 bits
-            low = counter & 0xFFFF            # Lower 16 bits
-            if high == 0:
-                # Counter fits in one hextet: 2001:db8::1 to 2001:db8::ffff
-                return f"2001:db8::{low:x}"
-            else:
-                # Counter needs two hextets: 2001:db8::1:0 onwards
-                return f"2001:db8::{high:x}:{low:x}"
+            # Map counter to last hextet (1..65535), wrapping if needed
+            # Produces addresses like 2001:db8::1, 2001:db8::2, ..., 2001:db8::ffff
+            h = (counter - 1) % 0xFFFF + 1
+            return f"2001:db8::{h:x}"
 
         # RFC 5737 IPv4 documentation ranges (768 total addresses):
         # - 192.0.2.0/24 (TEST-NET-1): 254 usable
@@ -672,11 +668,11 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
     def _is_already_masked_host(self, host: str) -> bool:
         """Check if hostname is already a masked value"""
-        return host in (
-            'XXX.XXX.XXX.XXX',
-            'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX',
-            'example.com'
-        )
+        if host in ('XXX.XXX.XXX.XXX',
+                    'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX',
+                    'example.com'):
+            return True
+        return bool(self.anonymise and re.fullmatch(r'domain\d+\.example', host))
 
     def _normalise_masked_url(self, parts: SplitResult, host: str) -> str:
         """Normalise already-masked URLs to use example.com (or alias in anonymise mode)"""
