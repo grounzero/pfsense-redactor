@@ -5,7 +5,6 @@ This test suite verifies that the sensitive attribute pattern uses word boundari
 to avoid matching substrings like 'pass' in 'compass_heading' or 'auth' in 'author'.
 """
 import xml.etree.ElementTree as ET
-import pytest
 from pfsense_redactor.redactor import PfSenseRedactor
 
 
