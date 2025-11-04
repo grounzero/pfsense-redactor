@@ -6,7 +6,6 @@ These tests verify that:
 2. IPv6 counters handle large values correctly (>65535)
 """
 
-import pytest
 from pfsense_redactor.redactor import PfSenseRedactor
 
 
