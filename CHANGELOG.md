@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Now uses precise pattern: `\b(?:password|passwd|pass|key|secret|...)\b`
   - Prevents false positives whilst maintaining security for genuine sensitive attributes
   - Added 16 comprehensive tests in `TestSensitiveAttributeAnchoring`
+- **ENHANCEMENT**: Prevent re-anonymisation of already-masked domains
+  - `_is_already_masked_host()` now recognises `domain\d+\.example` pattern when `--anonymise` is enabled
+  - Already-masked domains like `domain7.example` are no longer re-anonymised during processing
+  - Ensures consistent handling of previously redacted configurations
 
 ### Added
 - New `--quiet` / `-q` flag: Suppress progress messages (show only warnings and errors)
@@ -52,6 +56,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Domain normalisation now strips whitespace before processing dots
 - Port stripping now requires valid IPv4 address validation
 - URL/email/FQDN redaction now uses `re.sub()` instead of tokenization to preserve whitespace
+- **IMPROVEMENT**: Simplified IPv6 documentation address mapping
+  - `_counter_to_rfc_ip()` now uses cleaner wrapping logic: `h = (counter - 1) % 0xFFFF + 1`
+  - Maps counters to single hextet (1..65535) with wrapping: `2001:db8::1` through `2001:db8::ffff`
+  - More predictable and maintainable than previous two-hextet approach
 
 ### Removed
 - `--stats-stderr` flag (replaced by automatic log routing in `--stdout` mode)
