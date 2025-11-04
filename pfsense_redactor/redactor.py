@@ -511,8 +511,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             # RFC 3849: 2001:db8::/32
             # Map counter to last hextet (1..65535), wrapping if needed
             # Produces addresses like 2001:db8::1, 2001:db8::2, ..., 2001:db8::ffff
-            h = (counter - 1) % 0xFFFF + 1
-            return f"2001:db8::{h:x}"
+            hextet = (counter - 1) % 0xFFFF + 1
+            return f"2001:db8::{hextet:x}"
 
         # RFC 5737 IPv4 documentation ranges (768 total addresses):
         # - 192.0.2.0/24 (TEST-NET-1): 254 usable
