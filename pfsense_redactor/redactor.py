@@ -175,6 +175,22 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     Note: This class intentionally has many instance attributes to maintain
     clear separation of concerns and avoid premature optimization. The attributes
     are logically grouped and well-documented.
+
+    Method Naming Convention:
+    -------------------------
+    - _redact_*(): Modifies data in-place or returns redacted copy
+    - _mask_*(): Returns masked/transformed copy for display purposes
+    - _is_*(): Boolean predicate check (returns True/False)
+    - _validate_*(): Validates input and returns bool
+    - _parse_*(): Parses input and returns parsed object
+    - _build_*(): Constructs and returns a new object
+    - _normalise_*(): Normalises input and returns normalised form
+    - _anonymise_*(): Generates consistent aliases for anonymisation
+    - _add_*(): Adds item to collection (side effect)
+    - _get_*(): Retrieves value without side effects
+    - _*_safe(): Includes exception handling/validation (suffix)
+
+    Avoid vague verbs like "handle" - be specific about what the method does.
     """
 
     # Class constants for magic numbers
@@ -1021,8 +1037,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return True
 
-    def _handle_key_element(self, tag: str, element: ET.Element, redact_ips: bool, redact_domains: bool) -> bool:
-        """Handle <key> element specially - can be short secret or PEM blob. Returns True if handled."""
+    def _redact_key_element_if_needed(self, tag: str, element: ET.Element, redact_ips: bool, redact_domains: bool) -> bool:
+        """Redact <key> element if needed - can be short secret or PEM blob. Returns True if handled."""
         if tag != 'key' or not element.text:
             return False
 
@@ -1048,8 +1064,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return True
 
-    def _handle_cert_key_element(self, tag: str, element: ET.Element) -> bool:
-        """Handle certificate/key elements. Returns True if this is a cert/key element."""
+    def _redact_cert_key_element(self, tag: str, element: ET.Element) -> bool:
+        """Redact certificate/key elements. Returns True if this is a cert/key element."""
         if tag not in self.cert_key_elements:
             return False
 
@@ -1079,10 +1095,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 self.stats['secrets_redacted'] += 1
                 self._add_sample('Secret', original, '[REDACTED]')
 
-    def _apply_aggressive_redaction(
+    def _redact_text_aggressive(
         self, element: ET.Element, text_already_processed: bool, redact_ips: bool, redact_domains: bool
     ) -> None:
-        """Apply aggressive mode redaction to text and attributes"""
+        """Redact text and attributes in aggressive mode"""
         if self._normalise_tag(element.tag) in self.redact_elements:
             return
 
@@ -1115,11 +1131,11 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             return
 
         # Handle special cases
-        if self._handle_key_element(tag, element, redact_ips, redact_domains):
+        if self._redact_key_element_if_needed(tag, element, redact_ips, redact_domains):
             return
 
         # Handle cert/key elements (don't return - continue to process children)
-        self._handle_cert_key_element(tag, element)
+        self._redact_cert_key_element(tag, element)
 
         # Track whether we already processed text to avoid double processing in aggressive mode
         text_already_processed = self._redact_ip_containing_element(
@@ -1135,7 +1151,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         # Aggressive mode: apply redaction to text content, tail, and attributes
         if self.aggressive:
-            self._apply_aggressive_redaction(element, text_already_processed, redact_ips, redact_domains)
+            self._redact_text_aggressive(element, text_already_processed, redact_ips, redact_domains)
 
     def _add_redaction_comment(self, root: ET.Element) -> None:
         """Add a comment to the XML indicating it was redacted"""
