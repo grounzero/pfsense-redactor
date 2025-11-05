@@ -313,15 +313,14 @@ class TestURLInvalidPortHandling:
     def test_url_invalid_port_no_crash(self, redactor):
         """Invalid ports should not cause crashes"""
         # These should all be handled gracefully without exceptions
-        test_urls = [
-            'http://testhost.com:999999/path',
-            'http://testhost.com:0/path',
-            'http://testhost.com:-1/path',
-            'http://testhost.com:abc/path',
-            'http://testhost.com:12.34/path',
+        test_cases = [
+            ('http://testhost.com:999999/path', 'http://example.com/path'),
+            ('http://testhost.com:0/path', 'http://example.com/path'),
+            ('http://testhost.com:-1/path', 'http://example.com/path'),
+            ('http://testhost.com:abc/path', 'http://example.com/path'),
+            ('http://testhost.com:12.34/path', 'http://example.com/path'),
         ]
-        for url in test_urls:
+        for url, expected in test_cases:
             result = redactor.redact_text(url)
-            # Should not crash, and should produce valid output
-            assert result is not None
-            assert 'example.com' in result
+            # Should not crash, and should produce valid output with exact match
+            assert result == expected, f"Failed for {url}: got {result}"
