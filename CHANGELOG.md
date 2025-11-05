@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **FIX**: Added port range validation (1-65535) for IP addresses
+  - Previously accepted invalid ports (0, greater than 65535) which could cause confusion or security issues
+  - Port 0 (reserved) is now rejected and not stripped from IP addresses
+  - Ports greater than 65535 are now rejected and not stripped from IP addresses
+  - Leading zeros in port numbers are normalised (e.g., `:00080` becomes `:80`)
+  - Validation applies to both `IPv4:port` and `[IPv6]:port` formats
+  - Invalid ports in URLs are handled gracefully without crashes
+  - Added 27 tests in `tests/unit/test_port_validation.py`
+
 ### Fixed
 - **FIX**: Prevent re-redaction of RFC documentation IPs in anonymisation mode
   - RFC 5737 IPv4 ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24) now recognised as masked values
