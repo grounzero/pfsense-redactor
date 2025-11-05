@@ -128,11 +128,11 @@ class TestPortValidation:  # pylint: disable=too-many-public-methods
 
     def test_url_with_invalid_port(self, redactor):
         """URL with invalid port should handle gracefully"""
-        # URL is processed, IP is masked, and invalid port is preserved
+        # URL is processed, IP is masked, and invalid port is omitted
         result = redactor.redact_text('http://192.168.1.1:99999/path')
         # The key is that it doesn't crash and handles the invalid port gracefully
-        # IP should be masked to example.com, invalid port preserved
-        assert result == 'http://example.com:99999/path'
+        # IP should be masked to example.com, invalid port omitted for security
+        assert result == 'http://example.com/path'
 
     def test_anonymise_mode_with_valid_port(self, redactor):
         """Anonymise mode should preserve valid ports"""
@@ -190,3 +190,138 @@ class TestPortValidation:  # pylint: disable=too-many-public-methods
         for input_text, expected in common_ports:
             result = redactor.redact_text(input_text)
             assert result == expected, f"Failed for {input_text}"
+
+
+class TestURLInvalidPortHandling:
+    """Test invalid port handling in URLs (security fix)"""
+
+    @pytest.fixture
+    def redactor(self):
+        """Create a basic redactor instance"""
+        return PfSenseRedactor()
+
+    def test_url_valid_port_preserved(self, redactor):
+        """Valid port in URL should be preserved"""
+        result = redactor.redact_text('http://testhost.com:8080/path')
+        assert result == 'http://example.com:8080/path'
+
+    def test_url_port_at_upper_boundary(self, redactor):
+        """Port at upper boundary (65535) should be preserved"""
+        result = redactor.redact_text('http://testhost.com:65535/path')
+        assert result == 'http://example.com:65535/path'
+
+    def test_url_port_out_of_range_high(self, redactor):
+        """Port out of range (too high) should be omitted"""
+        result = redactor.redact_text('http://testhost.com:99999/path')
+        # Invalid port should be omitted, resulting in valid URL
+        assert result == 'http://example.com/path'
+
+    def test_url_port_zero_reserved(self, redactor):
+        """Port zero (reserved) should be omitted"""
+        result = redactor.redact_text('http://testhost.com:0/path')
+        # Port 0 is invalid, should be omitted
+        assert result == 'http://example.com/path'
+
+    def test_url_non_numeric_port(self, redactor):
+        """Non-numeric port should be omitted"""
+        result = redactor.redact_text('http://testhost.com:abc/path')
+        # Non-numeric port should be omitted
+        assert result == 'http://example.com/path'
+
+    def test_url_negative_port(self, redactor):
+        """Negative port should be omitted"""
+        result = redactor.redact_text('http://testhost.com:-1/path')
+        # Negative port should be omitted
+        assert result == 'http://example.com/path'
+
+    def test_url_ipv6_with_invalid_port(self, redactor):
+        """IPv6 URL with invalid port should omit port but preserve brackets"""
+        result = redactor.redact_text('http://[2001:db8::1]:99999/path')
+        # IPv6 should be redacted, invalid port omitted, brackets preserved
+        assert result == 'http://[XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX]/path'
+
+    def test_url_with_userinfo_and_invalid_port(self, redactor):
+        """URL with userinfo and invalid port should omit port, redact password"""
+        result = redactor.redact_text('http://user:pass@testhost.com:99999/path')
+        # Credentials redacted, invalid port omitted
+        assert result == 'http://user:REDACTED@example.com/path'
+
+    def test_url_query_params_preserved_with_invalid_port(self, redactor):
+        """Query params should be preserved when invalid port is omitted"""
+        result = redactor.redact_text('http://testhost.com:99999/path?key=value')
+        # Invalid port omitted, query params preserved
+        assert result == 'http://example.com/path?key=value'
+
+    def test_url_fragment_preserved_with_invalid_port(self, redactor):
+        """Fragment should be preserved when invalid port is omitted"""
+        result = redactor.redact_text('http://testhost.com:99999/path#section')
+        # Invalid port omitted, fragment preserved
+        assert result == 'http://example.com/path#section'
+
+    def test_url_with_ip_and_invalid_port(self, redactor):
+        """URL with IP host and invalid port should redact IP and omit port"""
+        result = redactor.redact_text('http://192.168.1.1:99999/path')
+        # IP redacted to example.com, invalid port omitted
+        assert result == 'http://example.com/path'
+
+    def test_multiple_urls_mixed_valid_invalid_ports(self, redactor):
+        """Multiple URLs with mixed valid/invalid ports"""
+        text = 'http://host1.com:8080/path http://host2.com:99999/path http://host3.com:443/path'
+        result = redactor.redact_text(text)
+        # Valid ports preserved, invalid omitted
+        assert 'http://example.com:8080/path' in result
+        assert 'http://example.com/path' in result  # Invalid port omitted
+        assert 'http://example.com:443/path' in result
+
+    def test_url_anonymise_mode_with_invalid_port(self, redactor):
+        """Anonymise mode should omit invalid ports in URLs"""
+        redactor_anon = PfSenseRedactor(anonymise=True)
+        result = redactor_anon.redact_text('http://test.com:99999/path')
+        # Domain anonymised, invalid port omitted
+        assert ':99999' not in result
+        assert 'domain' in result and '.example/path' in result
+
+    def test_url_with_port_leading_zeros_valid(self, redactor):
+        """URL with port having leading zeros (valid range) should normalise"""
+        result = redactor.redact_text('http://testhost.com:00080/path')
+        # Leading zeros stripped, port 80 preserved
+        assert result == 'http://example.com:80/path'
+
+    def test_url_https_with_invalid_port(self, redactor):
+        """HTTPS URL with invalid port should omit port"""
+        result = redactor.redact_text('https://testhost.com:99999/secure')
+        assert result == 'https://example.com/secure'
+
+    def test_url_ftp_with_invalid_port(self, redactor):
+        """FTP URL with invalid port should omit port"""
+        result = redactor.redact_text('ftp://testhost.com:99999/file')
+        assert result == 'ftp://example.com/file'
+
+    def test_url_no_regression_valid_ports(self, redactor):
+        """Ensure no regression: valid ports still work correctly"""
+        test_cases = [
+            ('http://testhost.com:80/path', 'http://example.com:80/path'),
+            ('http://testhost.com:443/path', 'http://example.com:443/path'),
+            ('http://testhost.com:8080/path', 'http://example.com:8080/path'),
+            ('http://testhost.com:1/path', 'http://example.com:1/path'),
+            ('http://testhost.com:65535/path', 'http://example.com:65535/path'),
+        ]
+        for input_url, expected in test_cases:
+            result = redactor.redact_text(input_url)
+            assert result == expected, f"Regression for {input_url}"
+
+    def test_url_invalid_port_no_crash(self, redactor):
+        """Invalid ports should not cause crashes"""
+        # These should all be handled gracefully without exceptions
+        test_urls = [
+            'http://testhost.com:999999/path',
+            'http://testhost.com:0/path',
+            'http://testhost.com:-1/path',
+            'http://testhost.com:abc/path',
+            'http://testhost.com:12.34/path',
+        ]
+        for url in test_urls:
+            result = redactor.redact_text(url)
+            # Should not crash, and should produce valid output
+            assert result is not None
+            assert 'example.com' in result

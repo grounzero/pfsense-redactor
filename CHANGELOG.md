@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **FIX**: Invalid ports in URLs are now omitted to prevent malformed output
+  - Previously, invalid ports (out of range, zero, negative, non-numeric) were appended without validation
+  - Now omits invalid ports entirely, ensuring output URLs are always valid and parseable
+  - Added debug logging when invalid ports are detected in URL netloc
+  - Prevents malformed URLs that could bypass downstream filtering or cause parsing errors
+  - Added 18 tests in `TestURLInvalidPortHandling`
 - **FIX**: Added port range validation (1-65535) for IP addresses
   - Previously accepted invalid ports (0, greater than 65535) which could cause confusion or security issues
   - Port 0 (reserved) is now rejected and not stripped from IP addresses
