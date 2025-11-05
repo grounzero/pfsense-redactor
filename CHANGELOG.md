@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **FIX**: Added symlink security check for `--inplace` mode
+  - Prevents following symlinks when using `--inplace` to avoid overwriting sensitive system files
+  - Symlink check now occurs before file size validation to handle directory symlinks on Windows
+  - Detects symlinks to regular files, directories, and broken symlinks
+  - Shows symlink target in error message to help users understand the issue
+  - Hardlinks continue to work (they're safe, unlike symlinks)
+  - Added 10 tests in `tests/unit/test_symlink_security.py`
+  - Prevents attack scenario: attacker replaces config.xml with `ln -s /etc/passwd config.xml`
 - **FIX**: Invalid ports in URLs are now omitted to prevent malformed output
   - Previously, invalid ports (out of range, zero, negative, non-numeric) were appended without validation
   - Now omits invalid ports entirely, ensuring output URLs are always valid and parseable
