@@ -93,7 +93,9 @@ class CLIRunner:
         result = subprocess.run(
             cmd,
             capture_output=True,
-            text=True
+            text=True,
+            cwd=str(PROJECT_ROOT),
+            check=False
         )
 
         if expect_success and result.returncode != 0:
