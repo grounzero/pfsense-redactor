@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **FIX**: Prevent re-redaction of RFC documentation IPs in anonymisation mode
+  - RFC 5737 IPv4 ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24) now recognised as masked values
+  - RFC 3849 IPv6 range (2001:db8::/32) now recognised as masked values
+  - Prevents re-redaction on subsequent runs, ensuring idempotent behaviour
+  - Prevents mapping instability and statistics inflation
+  - Only applies in `--anonymise` mode to avoid interfering with normal redaction
+  - Defence-in-depth implementation across `_is_already_masked_host()`, `_mask_ip_like_tokens()`, `_normalise_masked_url()`, and `_anonymise_ip_for_url()`
 - **FIX**: Fixed IP counter overflow in anonymisation mode
   - After 762 unique IPs, counter would wrap and create duplicate mappings (IP #763 → 192.0.2.1, same as IP #1)
   - Now falls back to RFC 1918 private range (10.0.0.0/8) for overflow addresses

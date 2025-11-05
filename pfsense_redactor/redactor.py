@@ -646,7 +646,16 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # Extract counter from THIS IP's alias (e.g., "IP_5" -> 5)
         alias = self.ip_aliases[ip_str]
         counter = int(alias.split('_')[1])
-        return self._counter_to_rfc_ip(counter, is_ipv6)
+        rfc_ip = self._counter_to_rfc_ip(counter, is_ipv6)
+
+        # Mark RFC IP as allowed so we don't re-process it (defence in depth)
+        # This prevents re-redaction on subsequent runs
+        try:
+            self.allowlist_ip_addrs.add(ipaddress.ip_address(rfc_ip))
+        except ValueError:
+            pass  # Should never happen with valid RFC IPs, but be defensive
+
+        return rfc_ip
 
     def _mask_ip_like_tokens(self, text: str) -> str:
         """IP address masking using ipaddress module"""
@@ -696,6 +705,22 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             # Preserve allow-listed IPs (opt-in, including CIDR networks)
             if self._is_ip_allowed(ip):
                 return original_token
+
+            # Preserve RFC documentation IPs ONLY in anonymise mode (prevents re-redaction)
+            # In non-anonymise mode, RFC IPs in original configs should still be redacted
+            if self.anonymise:
+                if ip.version == 4:
+                    rfc5737_ranges = [
+                        ipaddress.ip_network('192.0.2.0/24'),
+                        ipaddress.ip_network('198.51.100.0/24'),
+                        ipaddress.ip_network('203.0.113.0/24'),
+                    ]
+                    if any(ip in net for net in rfc5737_ranges):
+                        return original_token
+                elif ip.version == 6:
+                    rfc3849 = ipaddress.ip_network('2001:db8::/32')
+                    if ip in rfc3849:
+                        return original_token
 
             # Keep non-global IPs if requested (simplified test for RFC1918, ULA, loopback,
             # link-local, multicast, reserved, and unspecified addresses)
@@ -758,15 +783,72 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             return None
 
     def _is_already_masked_host(self, host: str) -> bool:
-        """Check if hostname is already a masked value"""
+        """Check if hostname is already a masked value
+
+        Recognises:
+        - Standard redaction masks (XXX.XXX.XXX.XXX, etc.)
+        - Anonymisation domain aliases (domain1.example, etc.)
+        - RFC documentation IPs (RFC 5737 IPv4, RFC 3849 IPv6) - only in anonymise mode
+        """
         if host in ('XXX.XXX.XXX.XXX',
                     'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX',
                     'example.com'):
             return True
-        return bool(self.anonymise and re.fullmatch(r'domain\d+\.example', host))
+
+        # Check for anonymisation domain aliases
+        if self.anonymise and re.fullmatch(r'domain\d+\.example', host):
+            return True
+
+        # Check if host is an RFC documentation IP (only in anonymise mode)
+        if self.anonymise:
+            try:
+                ip = ipaddress.ip_address(host)
+
+                # RFC 5737 IPv4 documentation ranges
+                if ip.version == 4:
+                    rfc5737_ranges = [
+                        ipaddress.ip_network('192.0.2.0/24'),
+                        ipaddress.ip_network('198.51.100.0/24'),
+                        ipaddress.ip_network('203.0.113.0/24'),
+                    ]
+                    if any(ip in net for net in rfc5737_ranges):
+                        return True
+
+                # RFC 3849 IPv6 documentation range
+                elif ip.version == 6:
+                    rfc3849 = ipaddress.ip_network('2001:db8::/32')
+                    if ip in rfc3849:
+                        return True
+            except ValueError:
+                pass  # Not an IP
+
+        return False
 
     def _normalise_masked_url(self, parts: SplitResult, host: str) -> str:
-        """Normalise already-masked URLs to use example.com (or alias in anonymise mode)"""
+        """Normalise already-masked URLs to use example.com (or alias in anonymise mode)
+
+        Note: RFC documentation IPs are left as-is in anonymise mode (they're already valid masked values)
+        """
+        # Check if this is an RFC documentation IP in anonymise mode - if so, leave it unchanged
+        if self.anonymise:
+            try:
+                ip = ipaddress.ip_address(host)
+                # RFC 5737 IPv4 or RFC 3849 IPv6 - already masked, return as-is
+                if ip.version == 4:
+                    rfc5737_ranges = [
+                        ipaddress.ip_network('192.0.2.0/24'),
+                        ipaddress.ip_network('198.51.100.0/24'),
+                        ipaddress.ip_network('203.0.113.0/24'),
+                    ]
+                    if any(ip in net for net in rfc5737_ranges):
+                        return urlunsplit(parts)
+                elif ip.version == 6:
+                    rfc3849 = ipaddress.ip_network('2001:db8::/32')
+                    if ip in rfc3849:
+                        return urlunsplit(parts)
+            except ValueError:
+                pass  # Not an IP, continue with domain normalisation
+
         # In anonymise mode, use a consistent alias for masked URLs
         masked_host = self._anonymise_domain('example.com') if self.anonymise else 'example.com'
 
@@ -779,6 +861,15 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
     def _mask_url_host(self, host: str) -> tuple[str, bool, bool]:
         """Mask URL host. Returns (masked_host, changed, is_ipv6)"""
+        # Check if already masked (including RFC documentation IPs)
+        if self._is_already_masked_host(host):
+            # Determine if it's IPv6 for proper bracket handling
+            try:
+                ip = ipaddress.ip_address(host)
+                return host, False, ip.version == 6
+            except ValueError:
+                return host, False, False
+
         # Try as IP address
         try:
             ip = ipaddress.ip_address(host)
