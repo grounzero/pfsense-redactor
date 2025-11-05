@@ -980,14 +980,14 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             if parts.port:
                 netloc += f":{parts.port}"
         except ValueError:
-            # Invalid port in URL - extract from netloc string instead
-            # This handles cases like http://host:99999/path where port is out of range
-            if ':' in parts.netloc:
-                # Extract port string from netloc (after last colon, before any @)
-                netloc_parts = parts.netloc.split('@')[-1]  # Remove userinfo if present
-                if ':' in netloc_parts:
-                    port_str = netloc_parts.split(':')[-1]
-                    netloc += f":{port_str}"
+            # Invalid port detected (out of range or non-numeric)
+            # Omit port to ensure output URL is valid
+            # Log at debug level as this is uncommon but not critical
+            self.logger.debug(
+                "Invalid port in URL netloc, omitting: %s",
+                parts.netloc
+            )
+            # Don't append anything - netloc is valid without port
 
         return netloc
 
