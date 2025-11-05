@@ -2,19 +2,21 @@
 Unit tests for file path validation security
 Tests the validate_file_path function to ensure it properly blocks malicious paths
 """
-import pytest
 import sys
 import os
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+# pylint: disable=wrong-import-position
 from pfsense_redactor.redactor import validate_file_path, _get_sensitive_directories
 
 
-class TestPathValidation:
+class TestPathValidation:  # pylint: disable=too-many-public-methods
     """Test suite for path validation security"""
 
     def test_relative_path_allowed(self):
@@ -131,14 +133,14 @@ class TestPathValidation:
             allow_absolute=True,
             is_output=False
         )
-        
+
         # Output path to /etc should be blocked (writing is dangerous)
         valid_output, _, _ = validate_file_path(
             "/etc/hosts",
             allow_absolute=True,
             is_output=True
         )
-        
+
         # Input should be more permissive than output
         # (though both may fail if file doesn't exist)
         assert valid_output is False
@@ -183,7 +185,7 @@ class TestPathValidation:
         sensitive_dirs = _get_sensitive_directories()
         assert isinstance(sensitive_dirs, frozenset)
         assert len(sensitive_dirs) > 0
-        
+
         # Check for common sensitive directories (normalised to lowercase)
         # At least some of these should be present
         expected_patterns = ['/etc', '/sys', '/proc', 'windows']

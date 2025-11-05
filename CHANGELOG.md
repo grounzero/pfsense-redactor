@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
-- **CRITICAL FIX**: Added comprehensive file path validation to prevent arbitrary file read/write operations
+- **FIX**: Added file path validation to prevent arbitrary file read/write operations
   - Blocks directory traversal attempts (`../../../etc/passwd`)
   - Blocks paths with null bytes (path traversal attack vector)
   - Blocks writing to sensitive system directories (`/etc`, `/sys`, `/proc`, `/Windows/System32`, etc.)
@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Still enforces protection against sensitive system directories
   - Useful for intentional absolute path operations
 - New path validation functions:
-  - `validate_file_path()`: Comprehensive path security validation
+  - `validate_file_path()`: Path security validation
   - `_get_sensitive_directories()`: Computes list of protected system directories
 - 45 comprehensive tests for path validation:
   - 28 unit tests in `tests/unit/test_path_validation.py`

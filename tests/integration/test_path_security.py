@@ -217,7 +217,7 @@ class TestPathSecurityCLI:
         """Writing to Windows System32 should be blocked"""
         if sys.platform != 'win32':
             pytest.skip("Windows-specific test")
-        
+
         result = subprocess.run(
             [sys.executable, "-m", "pfsense_redactor",
              str(DEFAULT_CONFIG), "C:\\Windows\\System32\\test.xml",
@@ -235,7 +235,7 @@ class TestPathSecurityCLI:
             output_dir = Path(tmpdir) / "subdir1" / "subdir2"
             output_dir.mkdir(parents=True)
             output = output_dir / "output.xml"
-            
+
             result = subprocess.run(
                 [sys.executable, "-m", "pfsense_redactor",
                  str(DEFAULT_CONFIG), str(output)],
@@ -254,7 +254,7 @@ class TestPathSecurityEdgeCases:
         """Symbolic links to /etc should be blocked"""
         if not hasattr(os, 'symlink'):
             pytest.skip("Symlinks not supported on this platform")
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             # Create symlink to /etc (if we have permission)
             symlink_path = Path(tmpdir) / "etc_link"
@@ -262,7 +262,7 @@ class TestPathSecurityEdgeCases:
                 symlink_path.symlink_to("/etc")
             except (OSError, NotImplementedError):
                 pytest.skip("Cannot create symlinks (permission denied or not supported)")
-            
+
             output = symlink_path / "test.xml"
             result = subprocess.run(
                 [sys.executable, "-m", "pfsense_redactor",
