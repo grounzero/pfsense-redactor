@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Hardlinks continue to work (they're safe, unlike symlinks)
   - Added 10 tests in `tests/unit/test_symlink_security.py`
   - Prevents attack scenario: attacker replaces config.xml with `ln -s /etc/passwd config.xml`
+- **FIX**: Enhanced whitespace validation in domain normalisation
+  - Previously only checked for space character `' '`, allowing tabs, newlines, and other whitespace to bypass validation
+  - Now uses regex `\s` to reject ANY whitespace character (space, tab, newline, carriage return, non-breaking space, etc.)
+  - Prevents malformed domains like `"evil.com\texample.com"` from passing validation
+  - Prevents potential bypass of suffix matching logic and allowlist validation
+  - Updated comment to clarify "any whitespace" instead of "internal whitespace"
+  - Added 9 tests covering all whitespace types in `TestDomainNormalisationSecurity`
 - **FIX**: Added port range validation (1-65535) for IP addresses
   - Previously accepted invalid ports (0, greater than 65535) which could cause confusion or security issues
   - Port 0 (reserved) is now rejected and not stripped from IP addresses

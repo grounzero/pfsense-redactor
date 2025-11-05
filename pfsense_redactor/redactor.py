@@ -322,8 +322,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # CRITICAL: Reject empty domains to prevent bypass vulnerability
         # Malformed entries like ".", "*.", or "*.*" would normalise to empty string
         # which could match ANY domain in suffix matching
-        # Also reject domains with internal whitespace
-        if not domain_lower or ' ' in domain_lower:
+        # Also reject domains with any whitespace (space, tab, newline, etc.)
+        if not domain_lower or re.search(r'\s', domain_lower):
             return None, None
 
         # Compute IDNA (punycode) form using cached function
