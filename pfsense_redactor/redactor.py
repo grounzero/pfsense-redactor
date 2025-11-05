@@ -1362,9 +1362,16 @@ def validate_file_path(
         if '..' in path.parts:
             return False, "Path contains directory traversal components (..)", None
 
+        # Check if this looks like a Windows absolute path (e.g., C:\, D:\)
+        # On Unix systems, Path.is_absolute() returns False for Windows paths
+        is_windows_absolute = (
+            len(file_path) >= 3 and
+            file_path[1:3] in (':\\', ':/')  # C:\ or C:/
+        )
+
         # Resolve the path to its absolute form (follows symlinks)
         # Use Path.cwd() as base for relative paths
-        if path.is_absolute():
+        if path.is_absolute() or is_windows_absolute:
             resolved = path.resolve()
         else:
             # For relative paths, resolve against current working directory
@@ -1387,7 +1394,7 @@ def validate_file_path(
 
         # Check if absolute path is allowed (after sensitive dir check)
         # Allow absolute paths to safe locations (like temp dirs, home, cwd)
-        if path.is_absolute() and not allow_absolute:
+        if (path.is_absolute() or is_windows_absolute) and not allow_absolute:
             # Check if this is a "safe" absolute path (temp dir, home, or under cwd)
             safe_prefixes = [
                 str(Path.home()).lower(),
