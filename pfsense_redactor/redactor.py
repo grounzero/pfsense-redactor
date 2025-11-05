@@ -1867,6 +1867,23 @@ CDATA sections are not preserved.
 
     # Validate inplace mode - extra security check
     if args.inplace:
+        # Check if input file is a symlink FIRST (security: prevent following symlinks to sensitive files)
+        # CRITICAL: Must check BEFORE validate_file_path() which calls resolve() and follows symlinks
+        # Use input_resolved which was already computed earlier (but check the ORIGINAL path)
+        input_path_original = Path(args.input)
+        if input_path_original.is_symlink():
+            # Get the symlink target for the error message
+            try:
+                target = input_path_original.resolve()
+                logger.error("[!] Error: Cannot use --inplace on symlink: %s", args.input)
+                logger.error("    Symlink target: %s", target)
+                logger.error("    Hint: If you intend to modify the target, specify it directly.")
+            except (OSError, RuntimeError):
+                # If we can't resolve the symlink (broken link), still refuse
+                logger.error("[!] Error: Cannot use --inplace on symlink: %s", args.input)
+                logger.error("    Hint: Symlinks are not allowed with --inplace for security reasons.")
+            sys.exit(1)
+
         # Re-validate input path with output restrictions
         inplace_valid, inplace_error, _ = validate_file_path(
             args.input,
