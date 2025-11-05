@@ -1424,7 +1424,9 @@ def validate_file_path(
             cwd_str = str(Path.cwd()).lower()
 
             # Check if under CWD (handles Windows drive letters and all platforms)
-            is_under_cwd = resolved_str.startswith(cwd_str + os.sep.lower()) or resolved_str == cwd_str
+            # Ensure CWD ends with separator for proper prefix matching
+            cwd_with_sep = cwd_str if cwd_str.endswith(os.sep) else cwd_str + os.sep
+            is_under_cwd = resolved_str.startswith(cwd_with_sep) or resolved_str == cwd_str
 
             # Check other safe prefixes
             is_under_safe_prefix = any(resolved_str.startswith(prefix) for prefix in safe_prefixes)
