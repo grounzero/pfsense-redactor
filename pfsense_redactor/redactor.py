@@ -1394,8 +1394,10 @@ def validate_file_path(
                 str(Path.cwd()).lower(),
                 str(Path(os.environ.get('TMPDIR', '/tmp'))).lower(),
                 str(Path(os.environ.get('TEMP', '/tmp'))).lower(),
+                str(Path(os.environ.get('TMP', '/tmp'))).lower(),
                 '/var/folders',  # macOS temp
                 '/private/var/folders',  # macOS temp (canonical)
+                '/tmp/pytest-',  # pytest temp directories
             ]
 
             is_safe = any(resolved_str.startswith(prefix) for prefix in safe_prefixes)
