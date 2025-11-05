@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Security
+- **FIX**: Invalid ports in URLs are now omitted to prevent malformed output
+  - Previously, invalid ports (out of range, zero, negative, non-numeric) were appended without validation
+  - Now omits invalid ports entirely, ensuring output URLs are always valid and parseable
+  - Added debug logging when invalid ports are detected in URL netloc
+  - Prevents malformed URLs that could bypass downstream filtering or cause parsing errors
+  - Added 18 tests in `TestURLInvalidPortHandling`
 - **FIX**: Enhanced whitespace validation in domain normalisation
   - Previously only checked for space character `' '`, allowing tabs, newlines, and other whitespace to bypass validation
   - Now uses regex `\s` to reject ANY whitespace character (space, tab, newline, carriage return, non-breaking space, etc.)
