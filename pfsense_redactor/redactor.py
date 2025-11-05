@@ -1425,7 +1425,17 @@ def validate_file_path(
 
             # Check if under CWD (handles Windows drive letters and all platforms)
             # Ensure CWD ends with separator for proper prefix matching
-            cwd_with_sep = cwd_str if cwd_str.endswith(os.sep) else cwd_str + os.sep
+            # On Windows, os.sep is '\', on Unix it's '/'
+            # We need to ensure the separator matches the platform
+            if not cwd_str.endswith(('\\', '/')):
+                # Add the appropriate separator based on what's in the path
+                if '\\' in cwd_str:
+                    cwd_with_sep = cwd_str + '\\'
+                else:
+                    cwd_with_sep = cwd_str + '/'
+            else:
+                cwd_with_sep = cwd_str
+
             is_under_cwd = resolved_str.startswith(cwd_with_sep) or resolved_str == cwd_str
 
             # Check other safe prefixes

@@ -2,12 +2,13 @@
 Integration tests for file path security
 Tests the CLI to ensure malicious paths are properly rejected
 """
-import pytest
-import sys
-import subprocess
-from pathlib import Path
-import tempfile
 import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+import pytest
 
 # Test data directory - use relative path to avoid absolute path issues
 TEST_CONFIGS_DIR = Path("test-configs")
@@ -29,7 +30,8 @@ class TestPathSecurityCLI:
                  str(DEFAULT_CONFIG), str(output)],
                 capture_output=True,
                 text=True,
-                cwd=str(PROJECT_ROOT)
+                cwd=str(PROJECT_ROOT),
+                check=False
             )
             assert result.returncode == 0
             assert output.exists()
@@ -46,7 +48,8 @@ class TestPathSecurityCLI:
                  unsafe_input, str(output)],
                 capture_output=True,
                 text=True,
-                cwd=str(PROJECT_ROOT)
+                cwd=str(PROJECT_ROOT),
+                check=False
             )
             assert result.returncode != 0
             assert "Absolute paths not allowed" in result.stderr or "not found" in result.stderr.lower()
@@ -62,7 +65,8 @@ class TestPathSecurityCLI:
                  "--allow-absolute-paths"],
                 capture_output=True,
                 text=True,
-                cwd=str(PROJECT_ROOT)
+                cwd=str(PROJECT_ROOT),
+                check=False
             )
             assert result.returncode == 0
             assert output.exists()
@@ -77,7 +81,8 @@ class TestPathSecurityCLI:
                  "../../../etc/passwd", str(output)],
                 capture_output=True,
                 text=True,
-                cwd=str(PROJECT_ROOT)
+                cwd=str(PROJECT_ROOT),
+                check=False
             )
             assert result.returncode != 0
             assert "traversal" in result.stderr.lower()
@@ -89,7 +94,8 @@ class TestPathSecurityCLI:
              str(DEFAULT_CONFIG), "../../../tmp/output.xml"],
             capture_output=True,
             text=True,
-            cwd=str(PROJECT_ROOT)
+            cwd=str(PROJECT_ROOT),
+            check=False
         )
         assert result.returncode != 0
         assert "traversal" in result.stderr.lower()
@@ -107,7 +113,8 @@ class TestPathSecurityCLI:
                  "/etc/passwd", str(output), "--allow-absolute-paths"],
                 capture_output=True,
                 text=True,
-                cwd=str(PROJECT_ROOT)
+                cwd=str(PROJECT_ROOT),
+                check=False
             )
             # Should fail either due to not being XML or file not found
             assert result.returncode != 0
@@ -124,7 +131,8 @@ class TestPathSecurityCLI:
              "--allow-absolute-paths"],
             capture_output=True,
             text=True,
-            cwd=str(PROJECT_ROOT)
+            cwd=str(PROJECT_ROOT),
+            check=False
         )
         assert result.returncode != 0
         assert "sensitive" in result.stderr.lower() or "system" in result.stderr.lower()
@@ -143,7 +151,8 @@ class TestPathSecurityCLI:
                  str(DEFAULT_CONFIG), output_file],
                 capture_output=True,
                 text=True,
-                cwd=str(PROJECT_ROOT)
+                cwd=str(PROJECT_ROOT),
+                check=False
             )
             assert result.returncode == 0
             assert Path(output_file).exists()
@@ -164,7 +173,8 @@ class TestPathSecurityCLI:
              "--allow-absolute-paths"],
             capture_output=True,
             text=True,
-            cwd=str(PROJECT_ROOT)
+            cwd=str(PROJECT_ROOT),
+            check=False
         )
         assert result.returncode != 0
         assert "Cannot use --inplace" in result.stderr or "sensitive" in result.stderr.lower()
@@ -176,7 +186,8 @@ class TestPathSecurityCLI:
              str(DEFAULT_CONFIG), "--stdout"],
             capture_output=True,
             text=True,
-            cwd=str(PROJECT_ROOT)
+            cwd=str(PROJECT_ROOT),
+            check=False
         )
         assert result.returncode == 0
         assert "<?xml" in result.stdout
@@ -193,32 +204,33 @@ class TestPathSecurityCLI:
              "--dry-run", "--allow-absolute-paths"],
             capture_output=True,
             text=True,
-            cwd=str(Path(__file__).parent.parent.parent)
+            cwd=str(Path(__file__).parent.parent.parent),
+            check=False
         )
         assert result.returncode != 0
         assert "sensitive" in result.stderr.lower() or "system" in result.stderr.lower()
 
     def test_safe_absolute_path_in_home(self):
         """Absolute paths in home directory should work with flag"""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Create a temp file in home directory
-            home_output = Path.home() / f"test-output-{os.getpid()}.xml"
-            abs_config = (PROJECT_ROOT / DEFAULT_CONFIG).resolve()
-            try:
-                result = subprocess.run(
-                    [sys.executable, "-m", "pfsense_redactor",
-                     str(abs_config), str(home_output),
-                     "--allow-absolute-paths"],
-                    capture_output=True,
-                    text=True,
-                    cwd=str(PROJECT_ROOT)
-                )
-                assert result.returncode == 0
-                assert home_output.exists()
-            finally:
-                # Clean up
-                if home_output.exists():
-                    home_output.unlink()
+        # Create a temp file in home directory
+        home_output = Path.home() / f"test-output-{os.getpid()}.xml"
+        abs_config = (PROJECT_ROOT / DEFAULT_CONFIG).resolve()
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pfsense_redactor",
+                 str(abs_config), str(home_output),
+                 "--allow-absolute-paths"],
+                capture_output=True,
+                text=True,
+                cwd=str(PROJECT_ROOT),
+                check=False
+            )
+            assert result.returncode == 0
+            assert home_output.exists()
+        finally:
+            # Clean up
+            if home_output.exists():
+                home_output.unlink()
 
     def test_null_byte_in_path_blocked(self):
         """Paths with null bytes should be blocked"""
@@ -231,7 +243,8 @@ class TestPathSecurityCLI:
                      str(DEFAULT_CONFIG), f"{tmpdir}/output\x00.xml"],
                     capture_output=True,
                     text=True,
-                    cwd=str(PROJECT_ROOT)
+                    cwd=str(PROJECT_ROOT),
+                    check=False
                 )
                 # Should fail one way or another
                 assert result.returncode != 0
@@ -250,7 +263,8 @@ class TestPathSecurityCLI:
              "--allow-absolute-paths"],
             capture_output=True,
             text=True,
-            cwd=str(PROJECT_ROOT)
+            cwd=str(PROJECT_ROOT),
+            check=False
         )
         assert result.returncode != 0
         assert "sensitive" in result.stderr.lower() or "system" in result.stderr.lower()
@@ -267,7 +281,8 @@ class TestPathSecurityCLI:
                  str(DEFAULT_CONFIG), str(output)],
                 capture_output=True,
                 text=True,
-                cwd=str(PROJECT_ROOT)
+                cwd=str(PROJECT_ROOT),
+                check=False
             )
             assert result.returncode == 0
             assert output.exists()
@@ -300,7 +315,8 @@ class TestPathSecurityEdgeCases:
                  "--allow-absolute-paths"],
                 capture_output=True,
                 text=True,
-                cwd=str(PROJECT_ROOT)
+                cwd=str(PROJECT_ROOT),
+                check=False
             )
             assert result.returncode != 0
 
@@ -313,7 +329,8 @@ class TestPathSecurityEdgeCases:
                  str(DEFAULT_CONFIG), str(output)],
                 capture_output=True,
                 text=True,
-                cwd=str(PROJECT_ROOT)
+                cwd=str(PROJECT_ROOT),
+                check=False
             )
             assert result.returncode == 0
             assert output.exists()
