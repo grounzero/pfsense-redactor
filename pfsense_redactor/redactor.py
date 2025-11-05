@@ -1407,8 +1407,12 @@ def validate_file_path(
         # Check if absolute path is allowed (after sensitive dir check)
         # Allow absolute paths to safe locations (like temp dirs, home, cwd)
         if (path.is_absolute() or is_windows_absolute) and not allow_absolute:
+            # Normalise resolved path for comparison (convert backslashes to forward slashes)
+            resolved_normalised = resolved_str.replace('\\', '/')
+
             # Check if this is a "safe" absolute path (temp dir, home, or under cwd)
-            safe_prefixes = [
+            # Normalise all safe prefixes to use forward slashes for consistent comparison
+            safe_prefixes_raw = [
                 str(Path.home()).lower(),
                 str(Path.cwd()).lower(),
                 str(Path(os.environ.get('TMPDIR', '/tmp'))).lower(),
@@ -1420,14 +1424,11 @@ def validate_file_path(
                 '/private/var/folders',  # macOS temp (canonical)
             ]
 
-            # Check if path is under CWD or other safe locations
-            cwd_str = str(Path.cwd()).lower()
+            # Normalise all safe prefixes to use forward slashes
+            safe_prefixes_normalised = [prefix.replace('\\', '/') for prefix in safe_prefixes_raw]
 
-            # Check if under CWD (handles Windows drive letters and all platforms)
-            # Normalise both paths to use forward slashes for consistent comparison
-            # This handles the case where Windows paths might use backslashes
-            cwd_normalised = cwd_str.replace('\\', '/')
-            resolved_normalised = resolved_str.replace('\\', '/')
+            # Check if path is under CWD
+            cwd_normalised = str(Path.cwd()).lower().replace('\\', '/')
 
             # Ensure CWD ends with separator for proper prefix matching
             if not cwd_normalised.endswith('/'):
@@ -1435,8 +1436,11 @@ def validate_file_path(
 
             is_under_cwd = resolved_normalised.startswith(cwd_normalised) or resolved_normalised == cwd_normalised.rstrip('/')
 
-            # Check other safe prefixes
-            is_under_safe_prefix = any(resolved_str.startswith(prefix) for prefix in safe_prefixes)
+            # Check other safe prefixes (also normalised)
+            is_under_safe_prefix = any(
+                resolved_normalised.startswith(prefix if prefix.endswith('/') else prefix + '/')
+                for prefix in safe_prefixes_normalised
+            )
 
             is_safe = is_under_cwd or is_under_safe_prefix
 
