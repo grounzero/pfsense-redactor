@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+- **FIX**: Added file path validation to prevent arbitrary file read/write operations
+  - Blocks directory traversal attempts (`../../../etc/passwd`)
+  - Blocks paths with null bytes (path traversal attack vector)
+  - Blocks writing to sensitive system directories (`/etc`, `/sys`, `/proc`, `/Windows/System32`, etc.)
+  - Blocks writing to critical system files (`/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, etc.)
+  - Validates paths before any file operations (input, output, and in-place modes)
+  - Resolves symbolic links to detect attempts to write to protected locations
+  - By default, only allows relative paths and absolute paths to safe locations (home, CWD, temp directories)
+
+### Added
+- New `--allow-absolute-paths` flag to explicitly enable absolute path usage
+  - Required for absolute paths outside safe locations (home, CWD, temp)
+  - Still enforces protection against sensitive system directories
+  - Useful for intentional absolute path operations
+- New path validation functions:
+  - `validate_file_path()`: Path security validation
+  - `_get_sensitive_directories()`: Computes list of protected system directories
+- 45 comprehensive tests for path validation:
+  - 28 unit tests in `tests/unit/test_path_validation.py`
+  - 17 integration tests in `tests/integration/test_path_security.py`
+  - Tests cover directory traversal, null bytes, sensitive directories, symbolic links, and edge cases
+
+### Changed
+- Path validation now occurs before file existence checks
+- In-place mode (`--inplace`) now validates paths with stricter output-level checks
+- Dry-run mode now validates output paths for security (even though no write occurs)
+- Error messages now clearly indicate when `--allow-absolute-paths` is required
+
 ## [1.0.7][] - 2025-11-03
 
 ### Fixed
@@ -55,7 +86,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - ERROR: Red, WARNING: Yellow, INFO: Green, DEBUG: Cyan
 - Domain normalisation now strips whitespace before processing dots
 - Port stripping now requires valid IPv4 address validation
-- URL/email/FQDN redaction now uses `re.sub()` instead of tokenization to preserve whitespace
+- URL/email/FQDN redaction now uses `re.sub()` instead of tokenisation to preserve whitespace
 - **IMPROVEMENT**: Simplified IPv6 documentation address mapping
   - `_counter_to_rfc_ip()` now uses cleaner wrapping logic: `h = (counter - 1) % 0xFFFF + 1`
   - Maps counters to single hextet (1..65535) with wrapping: `2001:db8::1` through `2001:db8::ffff`

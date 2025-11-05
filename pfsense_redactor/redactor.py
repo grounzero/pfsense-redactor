@@ -16,6 +16,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from typing import Union
 from urllib.parse import urlsplit, urlunsplit, SplitResult
+import os
 
 # Type aliases for clarity (using Union for Python 3.9 compatibility)
 IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
@@ -1289,8 +1290,183 @@ def find_default_allowlist_files() -> list[Path]:
 
     return default_files
 
+def _get_sensitive_directories() -> frozenset[str]:
+    """Get list of sensitive system directories that should not be written to
 
-def main() -> None:
+    Returns:
+        frozenset: Set of sensitive directory paths (normalised)
+    """
+    # Unix/Linux/macOS sensitive directories
+    unix_sensitive_dirs = {
+        '/etc', '/sys', '/proc', '/dev', '/boot', '/root',
+        '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/lib', '/lib64',
+        '/var/log', '/var/run', '/run',
+    }
+
+    # Windows system directories
+    windows_sensitive_dirs = {
+        'c:\\windows', 'c:\\windows\\system32', 'c:\\program files',
+        'c:\\program files (x86)', 'c:\\programdata',
+    }
+
+    # Normalise paths for comparison (resolve symlinks, make absolute)
+    normalised = set()
+
+    # Always include all sensitive directories (cross-platform security)
+    # This ensures Unix paths are blocked on Windows and vice versa
+    all_sensitive = unix_sensitive_dirs | windows_sensitive_dirs
+
+    for path_str in all_sensitive:
+        try:
+            path = Path(path_str)
+            # Only try to resolve if the path exists on this platform
+            # This prevents errors when checking Unix paths on Windows
+            if path.exists():
+                normalised.add(str(path.resolve()).lower())
+            else:
+                # Add as-is for non-existent paths (still useful for pattern matching)
+                # This is critical for cross-platform security
+                normalised.add(path_str.lower())
+        except (OSError, RuntimeError):
+            # Handle errors in path resolution (e.g., permission denied)
+            normalised.add(path_str.lower())
+
+    return frozenset(normalised)
+
+
+def validate_file_path(
+    file_path: str,
+    allow_absolute: bool = False,
+    is_output: bool = False,
+    sensitive_dirs: frozenset[str] | None = None
+) -> tuple[bool, str, Path | None]:
+    """Validate file path for security issues
+
+    Checks for:
+    - Absolute paths to system directories (unless allow_absolute=True)
+    - Directory traversal attempts (../)
+    - Paths resolving to sensitive system directories
+    - Null bytes in path
+
+    Args:
+        file_path: Path to validate
+        allow_absolute: If True, allow absolute paths (default: False)
+        is_output: If True, this is an output path (stricter checks)
+        sensitive_dirs: Set of sensitive directories (computed if None)
+
+    Returns:
+        tuple: (is_valid, error_message, resolved_path)
+               If valid: (True, "", resolved_path)
+               If invalid: (False, error_message, None)
+    """
+    if sensitive_dirs is None:
+        sensitive_dirs = _get_sensitive_directories()
+
+    # Check for null bytes (path traversal attack vector)
+    if '\0' in file_path:
+        return False, "Path contains null bytes", None
+
+    try:
+        path = Path(file_path)
+
+        # Check for directory traversal in the raw path string
+        # This catches attempts like "../../../etc/passwd" before resolution
+        if '..' in path.parts:
+            return False, "Path contains directory traversal components (..)", None
+
+        # Check if this looks like a Windows absolute path (e.g., C:\, D:\)
+        # On Unix systems, Path.is_absolute() returns False for Windows paths
+        is_windows_absolute = (
+            len(file_path) >= 3 and
+            file_path[1:3] in (':\\', ':/')  # C:\ or C:/
+        )
+
+        # Resolve the path to its absolute form (follows symlinks)
+        # Use Path.cwd() as base for relative paths
+        if path.is_absolute() or is_windows_absolute:
+            resolved = path.resolve()
+        else:
+            # For relative paths, resolve against current working directory
+            resolved = (Path.cwd() / path).resolve()
+
+        resolved_str = str(resolved).lower()
+
+        # Check if resolved path is in a sensitive directory FIRST
+        # This is the critical security check - do it before the absolute path check
+        # so that even with --allow-absolute-paths, we still block sensitive dirs
+        if is_output:
+            for sensitive_dir in sensitive_dirs:
+                # Check if resolved path is within or equal to sensitive directory
+                try:
+                    # Use is_relative_to for Python 3.9+
+                    if resolved_str.startswith(sensitive_dir):
+                        return False, f"Cannot write to sensitive system directory: {resolved}", None
+                except (ValueError, AttributeError):
+                    pass
+
+        # Check if absolute path is allowed (after sensitive dir check)
+        # Allow absolute paths to safe locations (like temp dirs, home, cwd)
+        if (path.is_absolute() or is_windows_absolute) and not allow_absolute:
+            # Normalise resolved path for comparison (convert backslashes to forward slashes)
+            resolved_normalised = resolved_str.replace('\\', '/')
+
+            # Check if this is a "safe" absolute path (temp dir, home, or under cwd)
+            # Normalise all safe prefixes to use forward slashes for consistent comparison
+            safe_prefixes_raw = [
+                str(Path.home()).lower(),
+                str(Path.cwd()).lower(),
+                str(Path(os.environ.get('TMPDIR', '/tmp'))).lower(),
+                str(Path(os.environ.get('TEMP', '/tmp'))).lower(),
+                str(Path(os.environ.get('TMP', '/tmp'))).lower(),
+                '/tmp',  # Standard Unix temp directory
+                '/private/tmp',  # macOS /tmp (canonical path)
+                '/var/folders',  # macOS temp
+                '/private/var/folders',  # macOS temp (canonical)
+            ]
+
+            # Normalise all safe prefixes to use forward slashes
+            safe_prefixes_normalised = [prefix.replace('\\', '/') for prefix in safe_prefixes_raw]
+
+            # Check if path is under CWD
+            cwd_normalised = str(Path.cwd()).lower().replace('\\', '/')
+
+            # Ensure CWD ends with separator for proper prefix matching
+            if not cwd_normalised.endswith('/'):
+                cwd_normalised += '/'
+
+            is_under_cwd = resolved_normalised.startswith(cwd_normalised) or resolved_normalised == cwd_normalised.rstrip('/')
+
+            # Check other safe prefixes (also normalised)
+            is_under_safe_prefix = any(
+                resolved_normalised.startswith(prefix if prefix.endswith('/') else prefix + '/')
+                for prefix in safe_prefixes_normalised
+            )
+
+            is_safe = is_under_cwd or is_under_safe_prefix
+
+            if not is_safe:
+                return False, f"Absolute paths not allowed (use --allow-absolute-paths): {file_path}", None
+
+        # Additional check: ensure we're not trying to write to system config files
+        if is_output:
+            dangerous_files = {
+                '/etc/passwd', '/etc/shadow', '/etc/group', '/etc/sudoers',
+                '/etc/hosts', '/etc/fstab', '/etc/crontab',
+                'c:\\windows\\system32\\config\\sam',
+                'c:\\windows\\system32\\config\\system',
+            }
+            if resolved_str in {f.lower() for f in dangerous_files}:
+                return False, f"Cannot write to system configuration file: {resolved}", None
+
+        return True, "", resolved
+
+    except (OSError, RuntimeError, ValueError) as e:
+        return False, f"Error validating path: {e}", None
+
+
+
+
+def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """Main entry point for the pfSense redactor CLI"""
     parser = argparse.ArgumentParser(
         description='Redact sensitive information from pfSense XML configuration files',
@@ -1361,7 +1537,9 @@ CDATA sections are not preserved.
     parser.add_argument('--dry-run-verbose', action='store_true',
                         help='Like --dry-run, but also show examples of what would be redacted')
     parser.add_argument('--redact-url-usernames', action='store_true',
-                        help='Redact usernames in URLs (e.g., ftp://user@host becomes ftp://REDACTED@host). By default, usernames are preserved while passwords are always redacted.')
+                        help='Redact usernames in URLs (e.g., ftp://user@host becomes ftp://REDACTED@host). By default, usernames are preserved whilst passwords are always redacted.')
+    parser.add_argument('--allow-absolute-paths', action='store_true',
+                        help='Allow absolute file paths (e.g., /etc/passwd, C:\\config.xml). By default, only relative paths are permitted for security. Use with caution.')
 
     args = parser.parse_args()
 
@@ -1394,20 +1572,70 @@ CDATA sections are not preserved.
     # Get logger for error messages
     logger = logging.getLogger('pfsense_redactor')
 
-    # Check if input file exists
-    if not Path(args.input).exists():
+    # Compute sensitive directories once for efficiency
+    sensitive_dirs = _get_sensitive_directories()
+
+    # Validate input file path
+    input_valid, input_error, input_resolved = validate_file_path(
+        args.input,
+        allow_absolute=args.allow_absolute_paths,
+        is_output=False,
+        sensitive_dirs=sensitive_dirs
+    )
+    if not input_valid:
+        logger.error("[!] Error: Invalid input path: %s", input_error)
+        sys.exit(1)
+
+    # Check if input file exists (use resolved path)
+    if not input_resolved.exists():
         logger.error("[!] Error: Input file '%s' not found", args.input)
         sys.exit(1)
 
     # Check if input file is empty
-    if Path(args.input).stat().st_size == 0:
+    if input_resolved.stat().st_size == 0:
         logger.error("[!] Error: Input file is empty")
         sys.exit(1)
 
-    # Check if output file exists (unless force or special modes)
-    if args.output and not args.force and not args.dry_run:
-        if Path(args.output).exists():
+    # Validate output file path (if applicable)
+    # Skip validation in dry-run mode since we won't actually write
+    if args.output and not args.stdout and not args.dry_run:
+        output_valid, output_error, output_resolved = validate_file_path(
+            args.output,
+            allow_absolute=args.allow_absolute_paths,
+            is_output=True,
+            sensitive_dirs=sensitive_dirs
+        )
+        if not output_valid:
+            logger.error("[!] Error: Invalid output path: %s", output_error)
+            sys.exit(1)
+
+        # Check if output file exists (unless force)
+        if not args.force and output_resolved.exists():
             logger.error("[!] Error: Output file '%s' already exists. Use --force to overwrite.", args.output)
+            sys.exit(1)
+    elif args.dry_run and args.output:
+        # In dry-run mode, still validate the output path for security
+        output_valid, output_error, _ = validate_file_path(
+            args.output,
+            allow_absolute=args.allow_absolute_paths,
+            is_output=True,
+            sensitive_dirs=sensitive_dirs
+        )
+        if not output_valid:
+            logger.error("[!] Error: Invalid output path: %s", output_error)
+            sys.exit(1)
+
+    # Validate inplace mode - extra security check
+    if args.inplace:
+        # Re-validate input path with output restrictions
+        inplace_valid, inplace_error, _ = validate_file_path(
+            args.input,
+            allow_absolute=args.allow_absolute_paths,
+            is_output=True,  # Treat as output for stricter checks
+            sensitive_dirs=sensitive_dirs
+        )
+        if not inplace_valid:
+            logger.error("[!] Error: Cannot use --inplace with this file: %s", inplace_error)
             sys.exit(1)
 
     # Default keep_private_ips to True when anonymise is used (better AI context)

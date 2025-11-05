@@ -286,6 +286,53 @@ Redacted output is for **analysis only**, because:
 
 Always keep the **original secure copy**.
 
+### Path Security
+
+The tool includes built-in protections against malicious file path operations:
+
+**Default behaviour (secure):**
+- Only relative paths are allowed by default
+- Directory traversal (`../../../etc/passwd`) is blocked
+- Paths with null bytes are rejected
+- Writing to system directories (`/etc`, `/sys`, `/proc`, `/Windows/System32`, etc.) is blocked
+- Safe locations (home directory, current working directory, temp directories) are automatically allowed
+
+**Using `--allow-absolute-paths`:**
+- Enables absolute paths for intentional use cases
+- Still blocks writes to sensitive system directories
+- Still blocks directory traversal attempts
+- Useful when you need to specify full paths explicitly
+
+**Examples:**
+```bash
+# Safe: relative path (default)
+pfsense-redactor config.xml output.xml
+
+# Blocked: absolute path without flag
+pfsense-redactor /etc/config.xml output.xml
+# Error: Absolute paths not allowed (use --allow-absolute-paths)
+
+# Blocked: directory traversal
+pfsense-redactor ../../../etc/passwd output.xml
+# Error: Path contains directory traversal components (..)
+
+# Blocked: writing to system directory (even with flag)
+pfsense-redactor config.xml /etc/output.xml --allow-absolute-paths
+# Error: Cannot write to sensitive system directory
+
+# Allowed: absolute path to safe location with flag
+pfsense-redactor ~/config.xml ~/output.xml --allow-absolute-paths
+
+# Blocked: in-place editing of system files
+pfsense-redactor /etc/hosts --inplace --force --allow-absolute-paths
+# Error: Cannot use --inplace with this file
+```
+
+**Protected system directories:**
+- Unix/Linux: `/etc`, `/sys`, `/proc`, `/dev`, `/boot`, `/root`, `/bin`, `/sbin`, `/usr/bin`, `/usr/sbin`, `/lib`, `/lib64`, `/var/log`, `/var/run`, `/tmp`, `/run`
+- Windows: `C:\Windows`, `C:\Windows\System32`, `C:\Program Files`, `C:\ProgramData`
+- Critical files: `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, etc.
+
 ---
 
 ## Testing
