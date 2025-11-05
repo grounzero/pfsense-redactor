@@ -1296,15 +1296,13 @@ def _get_sensitive_directories() -> frozenset[str]:
     Returns:
         frozenset: Set of sensitive directory paths (normalised)
     """
-    import platform
-    
     # Unix/Linux/macOS sensitive directories
     unix_sensitive_dirs = {
         '/etc', '/sys', '/proc', '/dev', '/boot', '/root',
         '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/lib', '/lib64',
         '/var/log', '/var/run', '/run',
     }
-    
+
     # Windows system directories
     windows_sensitive_dirs = {
         'c:\\windows', 'c:\\windows\\system32', 'c:\\program files',
@@ -1313,12 +1311,11 @@ def _get_sensitive_directories() -> frozenset[str]:
 
     # Normalise paths for comparison (resolve symlinks, make absolute)
     normalised = set()
-    is_windows = platform.system() == 'Windows'
-    
+
     # Always include all sensitive directories (cross-platform security)
     # This ensures Unix paths are blocked on Windows and vice versa
     all_sensitive = unix_sensitive_dirs | windows_sensitive_dirs
-    
+
     for path_str in all_sensitive:
         try:
             path = Path(path_str)
@@ -1425,13 +1422,13 @@ def validate_file_path(
 
             # Check if path is under CWD or other safe locations
             cwd_str = str(Path.cwd()).lower()
-            
+
             # Check if under CWD (handles Windows drive letters and all platforms)
             is_under_cwd = resolved_str.startswith(cwd_str + os.sep.lower()) or resolved_str == cwd_str
-            
+
             # Check other safe prefixes
             is_under_safe_prefix = any(resolved_str.startswith(prefix) for prefix in safe_prefixes)
-            
+
             is_safe = is_under_cwd or is_under_safe_prefix
 
             if not is_safe:

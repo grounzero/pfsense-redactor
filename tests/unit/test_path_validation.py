@@ -3,9 +3,7 @@ Unit tests for file path validation security
 Tests the validate_file_path function to ensure it properly blocks malicious paths
 """
 import sys
-import os
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
