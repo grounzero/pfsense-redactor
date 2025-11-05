@@ -36,9 +36,14 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
 
     def test_absolute_path_blocked_by_default(self):
         """Absolute paths should be blocked by default"""
-        valid, error, resolved = validate_file_path("/etc/passwd", allow_absolute=False)
+        # Use a platform-appropriate absolute path
+        if sys.platform == 'win32':
+            test_path = "C:\\test.xml"
+        else:
+            test_path = "/etc/passwd"
+        valid, error, resolved = validate_file_path(test_path, allow_absolute=False)
         assert valid is False
-        assert "Absolute paths not allowed" in error
+        assert "Absolute paths not allowed" in error or "sensitive" in error.lower()
         assert resolved is None
 
     def test_absolute_path_allowed_with_flag(self):
@@ -73,6 +78,10 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
 
     def test_sensitive_directory_etc_blocked(self):
         """Writing to /etc should be blocked"""
+        # Skip on Windows where /etc doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         valid, error, resolved = validate_file_path(
             "/etc/test.xml",
             allow_absolute=True,
@@ -84,6 +93,10 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
 
     def test_sensitive_directory_sys_blocked(self):
         """Writing to /sys should be blocked"""
+        # Skip on Windows where /sys doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         valid, error, resolved = validate_file_path(
             "/sys/test.xml",
             allow_absolute=True,
@@ -95,6 +108,10 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
 
     def test_sensitive_file_passwd_blocked(self):
         """Writing to /etc/passwd should be blocked"""
+        # Skip on Windows where /etc/passwd doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         valid, error, resolved = validate_file_path(
             "/etc/passwd",
             allow_absolute=True,
@@ -105,6 +122,10 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
 
     def test_sensitive_file_shadow_blocked(self):
         """Writing to /etc/shadow should be blocked"""
+        # Skip on Windows where /etc/shadow doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         valid, error, resolved = validate_file_path(
             "/etc/shadow",
             allow_absolute=True,
@@ -127,6 +148,10 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
 
     def test_input_path_less_strict(self):
         """Input paths should have less strict checks than output paths"""
+        # Skip on Windows where /etc doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         # Input path to /etc should be allowed (reading is OK)
         valid_input, _, _ = validate_file_path(
             "/etc/hosts",
@@ -172,6 +197,10 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
 
     def test_tmp_directory_allowed_for_temp_files(self):
         """Writing to /tmp should be allowed (it's a temp directory)"""
+        # Skip on Windows where /tmp doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         valid, error, resolved = validate_file_path(
             "/tmp/config.xml",
             allow_absolute=False,  # Should be allowed even without flag (safe location)

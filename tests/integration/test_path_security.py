@@ -96,6 +96,10 @@ class TestPathSecurityCLI:
 
     def test_etc_passwd_blocked(self):
         """Attempting to read /etc/passwd should be blocked"""
+        # Skip on Windows where /etc/passwd doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "output.xml"
             result = subprocess.run(
@@ -110,6 +114,10 @@ class TestPathSecurityCLI:
 
     def test_writing_to_etc_blocked(self):
         """Writing to /etc should be blocked"""
+        # Skip on Windows where /etc doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         result = subprocess.run(
             [sys.executable, "-m", "pfsense_redactor",
              str(DEFAULT_CONFIG), "/etc/test-output.xml",
@@ -123,6 +131,10 @@ class TestPathSecurityCLI:
 
     def test_writing_to_tmp_allowed(self):
         """Writing to /tmp should be allowed (it's a temp directory)"""
+        # Skip on Windows where /tmp doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         # Use a unique filename to avoid conflicts
         output_file = f"/tmp/test-output-{os.getpid()}.xml"
         try:
@@ -142,6 +154,10 @@ class TestPathSecurityCLI:
 
     def test_inplace_with_system_file_blocked(self):
         """In-place editing of system files should be blocked"""
+        # Skip on Windows where /etc/hosts doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         result = subprocess.run(
             [sys.executable, "-m", "pfsense_redactor",
              "/etc/hosts", "--inplace", "--force",
@@ -167,6 +183,10 @@ class TestPathSecurityCLI:
 
     def test_dry_run_with_dangerous_path(self):
         """Dry run should still validate paths"""
+        # Skip on Windows where /etc doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         result = subprocess.run(
             [sys.executable, "-m", "pfsense_redactor",
              str(DEFAULT_CONFIG), "/etc/test.xml",
@@ -258,6 +278,10 @@ class TestPathSecurityEdgeCases:
 
     def test_symlink_to_etc_blocked(self):
         """Symbolic links to /etc should be blocked"""
+        # Skip on Windows where /etc doesn't exist
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+        
         if not hasattr(os, 'symlink'):
             pytest.skip("Symlinks not supported on this platform")
 

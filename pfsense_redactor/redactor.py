@@ -1296,24 +1296,39 @@ def _get_sensitive_directories() -> frozenset[str]:
     Returns:
         frozenset: Set of sensitive directory paths (normalised)
     """
-    sensitive_dirs = {
+    import platform
+    
+    # Unix/Linux/macOS sensitive directories
+    unix_sensitive_dirs = {
         '/etc', '/sys', '/proc', '/dev', '/boot', '/root',
         '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/lib', '/lib64',
         '/var/log', '/var/run', '/run',
-        # Windows system directories
+    }
+    
+    # Windows system directories
+    windows_sensitive_dirs = {
         'c:\\windows', 'c:\\windows\\system32', 'c:\\program files',
         'c:\\program files (x86)', 'c:\\programdata',
     }
 
     # Normalise paths for comparison (resolve symlinks, make absolute)
     normalised = set()
-    for path_str in sensitive_dirs:
+    is_windows = platform.system() == 'Windows'
+    
+    # Always include all sensitive directories (cross-platform security)
+    # This ensures Unix paths are blocked on Windows and vice versa
+    all_sensitive = unix_sensitive_dirs | windows_sensitive_dirs
+    
+    for path_str in all_sensitive:
         try:
             path = Path(path_str)
+            # Only try to resolve if the path exists on this platform
+            # This prevents errors when checking Unix paths on Windows
             if path.exists():
                 normalised.add(str(path.resolve()).lower())
             else:
                 # Add as-is for non-existent paths (still useful for pattern matching)
+                # This is critical for cross-platform security
                 normalised.add(path_str.lower())
         except (OSError, RuntimeError):
             # Handle errors in path resolution (e.g., permission denied)
