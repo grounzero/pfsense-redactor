@@ -1299,7 +1299,7 @@ def _get_sensitive_directories() -> frozenset[str]:
     sensitive_dirs = {
         '/etc', '/sys', '/proc', '/dev', '/boot', '/root',
         '/bin', '/sbin', '/usr/bin', '/usr/sbin', '/lib', '/lib64',
-        '/var/log', '/var/run', '/tmp', '/run',
+        '/var/log', '/var/run', '/run',
         # Windows system directories
         'c:\\windows', 'c:\\windows\\system32', 'c:\\program files',
         'c:\\program files (x86)', 'c:\\programdata',
@@ -1395,9 +1395,10 @@ def validate_file_path(
                 str(Path(os.environ.get('TMPDIR', '/tmp'))).lower(),
                 str(Path(os.environ.get('TEMP', '/tmp'))).lower(),
                 str(Path(os.environ.get('TMP', '/tmp'))).lower(),
+                '/tmp',  # Standard Unix temp directory
+                '/private/tmp',  # macOS /tmp (canonical path)
                 '/var/folders',  # macOS temp
                 '/private/var/folders',  # macOS temp (canonical)
-                '/tmp/pytest-',  # pytest temp directories
             ]
 
             is_safe = any(resolved_str.startswith(prefix) for prefix in safe_prefixes)

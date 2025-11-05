@@ -121,18 +121,24 @@ class TestPathSecurityCLI:
         assert result.returncode != 0
         assert "sensitive" in result.stderr.lower() or "system" in result.stderr.lower()
 
-    def test_writing_to_tmp_blocked(self):
-        """Writing to /tmp should be blocked"""
-        result = subprocess.run(
-            [sys.executable, "-m", "pfsense_redactor",
-             str(DEFAULT_CONFIG), "/tmp/test-output.xml",
-             "--allow-absolute-paths"],
-            capture_output=True,
-            text=True,
-            cwd=str(PROJECT_ROOT)
-        )
-        assert result.returncode != 0
-        assert "sensitive" in result.stderr.lower() or "system" in result.stderr.lower()
+    def test_writing_to_tmp_allowed(self):
+        """Writing to /tmp should be allowed (it's a temp directory)"""
+        # Use a unique filename to avoid conflicts
+        output_file = f"/tmp/test-output-{os.getpid()}.xml"
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "pfsense_redactor",
+                 str(DEFAULT_CONFIG), output_file],
+                capture_output=True,
+                text=True,
+                cwd=str(PROJECT_ROOT)
+            )
+            assert result.returncode == 0
+            assert Path(output_file).exists()
+        finally:
+            # Clean up
+            if Path(output_file).exists():
+                Path(output_file).unlink()
 
     def test_inplace_with_system_file_blocked(self):
         """In-place editing of system files should be blocked"""

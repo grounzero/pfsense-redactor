@@ -170,15 +170,16 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
         assert error == ""
         assert resolved is not None
 
-    def test_tmp_directory_blocked_for_output(self):
-        """Writing to /tmp should be blocked (potential security risk)"""
+    def test_tmp_directory_allowed_for_temp_files(self):
+        """Writing to /tmp should be allowed (it's a temp directory)"""
         valid, error, resolved = validate_file_path(
             "/tmp/config.xml",
-            allow_absolute=True,
+            allow_absolute=False,  # Should be allowed even without flag (safe location)
             is_output=True
         )
-        assert valid is False
-        assert resolved is None
+        assert valid is True
+        assert error == ""
+        assert resolved is not None
 
     def test_sensitive_directories_computed(self):
         """Sensitive directories should be computed correctly"""
