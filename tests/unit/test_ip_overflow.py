@@ -7,7 +7,6 @@ Verifies that when the counter exceeds RFC documentation IP ranges:
 - No duplicate mappings occur
 - Appropriate warnings are logged
 """
-import pytest
 from pfsense_redactor.redactor import PfSenseRedactor
 
 
