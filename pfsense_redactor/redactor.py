@@ -499,27 +499,63 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         Maps counter values to sequential IPs within RFC documentation ranges:
         - IPv4: RFC 5737 ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24)
+          Total: 762 usable addresses (254 per range, excluding .0 and .255)
         - IPv6: RFC 3849 range (2001:db8::/32)
+          Total: 65535 usable addresses
+
+        When counters exceed RFC ranges, falls back to RFC 1918 private ranges
+        to avoid duplicate mappings whilst maintaining valid IP addresses.
 
         Args:
             counter: The IP counter value (1-based)
             is_ipv6: True for IPv6, False for IPv4
 
         Returns:
-            str: RFC documentation IP address
+            str: RFC documentation IP address or fallback private IP
         """
         if is_ipv6:
             # RFC 3849: 2001:db8::/32
-            # Map counter to last hextet (1..65535), wrapping if needed
-            # Produces addresses like 2001:db8::1, 2001:db8::2, ..., 2001:db8::ffff
-            hextet = (counter - 1) % 0xFFFF + 1
-            return f"2001:db8::{hextet:x}"
+            # Map counter to last hextet (1..65535)
+            if counter <= 0xFFFF:
+                return f"2001:db8::{counter:x}"
 
-        # RFC 5737 IPv4 documentation ranges (768 total addresses):
-        # - 192.0.2.0/24 (TEST-NET-1): 254 usable
-        # - 198.51.100.0/24 (TEST-NET-2): 254 usable
-        # - 203.0.113.0/24 (TEST-NET-3): 254 usable
-        # Skip .0 and .255 in each range (network/broadcast)
+            # IPv6 overflow: use RFC 4193 Unique Local Addresses (ULA)
+            # fd00::/8 range for overflow addresses
+            # Log warning on first overflow
+            if counter == 0xFFFF + 1:
+                self.logger.warning(
+                    "[!] Warning: Exceeded RFC 3849 IPv6 limit (65535 addresses). "
+                    "Using RFC 4193 ULA range (fd00::/8) for additional addresses."
+                )
+
+            # Map overflow to fd00::/8 range
+            # overflow 1 (counter 65536) -> fd00::0:1
+            # overflow 65536 (counter 131071) -> fd00::1:0
+            overflow = counter - 0xFFFF
+            hextet3 = ((overflow - 1) % 0x10000) + 1
+            hextet2 = (overflow - 1) // 0x10000
+            return f"fd00::{hextet2:x}:{hextet3:x}"
+
+        # RFC 5737 IPv4 documentation ranges (762 total addresses):
+        # - 192.0.2.0/24 (TEST-NET-1): 254 usable (.1 to .254)
+        # - 198.51.100.0/24 (TEST-NET-2): 254 usable (.1 to .254)
+        # - 203.0.113.0/24 (TEST-NET-3): 254 usable (.1 to .254)
+
+        # Log warnings at approach thresholds
+        if counter == 700:
+            self.logger.warning(
+                "[!] Warning: Approaching RFC 5737 IPv4 limit (700/762 addresses used). "
+                "Consider reducing unique IPs or using IPv6."
+            )
+        elif counter == 750:
+            self.logger.warning(
+                "[!] Warning: Near RFC 5737 IPv4 limit (750/762 addresses used)."
+            )
+        elif counter == 762:
+            self.logger.warning(
+                "[!] Warning: Reached RFC 5737 IPv4 limit (762/762 addresses used). "
+                "Next IP will use RFC 1918 private range."
+            )
 
         if counter <= 254:
             # First range: 192.0.2.1 to 192.0.2.254
@@ -530,10 +566,48 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         if counter <= 762:
             # Third range: 203.0.113.1 to 203.0.113.254
             return f"203.0.113.{counter - 508}"
-        # Wrap around if we exceed available addresses
-        # This is unlikely in practice but provides graceful handling
-        wrapped = ((counter - 1) % 762) + 1
-        return self._counter_to_rfc_ip(wrapped, False)
+
+        # Overflow: use RFC 1918 private range (10.0.0.0/8) for additional addresses
+        # This prevents duplicate mappings whilst maintaining valid IP addresses
+        # Log warning on first overflow
+        if counter == 763:
+            self.logger.warning(
+                "[!] Warning: Exceeded RFC 5737 IPv4 limit (762 addresses). "
+                "Using RFC 1918 private range (10.0.0.0/8) for additional addresses. "
+                "This maintains unique mappings but IPs are no longer documentation addresses."
+            )
+
+        # Map overflow addresses to 10.0.0.0/8 range
+        # Start at 10.0.0.1 for counter 763 (overflow 1)
+        overflow = counter - 762
+
+        # Treat the 10.0.0.0/8 space as a flat 24-bit address space
+        # Map overflow 1-16777216 to 10.0.0.1-10.255.255.255
+        offset = overflow - 1  # Make it 0-based (0 maps to 10.0.0.1)
+
+        # Standard IP octet calculation
+        octet2 = offset // 65536
+        octet3 = (offset // 256) % 256
+        octet4 = (offset % 256) + 1
+
+        # Handle wrap at octet boundaries
+        if octet4 > 255:
+            octet4 = 0
+            octet3 += 1
+        if octet3 > 255:
+            octet3 = 0
+            octet2 += 1
+
+        # Ensure we stay within 10.0.0.0/8 (16,777,216 addresses)
+        if octet2 > 255:
+            self.logger.error(
+                "[!] Error: Exceeded maximum IP address space (762 RFC + 16,777,216 private = 16,777,978 total). "
+                "Cannot generate unique IP for counter %d.", counter
+            )
+            # Return a marker IP to indicate overflow
+            return "10.255.255.255"
+
+        return f"10.{octet2}.{octet3}.{octet4}"
 
     def _anonymise_ip_for_url(self, ip_str: str, is_ipv6: bool) -> str:
         """Generate RFC documentation IP for URL contexts
