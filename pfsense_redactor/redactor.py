@@ -1831,6 +1831,23 @@ CDATA sections are not preserved.
         logger.error("[!] Error: Input file '%s' not found", args.input)
         sys.exit(1)
 
+    # SECURITY: Check if input is a symlink when using --inplace
+    # Must check BEFORE file size check (directories appear empty when read as files)
+    if args.inplace:
+        input_path_original = Path(args.input)
+        if input_path_original.is_symlink():
+            # Get the symlink target for the error message
+            try:
+                target = input_path_original.resolve()
+                logger.error("[!] Error: Cannot use --inplace on symlink: %s", args.input)
+                logger.error("    Symlink target: %s", target)
+                logger.error("    Hint: If you intend to modify the target, specify it directly.")
+            except (OSError, RuntimeError):
+                # If we can't resolve the symlink (broken link), still refuse
+                logger.error("[!] Error: Cannot use --inplace on symlink: %s", args.input)
+                logger.error("    Hint: Symlinks are not allowed with --inplace for security reasons.")
+            sys.exit(1)
+
     # Check if input file is empty
     if input_resolved.stat().st_size == 0:
         logger.error("[!] Error: Input file is empty")
