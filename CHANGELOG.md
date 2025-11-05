@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **FIX**: Fixed IP counter overflow in anonymisation mode
+  - After 762 unique IPs, counter would wrap and create duplicate mappings (IP #763 → 192.0.2.1, same as IP #1)
+  - Now falls back to RFC 1918 private range (10.0.0.0/8) for overflow addresses
+  - Supports up to 16,777,978 unique IPv4 addresses (762 RFC 5737 + 16,777,216 RFC 1918)
+  - IPv6 overflow (after 65535 addresses) falls back to RFC 4193 ULA range (fd00::/8)
+  - Added warning logs at thresholds: 700, 750, 762 addresses used
+  - Added warning on first overflow with explanation of fallback behaviour
+  - Added 18 tests in `tests/unit/test_ip_overflow.py`
+  - Verified no duplicate mappings occur across RFC and overflow ranges
+
 ### Security
 - **FIX**: Added file path validation to prevent arbitrary file read/write operations
   - Blocks directory traversal attempts (`../../../etc/passwd`)

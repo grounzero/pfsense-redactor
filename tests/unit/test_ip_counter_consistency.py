@@ -96,19 +96,15 @@ class TestIPv6HextetOverflow:
             assert result == expected, f"Counter {counter} should map to {expected}, got {result}"
 
     def test_ipv6_counter_exceeds_single_hextet(self):
-        """Test counters that wrap around after 65535"""
+        """Test counters that overflow to RFC 4193 ULA range after 65535"""
         redactor = PfSenseRedactor(anonymise=True)
 
         test_cases = [
-            (65536, "2001:db8::1"),        # Wraps to 1
-            (65537, "2001:db8::2"),        # Wraps to 2
-            (131070, "2001:db8::ffff"),    # 131070 wraps to 65535 (ffff)
-            (131071, "2001:db8::1"),       # 131071 wraps to 1
-            (131072, "2001:db8::2"),       # 131072 wraps to 2
-            (196605, "2001:db8::ffff"),    # 196605 wraps to 65535 (ffff)
-            (196606, "2001:db8::1"),       # 196606 wraps to 1
-            (196607, "2001:db8::2"),       # 196607 wraps to 2
-            (196608, "2001:db8::3"),       # 196608 wraps to 3
+            (65536, "fd00::0:1"),        # First overflow address
+            (65537, "fd00::0:2"),        # Second overflow address
+            (131070, "fd00::0:ffff"),    # Near boundary (offset 65534, hextet3 = 65535)
+            (131071, "fd00::0:10000"),   # At boundary (offset 65535, hextet3 = 65536)
+            (131072, "fd00::1:1"),       # After boundary (offset 65536, wraps to hextet2=1, hextet3=1)
         ]
 
         for counter, expected in test_cases:
@@ -116,31 +112,32 @@ class TestIPv6HextetOverflow:
             assert result == expected, f"Counter {counter} should map to {expected}, got {result}"
 
     def test_ipv6_very_large_counter(self):
-        """Test very large counter values wrap correctly"""
+        """Test very large counter values use RFC 4193 ULA range"""
         redactor = PfSenseRedactor(anonymise=True)
 
         # Test a large counter (e.g., 1 million)
         counter = 1_000_000
         result = redactor._counter_to_rfc_ip(counter, is_ipv6=True)
 
-        # 1000000 % 65535 = 16960, so should wrap to 2001:db8::4240
-        # (1000000 - 1) % 65535 + 1 = 16960
-        expected_h = ((counter - 1) % 0xFFFF) + 1
-        assert result == f"2001:db8::{expected_h:x}", f"Counter {counter} should wrap correctly, got {result}"
+        # Counter 1000000 is in overflow range (> 65535)
+        # overflow = 1000000 - 65535 = 934465
+        # offset = 934464, hextet3 = (934464 % 65536) + 1 = 16961 (0x4241)
+        # hextet2 = 934464 // 65536 = 14 (0xe)
+        assert result == "fd00::e:4241", f"Counter {counter} should use ULA range, got {result}"
 
     def test_ipv6_counter_boundary_values(self):
-        """Test boundary values around wrap point"""
+        """Test boundary values around overflow point"""
         redactor = PfSenseRedactor(anonymise=True)
 
         # Test around the 65535/65536 boundary
-        result_max_single = redactor._counter_to_rfc_ip(65535, is_ipv6=True)
-        result_wrap = redactor._counter_to_rfc_ip(65536, is_ipv6=True)
+        result_max_rfc = redactor._counter_to_rfc_ip(65535, is_ipv6=True)
+        result_overflow = redactor._counter_to_rfc_ip(65536, is_ipv6=True)
 
-        assert result_max_single == "2001:db8::ffff", "Max value should be ::ffff"
-        assert result_wrap == "2001:db8::1", "Should wrap back to ::1"
+        assert result_max_rfc == "2001:db8::ffff", "Max RFC value should be ::ffff"
+        assert result_overflow == "fd00::0:1", "Should overflow to ULA range"
 
         # Verify they're different
-        assert result_max_single != result_wrap, "Boundary values should produce different IPs"
+        assert result_max_rfc != result_overflow, "Boundary values should produce different IPs"
 
 
 class TestIPCounterInURLContext:
