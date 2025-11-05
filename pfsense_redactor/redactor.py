@@ -673,6 +673,36 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return rfc_ip
 
+    def _validate_and_strip_port(self, token: str) -> tuple[str, str]:
+        """Validate and strip port from IPv4 address token.
+
+        Returns:
+            tuple: (token_without_port, port_suffix) where port_suffix includes colon
+        """
+        m_port = re.match(r'^(.*?):(\d+)$', token)
+        if not m_port:
+            return token, ''
+
+        potential_ip, port_str = m_port.group(1), m_port.group(2)
+        try:
+            port_num = int(port_str)
+        except ValueError:
+            return token, ''
+
+        # Validate port range (1-65535)
+        if not 1 <= port_num <= 65535:
+            return token, ''
+
+        # Only treat as port if it's a valid IPv4 address
+        if '.' not in potential_ip:
+            return token, ''
+
+        try:
+            ipaddress.ip_address(potential_ip)
+            return potential_ip, f':{port_num}'
+        except ValueError:
+            return token, ''
+
     def _mask_ip_like_tokens(self, text: str) -> str:
         """IP address masking using ipaddress module"""
         def repl(token: str) -> str:
@@ -683,21 +713,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
             # Extract optional trailing :port for unbracketed tokens
             # IPv6 must use brackets to carry a port; we only peel :port when the token contains a dot
-            # Only strip port if it looks like IPv4:port (has dots)
-            # Don't strip from IPv6 addresses (they use colons as part of the address)
             port_suffix = ''
             if not token.startswith('['):
-                m_port = re.match(r'^(.*?)(:\d{1,5})$', token)
-                if m_port:
-                    potential_ip, potential_port = m_port.group(1), m_port.group(2)
-                    # Only treat as port if it's a valid IPv4 address
-                    # This prevents stripping ports from non-IP tokens like "foo.bar.baz:8080"
-                    if '.' in potential_ip:
-                        try:
-                            ipaddress.ip_address(potential_ip)
-                            token, port_suffix = potential_ip, potential_port
-                        except ValueError:
-                            pass  # Not a valid IP, don't strip port
+                token, port_suffix = self._validate_and_strip_port(token)
 
             # Handle bracketed IPv6 with optional zone identifier and port: [fe80::1%em0]:51820
             # This handles: [IPv6], [IPv6%zone], [IPv6]:port, [IPv6%zone]:port
@@ -706,8 +724,21 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 if ']:' in token:
                     # Extract port from bracketed IPv6
                     bracket_end = token.index(']:')
-                    port_suffix = token[bracket_end+1:]  # Includes the colon
-                    token = token[:bracket_end+1]  # Keep just [IPv6%zone]
+                    port_str = token[bracket_end+2:]  # Port without colon
+
+                    # Validate port range for IPv6
+                    try:
+                        port_num = int(port_str)
+                        if 1 <= port_num <= 65535:
+                            # Valid port, strip and normalise
+                            port_suffix = f':{port_num}'
+                            token = token[:bracket_end+1]  # Keep just [IPv6%zone]
+                        else:
+                            # Invalid port, don't strip
+                            port_suffix = ''
+                    except ValueError:
+                        # Not a valid port number, don't strip
+                        port_suffix = ''
 
             ip, bracketed, zone = self._parse_ip_token(token)
             if ip is None:
