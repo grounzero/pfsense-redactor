@@ -79,7 +79,7 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
         # Skip on Windows where /etc doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         valid, error, resolved = validate_file_path(
             "/etc/test.xml",
             allow_absolute=True,
@@ -94,7 +94,7 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
         # Skip on Windows where /sys doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         valid, error, resolved = validate_file_path(
             "/sys/test.xml",
             allow_absolute=True,
@@ -109,7 +109,7 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
         # Skip on Windows where /etc/passwd doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         valid, error, resolved = validate_file_path(
             "/etc/passwd",
             allow_absolute=True,
@@ -123,7 +123,7 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
         # Skip on Windows where /etc/shadow doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         valid, error, resolved = validate_file_path(
             "/etc/shadow",
             allow_absolute=True,
@@ -149,7 +149,7 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
         # Skip on Windows where /etc doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         # Input path to /etc should be allowed (reading is OK)
         valid_input, _, _ = validate_file_path(
             "/etc/hosts",
@@ -198,7 +198,7 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
         # Skip on Windows where /tmp doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         valid, error, resolved = validate_file_path(
             "/tmp/config.xml",
             allow_absolute=False,  # Should be allowed even without flag (safe location)

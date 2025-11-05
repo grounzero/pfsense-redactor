@@ -99,7 +99,7 @@ class TestPathSecurityCLI:
         # Skip on Windows where /etc/passwd doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         with tempfile.TemporaryDirectory() as tmpdir:
             output = Path(tmpdir) / "output.xml"
             result = subprocess.run(
@@ -117,7 +117,7 @@ class TestPathSecurityCLI:
         # Skip on Windows where /etc doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         result = subprocess.run(
             [sys.executable, "-m", "pfsense_redactor",
              str(DEFAULT_CONFIG), "/etc/test-output.xml",
@@ -134,7 +134,7 @@ class TestPathSecurityCLI:
         # Skip on Windows where /tmp doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         # Use a unique filename to avoid conflicts
         output_file = f"/tmp/test-output-{os.getpid()}.xml"
         try:
@@ -157,7 +157,7 @@ class TestPathSecurityCLI:
         # Skip on Windows where /etc/hosts doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         result = subprocess.run(
             [sys.executable, "-m", "pfsense_redactor",
              "/etc/hosts", "--inplace", "--force",
@@ -186,7 +186,7 @@ class TestPathSecurityCLI:
         # Skip on Windows where /etc doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         result = subprocess.run(
             [sys.executable, "-m", "pfsense_redactor",
              str(DEFAULT_CONFIG), "/etc/test.xml",
@@ -281,7 +281,7 @@ class TestPathSecurityEdgeCases:
         # Skip on Windows where /etc doesn't exist
         if sys.platform == 'win32':
             pytest.skip("Unix-specific test")
-        
+
         if not hasattr(os, 'symlink'):
             pytest.skip("Symlinks not supported on this platform")
 
