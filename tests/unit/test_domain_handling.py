@@ -129,6 +129,120 @@ class TestDomainNormalisationSecurity:
             assert norm is None, f"Domain with internal whitespace '{domain}' should be rejected"
             assert idna is None, f"Domain with internal whitespace '{domain}' should be rejected"
 
+    def test_domain_with_tab_rejected(self, redactor_factory):
+        """Verify that domains with tabs are rejected (security fix)"""
+        redactor = redactor_factory()
+
+        test_cases = [
+            "evil.com\texample.com",
+            "example\t.com",
+            "exam\tple.com",
+        ]
+
+        for domain in test_cases:
+            norm, idna = redactor._normalise_domain(domain)
+            assert norm is None, f"Domain with tab '{repr(domain)}' should be rejected"
+            assert idna is None, f"Domain with tab '{repr(domain)}' should be rejected"
+
+    def test_domain_with_newline_rejected(self, redactor_factory):
+        """Verify that domains with newlines are rejected (security fix)"""
+        redactor = redactor_factory()
+
+        test_cases = [
+            "evil.com\nexample.com",
+            "example\n.com",
+            "exam\nple.com",
+        ]
+
+        for domain in test_cases:
+            norm, idna = redactor._normalise_domain(domain)
+            assert norm is None, f"Domain with newline '{repr(domain)}' should be rejected"
+            assert idna is None, f"Domain with newline '{repr(domain)}' should be rejected"
+
+    def test_domain_with_carriage_return_rejected(self, redactor_factory):
+        """Verify that domains with carriage returns are rejected (security fix)"""
+        redactor = redactor_factory()
+
+        test_cases = [
+            "evil.com\rexample.com",
+            "example\r.com",
+            "exam\rple.com",
+        ]
+
+        for domain in test_cases:
+            norm, idna = redactor._normalise_domain(domain)
+            assert norm is None, f"Domain with carriage return '{repr(domain)}' should be rejected"
+            assert idna is None, f"Domain with carriage return '{repr(domain)}' should be rejected"
+
+    def test_domain_with_non_breaking_space_rejected(self, redactor_factory):
+        """Verify that domains with non-breaking spaces are rejected (security fix)"""
+        redactor = redactor_factory()
+
+        test_cases = [
+            "evil.com\u00a0example.com",
+            "example\u00a0.com",
+            "exam\u00a0ple.com",
+        ]
+
+        for domain in test_cases:
+            norm, idna = redactor._normalise_domain(domain)
+            assert norm is None, f"Domain with non-breaking space '{repr(domain)}' should be rejected"
+            assert idna is None, f"Domain with non-breaking space '{repr(domain)}' should be rejected"
+
+    def test_domain_with_multiple_whitespace_types_rejected(self, redactor_factory):
+        """Verify that domains with multiple types of whitespace are rejected"""
+        redactor = redactor_factory()
+
+        test_cases = [
+            "ex\tam\nple.com",
+            "evil.com\t\nexample.com",
+            "test \t\n\r.com",
+        ]
+
+        for domain in test_cases:
+            norm, idna = redactor._normalise_domain(domain)
+            assert norm is None, f"Domain with multiple whitespace types '{repr(domain)}' should be rejected"
+            assert idna is None, f"Domain with multiple whitespace types '{repr(domain)}' should be rejected"
+
+    def test_wildcard_domain_with_whitespace_rejected(self, redactor_factory):
+        """Verify that wildcard domains with whitespace are rejected"""
+        redactor = redactor_factory()
+
+        test_cases = [
+            "*.exam ple.com",
+            "*.example\t.com",
+            "*.exam\nple.com",
+        ]
+
+        for domain in test_cases:
+            norm, idna = redactor._normalise_domain(domain)
+            assert norm is None, f"Wildcard domain with whitespace '{repr(domain)}' should be rejected"
+            assert idna is None, f"Wildcard domain with whitespace '{repr(domain)}' should be rejected"
+
+    def test_international_domain_with_whitespace_rejected(self, redactor_factory):
+        """Verify that international domains with whitespace are rejected"""
+        redactor = redactor_factory()
+
+        test_cases = [
+            "mün chen.de",
+            "münchen\t.de",
+            "mün\nchen.de",
+        ]
+
+        for domain in test_cases:
+            norm, idna = redactor._normalise_domain(domain)
+            assert norm is None, f"International domain with whitespace '{repr(domain)}' should be rejected"
+            assert idna is None, f"International domain with whitespace '{repr(domain)}' should be rejected"
+
+    def test_valid_international_domain_accepted(self, redactor_factory):
+        """Verify that valid international domains without whitespace are accepted"""
+        redactor = redactor_factory()
+
+        # Valid international domain
+        norm, idna = redactor._normalise_domain("münchen.de")
+        assert norm == "münchen.de"
+        assert idna == "xn--mnchen-3ya.de"
+
     def test_valid_domain_with_surrounding_whitespace_accepted(self, redactor_factory):
         """Verify that valid domains with surrounding whitespace are accepted after stripping"""
         redactor = redactor_factory()
