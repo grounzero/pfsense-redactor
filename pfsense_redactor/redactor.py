@@ -1408,14 +1408,16 @@ def validate_file_path(
                 '/private/var/folders',  # macOS temp (canonical)
             ]
 
-            # Check if path is under CWD (handles Windows drive letters)
-            try:
-                # Check if resolved path is relative to CWD
-                resolved.relative_to(Path.cwd())
-                is_safe = True
-            except ValueError:
-                # Not under CWD, check other safe prefixes
-                is_safe = any(resolved_str.startswith(prefix) for prefix in safe_prefixes)
+            # Check if path is under CWD or other safe locations
+            cwd_str = str(Path.cwd()).lower()
+            
+            # Check if under CWD (handles Windows drive letters and all platforms)
+            is_under_cwd = resolved_str.startswith(cwd_str + os.sep.lower()) or resolved_str == cwd_str
+            
+            # Check other safe prefixes
+            is_under_safe_prefix = any(resolved_str.startswith(prefix) for prefix in safe_prefixes)
+            
+            is_safe = is_under_cwd or is_under_safe_prefix
 
             if not is_safe:
                 return False, f"Absolute paths not allowed (use --allow-absolute-paths): {file_path}", None
