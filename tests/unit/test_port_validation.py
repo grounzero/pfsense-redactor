@@ -8,7 +8,7 @@ import pytest
 from pfsense_redactor.redactor import PfSenseRedactor
 
 
-class TestPortValidation:
+class TestPortValidation:  # pylint: disable=too-many-public-methods
     """Test port validation in IP address parsing"""
 
     @pytest.fixture
