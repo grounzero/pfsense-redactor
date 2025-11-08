@@ -447,7 +447,6 @@ def test_anonymise_consistent_aliases(cli_runner, create_xml_file, tmp_path):
 
     assert exit_code == 0
     output_content = output_file.read_text()
-
     # Same IP should get same alias
     ip_aliases = re.findall(r'IP_\d+', output_content)
     # 93.184.216.34 appears twice, should have same alias
