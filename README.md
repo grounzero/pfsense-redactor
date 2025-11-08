@@ -1,5 +1,7 @@
 # pfSense XML Configuration Redactor
 
+[![PyPI version](https://badge.fury.io/py/pfsense-redactor.svg)](https://pypi.org/project/pfsense-redactor/)
+
 The **pfSense XML Configuration Redactor** safely removes sensitive information from `config.xml` exports before they are shared with support, consultants, auditors, or AI tools for security analysis.
 
 ## Installation
