@@ -7,10 +7,12 @@
 disable=
     R0801,  # duplicate-code (can occur in similar logic paths)
     W0718,  # broad-exception-caught (intentional for IDNA encoding fallback)
+    W0703,  # broad-except (intentional for fallback error handling in version checker)
     C0302,  # too-many-lines (single-module design is intentional for this tool)
     C0301,  # line-too-long (regex patterns and help text are hard to break meaningfully)
     C0415,  # import-outside-toplevel (intentional for avoiding circular imports)
     E1101,  # no-member (false positive for importlib.metadata in some pylint versions)
+    R0903,  # too-few-public-methods (not applicable to NamedTuple classes)
 
 [BASIC]
 # Allow common short variable names

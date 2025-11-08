@@ -3,7 +3,7 @@
 Checks PyPI for the latest version and provides upgrade instructions
 based on detected installation method.
 """
-from __future__ import annotations  # pylint: disable=no-name-in-module
+from __future__ import annotations
 
 import json
 import os
@@ -19,14 +19,14 @@ import logging
 COMMON_INSTALL_METHODS = ('pipx', 'venv', 'user')
 
 
-class VersionInfo(NamedTuple):  # pylint: disable=too-few-public-methods
+class VersionInfo(NamedTuple):
     """Version information from PyPI"""
     current: str
     latest: str
     update_available: bool
 
 
-class InstallationMethod(NamedTuple):  # pylint: disable=too-few-public-methods
+class InstallationMethod(NamedTuple):
     """Detected installation method and upgrade command"""
     method: str
     upgrade_command: str
@@ -47,7 +47,7 @@ def get_current_version() -> str:
                     if line.startswith('__version__'):
                         # Extract version from __version__ = "x.y.z"
                         return line.split('=')[1].strip().strip('"').strip("'")
-        except Exception:  # pylint: disable=broad-except
+        except Exception:
             pass
         return "unknown"
 
@@ -83,7 +83,7 @@ def check_pypi_version(timeout: int = 5) -> str | None:
     except (json.JSONDecodeError, KeyError) as err:
         logger.debug("Error parsing PyPI response: %s", err)
         return None
-    except Exception as err:  # pylint: disable=broad-except
+    except Exception as err:
         logger.debug("Unexpected error checking PyPI: %s", err)
         return None
 
