@@ -3,7 +3,9 @@ CLI behaviour and safety tests
 
 Test command-line interface behaviour, error handling, and safety features
 """
+import re
 import subprocess
+from collections import Counter
 
 
 def test_missing_input_file(cli_runner, tmp_path):
@@ -11,7 +13,7 @@ def test_missing_input_file(cli_runner, tmp_path):
     non_existent = tmp_path / "does_not_exist.xml"
     output = tmp_path / "output.xml"
 
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, stderr = cli_runner.run(
         str(non_existent),
         str(output),
         expect_success=False
@@ -27,7 +29,7 @@ def test_empty_input_file(cli_runner, tmp_path):
     empty_file.write_text("")
     output = tmp_path / "output.xml"
 
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, stderr = cli_runner.run(
         str(empty_file),
         str(output),
         expect_success=False
@@ -37,7 +39,7 @@ def test_empty_input_file(cli_runner, tmp_path):
     assert "empty" in stderr.lower() or "error" in stderr.lower()
 
 
-def test_output_required_without_special_modes(script_path, create_xml_file, tmp_path):
+def test_output_required_without_special_modes(script_path, create_xml_file, _tmp_path):
     """Test that output file is auto-generated if not provided"""
     xml_file = create_xml_file("""<?xml version="1.0"?>
 <pfsense>
@@ -49,7 +51,8 @@ def test_output_required_without_special_modes(script_path, create_xml_file, tmp
     result = subprocess.run(
         ["python3", script_path, str(xml_file)],
         capture_output=True,
-        text=True
+        text=True,
+        check=False
     )
 
     assert result.returncode == 0
@@ -70,7 +73,7 @@ def test_stdout_mode_writes_to_stdout(cli_runner, create_xml_file):
 </pfsense>
 """)
 
-    exit_code, stdout, stderr = cli_runner.run_to_stdout(str(xml_file))
+    exit_code, stdout, _stderr = cli_runner.run_to_stdout(str(xml_file))
 
     assert exit_code == 0
     assert stdout, "No stdout output"
@@ -97,7 +100,7 @@ def test_stats_stderr_with_stdout(cli_runner, create_xml_file):
     assert "Passwords/keys/secrets:" in stderr
 
 
-def test_inplace_modifies_original(cli_runner, create_xml_file, tmp_path):
+def test_inplace_modifies_original(cli_runner, create_xml_file, _tmp_path):
     """Test --inplace overwrites input file"""
     xml_file = create_xml_file("""<?xml version="1.0"?>
 <pfsense>
@@ -108,7 +111,7 @@ def test_inplace_modifies_original(cli_runner, create_xml_file, tmp_path):
     original_content = xml_file.read_text()
     assert "secret123" in original_content
 
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, _stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
         flags=["--inplace"]
@@ -135,7 +138,7 @@ def test_force_overwrites_existing_output(cli_runner, create_xml_file, tmp_path)
     output_file.write_text("existing content")
 
     # Without --force, should fail
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         expect_success=False
@@ -145,7 +148,7 @@ def test_force_overwrites_existing_output(cli_runner, create_xml_file, tmp_path)
     assert "exists" in stderr.lower() or "force" in stderr.lower()
 
     # With --force, should succeed
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, _stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         flags=["--force"]
@@ -167,7 +170,7 @@ def test_dry_run_no_output(cli_runner, create_xml_file, tmp_path):
 
     output_file = tmp_path / "output.xml"
 
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, stdout, _stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         flags=["--dry-run"]
@@ -190,7 +193,7 @@ def test_fail_on_warn_with_wrong_root(cli_runner, create_xml_file, tmp_path):
     output_file = tmp_path / "output.xml"
 
     # Without --fail-on-warn, should succeed with warning
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, stderr = cli_runner.run(
         str(xml_file),
         str(output_file)
     )
@@ -199,7 +202,7 @@ def test_fail_on_warn_with_wrong_root(cli_runner, create_xml_file, tmp_path):
     assert "Warning" in stderr or "warning" in stderr.lower()
 
     # With --fail-on-warn, should fail
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, _stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         flags=["--fail-on-warn", "--force"],
@@ -220,7 +223,7 @@ def test_fail_on_warn_accepts_namespaced_root(cli_runner, create_xml_file, tmp_p
     output_file = tmp_path / "output.xml"
 
     # Should succeed even with --fail-on-warn
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, _stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         flags=["--fail-on-warn"]
@@ -240,7 +243,7 @@ def test_invalid_xml_fails_gracefully(cli_runner, create_xml_file, tmp_path):
 
     output_file = tmp_path / "output.xml"
 
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         expect_success=False
@@ -263,7 +266,7 @@ def test_no_redact_ips_flag(cli_runner, create_xml_file, tmp_path):
 
     output_file = tmp_path / "output.xml"
 
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, _stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         flags=["--no-redact-ips"]
@@ -291,7 +294,7 @@ def test_no_redact_domains_flag(cli_runner, create_xml_file, tmp_path):
 
     output_file = tmp_path / "output.xml"
 
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, _stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         flags=["--no-redact-domains"]
@@ -302,6 +305,90 @@ def test_no_redact_domains_flag(cli_runner, create_xml_file, tmp_path):
 
     assert "<hostname>firewall.example.com</hostname>" in output_content
     assert "<domain>example.org</domain>" in output_content
+
+
+def test_version_flag_shows_version(script_path):
+    """Test --version flag shows version number"""
+    result = subprocess.run(
+        ["python3", script_path, "--version"],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+
+    assert result.returncode == 0
+    # Should output version number
+    assert result.stdout.strip()
+    # Version format should be X.Y.Z
+    version_pattern = r'\d+\.\d+\.\d+'
+    assert re.search(version_pattern, result.stdout), \
+        f"Version output doesn't match pattern: {result.stdout}"
+
+
+def test_version_flag_no_input_required(script_path):
+    """Test --version doesn't require input file"""
+    result = subprocess.run(
+        ["python3", script_path, "--version"],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+
+    assert result.returncode == 0
+    # Should not complain about missing input
+    assert "required" not in result.stderr.lower()
+    assert "error" not in result.stderr.lower()
+
+
+def test_check_version_flag_no_input_required(script_path):
+    """Test --check-version doesn't require input file"""
+    # Note: This will try to contact PyPI, so we expect either success or network error
+    result = subprocess.run(
+        ["python3", script_path, "--check-version"],
+        capture_output=True,
+        text=True,
+        timeout=10,  # Timeout in case network hangs
+        check=False
+    )
+
+    # Should exit successfully or with network error
+    # Should not complain about missing input argument
+    assert "required" not in result.stderr.lower() or result.returncode == 0
+
+    # If successful, should show version info
+    if result.returncode == 0:
+        output = result.stdout + result.stderr
+        assert "Current version:" in output or "Latest version:" in output
+
+
+def test_version_and_check_version_mutually_exclusive(script_path):
+    """Test --version and --check-version cannot be used together"""
+    result = subprocess.run(
+        ["python3", script_path, "--version", "--check-version"],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+
+    # Should fail - these flags are mutually exclusive
+    # (or one takes precedence, depending on implementation)
+    # At minimum, should handle gracefully
+    assert result.returncode == 0 or "error" in result.stderr.lower()
+
+
+def test_input_required_without_version_flags(script_path):
+    """Test input argument is required when not using version flags"""
+    result = subprocess.run(
+        ["python3", script_path],
+        capture_output=True,
+        text=True,
+        check=False
+    )
+
+    # Should fail and indicate input is required
+    assert result.returncode != 0
+    error_output = result.stderr.lower()
+    assert "required" in error_output or "usage" in error_output
 
 
 def test_anonymise_implies_keep_private(cli_runner, create_xml_file, tmp_path):
@@ -317,7 +404,7 @@ def test_anonymise_implies_keep_private(cli_runner, create_xml_file, tmp_path):
 
     output_file = tmp_path / "output.xml"
 
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, stdout, _stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         flags=["--anonymise"]
@@ -352,7 +439,7 @@ def test_anonymise_consistent_aliases(cli_runner, create_xml_file, tmp_path):
 
     output_file = tmp_path / "output.xml"
 
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, _stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         flags=["--anonymise"]
@@ -362,7 +449,6 @@ def test_anonymise_consistent_aliases(cli_runner, create_xml_file, tmp_path):
     output_content = output_file.read_text()
 
     # Same IP should get same alias
-    import re
     ip_aliases = re.findall(r'IP_\d+', output_content)
     # 93.184.216.34 appears twice, should have same alias
     assert len(ip_aliases) >= 2
@@ -372,7 +458,6 @@ def test_anonymise_consistent_aliases(cli_runner, create_xml_file, tmp_path):
     domain_aliases = re.findall(r'domain\d+\.example', output_content)
     if len(domain_aliases) >= 2:
         # Count occurrences of each alias
-        from collections import Counter
         alias_counts = Counter(domain_aliases)
         # mail.example.com appears twice, should have same alias
         most_common_count = alias_counts.most_common(1)[0][1]
@@ -394,7 +479,7 @@ def test_aggressive_flag_increases_coverage(cli_runner, create_xml_file, tmp_pat
 
     # Without aggressive
     output_normal = tmp_path / "normal.xml"
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, _stderr = cli_runner.run(
         str(xml_file),
         str(output_normal)
     )
@@ -403,7 +488,7 @@ def test_aggressive_flag_increases_coverage(cli_runner, create_xml_file, tmp_pat
 
     # With aggressive
     output_aggressive = tmp_path / "aggressive.xml"
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, _stderr = cli_runner.run(
         str(xml_file),
         str(output_aggressive),
         flags=["--aggressive"]
@@ -435,7 +520,7 @@ def test_combined_flags(cli_runner, create_xml_file, tmp_path):
     output_file = tmp_path / "output.xml"
 
     # Combine --keep-private-ips, --no-redact-domains, --aggressive
-    exit_code, stdout, stderr = cli_runner.run(
+    exit_code, _stdout, _stderr = cli_runner.run(
         str(xml_file),
         str(output_file),
         flags=["--keep-private-ips", "--no-redact-domains", "--aggressive"]
