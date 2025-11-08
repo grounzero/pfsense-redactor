@@ -1795,6 +1795,10 @@ CDATA sections are not preserved.
 
     args = parser.parse_args()
 
+    # Validate required arguments for normal operation
+    if not args.check_version and not args.input:
+        parser.error("the following arguments are required: input")
+
     # Handle --check-version flag
     if args.check_version:
         # Import version checker
