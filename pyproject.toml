@@ -26,7 +26,7 @@ classifiers = [
     "Topic :: System :: Networking :: Firewalls",
     "Topic :: System :: Systems Administration",
 ]
-keywords = ["pfsense", "firewall", "configuration", "security", "redaction", "anonymiser", "anonymizer", "sanitiser", "sanitizer", "xml", "netgate"]
+keywords = ["pfsense", "firewall", "configuration", "config", "privacy", "security", "redaction", "anonymiser", "anonymizer", "sanitiser", "sanitizer", "xml", "netgate"]
 requires-python = ">=3.9"
 dependencies = []
 
