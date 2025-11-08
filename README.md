@@ -166,6 +166,66 @@ pfsense-redactor config.xml --inplace --force
 
 ---
 
+## Command-Line Flags Reference
+
+### Version & Help
+
+| Flag | Description |
+|------|-------------|
+| `--version` | Show program version and exit |
+| `--check-version` | Check for updates from PyPI |
+| `-h, --help` | Show help message and exit |
+
+### Input/Output
+
+| Flag | Description |
+|------|-------------|
+| `input` | Input pfSense config.xml file (positional argument) |
+| `output` | Output redacted config.xml file (positional argument, optional with `--stdout`/`--dry-run`/`--inplace`) |
+| `--stdout` | Write redacted XML to stdout instead of file |
+| `--inplace` | Overwrite input file with redacted output (use with caution) |
+| `--force` | Overwrite output file if it already exists |
+| `--allow-absolute-paths` | Allow absolute file paths (relative paths only by default for security) |
+
+### Redaction Modes
+
+| Flag | Description |
+|------|-------------|
+| `--keep-private-ips` | Keep non-global IP addresses visible (RFC1918/ULA/loopback/link-local). Netmasks and unspecified addresses (0.0.0.0, ::) always preserved |
+| `--no-keep-private-ips` | When used with `--anonymise`, do NOT keep private IPs visible (mask all IPs) |
+| `--anonymise` | Use consistent aliases (IP_1, domain1.example) to preserve network topology. Implies `--keep-private-ips` unless `--no-keep-private-ips` specified |
+| `--aggressive` | Apply IP/domain redaction to all element text, not just known fields |
+| `--no-redact-ips` | Do not redact IP addresses |
+| `--no-redact-domains` | Do not redact domain names |
+| `--redact-url-usernames` | Redact usernames in URLs (default: preserve usernames, always redact passwords) |
+
+### Allow-lists
+
+| Flag | Description |
+|------|-------------|
+| `--allowlist-ip IP_OR_CIDR` | IP address or CIDR network to never redact (repeatable). Applies to text and URLs |
+| `--allowlist-domain DOMAIN` | Domain to never redact (repeatable, case-insensitive, supports suffix matching). Applies to bare FQDNs and URL hostnames |
+| `--allowlist-file PATH` | File containing IPs, CIDR networks, and domains to never redact (one per line) |
+| `--no-default-allowlist` | Do not load default allow-list files (.pfsense-allowlist in current dir or ~/.pfsense-allowlist) |
+
+### Testing & Diagnostics
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Show statistics only, do not write output file |
+| `--dry-run-verbose` | Show statistics with sample redactions (safely masked to prevent leaks) |
+| `--fail-on-warn` | Exit with non-zero code if root tag is not 'pfsense' (useful in CI) |
+
+### Output Control
+
+| Flag | Description |
+|------|-------------|
+| `-q, --quiet` | Suppress progress messages (show only warnings and errors) |
+| `-v, --verbose` | Show detailed debug information |
+
+
+---
+
 ## Allow-lists
 
 Allow-lists let you preserve specific well-known IPs and domains that don't leak private information.

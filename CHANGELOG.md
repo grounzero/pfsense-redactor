@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **NEW**: Version checking functionality with `--version` and `--check-version` flags
+  - `--version`: Display current version and exit (instant, no network call)
+  - `--check-version`: Check PyPI for latest version with context-aware upgrade instructions
+  - Automatic installation method detection (pipx, venv, user, source, pip)
+
 ## [1.0.8] - 2025-11-05
 
 ### Security
