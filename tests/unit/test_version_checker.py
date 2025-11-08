@@ -70,7 +70,7 @@ class TestGetCurrentVersion(unittest.TestCase):
     def test_fallback_to_init_file(self, _mock_file):
         """Should fall back to __init__.py when importlib fails"""
         # Mock importlib.metadata to not exist
-        import sys  # pylint: disable=import-outside-toplevel
+        import sys
         with patch.dict(sys.modules, {'importlib.metadata': None}):
             version = get_current_version()
             # Will use real importlib.metadata since we can't fully mock it
@@ -145,7 +145,7 @@ class TestCheckPyPIVersion(unittest.TestCase):
     @patch('urllib.request.urlopen')
     def test_http_error(self, mock_urlopen):
         """Should handle HTTP errors gracefully"""
-        from urllib.error import HTTPError  # pylint: disable=import-outside-toplevel
+        from urllib.error import HTTPError
         mock_urlopen.side_effect = HTTPError(None, 404, "Not Found", None, None)
 
         version = check_pypi_version()
@@ -154,7 +154,7 @@ class TestCheckPyPIVersion(unittest.TestCase):
     @patch('urllib.request.urlopen')
     def test_network_timeout(self, mock_urlopen):
         """Should handle network timeouts gracefully"""
-        from urllib.error import URLError  # pylint: disable=import-outside-toplevel
+        from urllib.error import URLError
         mock_urlopen.side_effect = URLError("Timeout")
 
         version = check_pypi_version()
