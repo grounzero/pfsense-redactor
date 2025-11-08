@@ -450,7 +450,8 @@ def test_anonymise_consistent_aliases(cli_runner, create_xml_file, tmp_path):
 
     # Same IP should get same alias - verify using Counter
     ip_aliases = re.findall(r'IP_\d+', output_content)
-    # 93.184.216.34 appears twice, should have same alias (at least one alias appears multiple times)
+    # Verify that duplicate IPs receive the same alias by checking that at least one alias appears multiple times
+    # (93.184.216.34 appears twice in the config, so its alias should appear twice in the output)
     alias_counts = Counter(ip_aliases)
     assert len(ip_aliases) >= 2, "Expected at least 2 IP aliases"
     # At least one alias should appear more than once (same IP = same alias)
