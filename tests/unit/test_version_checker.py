@@ -101,6 +101,7 @@ class TestDetectInstallationMethod(unittest.TestCase):
         method = detect_installation_method()
         self.assertEqual(method.method, "pipx")
 
+    @patch.dict('os.environ', {}, clear=True)  # Clear PIPX_HOME
     @patch('sys.base_prefix', '/usr')
     @patch('sys.prefix', '/home/user/venv')
     def test_detect_venv(self):
