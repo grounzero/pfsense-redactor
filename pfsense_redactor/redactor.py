@@ -18,7 +18,7 @@ from typing import Union
 from urllib.parse import urlsplit, urlunsplit, SplitResult
 import os
 
-# Type aliases for clarity (using Union for Python 3.9 compatibility)
+# Type aliases (using Union for Python 3.9 compatibility)
 IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 
@@ -1708,6 +1708,13 @@ def validate_file_path(
 
 def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """Main entry point for the pfSense redactor CLI"""
+    # Import version for --version flag
+    try:
+        from . import __version__  # pylint: disable=import-outside-toplevel
+    except ImportError:
+        # Fallback when running as script (not as module)
+        __version__ = "1.0.8"
+    
     parser = argparse.ArgumentParser(
         description='Redact sensitive information from pfSense XML configuration files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1738,7 +1745,12 @@ CDATA sections are not preserved.
         """
     )
 
-    parser.add_argument('input', help='Input pfSense config.xml file')
+    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}',
+                        help='Show program version and exit')
+    parser.add_argument('--check-version', action='store_true',
+                        help='Check for updates from PyPI')
+    
+    parser.add_argument('input', nargs='?', help='Input pfSense config.xml file')
     parser.add_argument('output', nargs='?', help='Output redacted config.xml file')
     parser.add_argument('--no-redact-ips', action='store_true',
                         help='Do not redact IP addresses')
@@ -1782,6 +1794,18 @@ CDATA sections are not preserved.
                         help='Allow absolute file paths (e.g., /etc/passwd, C:\\config.xml). By default, only relative paths are permitted for security. Use with caution.')
 
     args = parser.parse_args()
+
+    # Handle --check-version flag
+    if args.check_version:
+        # Import version checker
+        from .version_checker import print_version_check  # pylint: disable=import-outside-toplevel
+        
+        # Setup basic logging for version check
+        setup_logging(logging.INFO, use_stderr=False)
+        
+        # Run version check and exit
+        success = print_version_check(verbose=False)
+        sys.exit(0 if success else 1)
 
     # Validate mutually exclusive flags
     if args.quiet and args.verbose:
