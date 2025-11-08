@@ -144,9 +144,11 @@ def detect_installation_method() -> InstallationMethod:
     # Check if installed in user site-packages
     try:
         import site  # pylint: disable=import-outside-toplevel
+        import pkg_resources  # pylint: disable=import-outside-toplevel,import-error
         user_site = site.getusersitepackages()
-        if user_site and Path(sys.prefix).samefile(Path(sys.base_prefix)):
-            # Not in venv and might be user install
+        dist = pkg_resources.get_distribution('pfsense-redactor')
+        if user_site and Path(dist.location).resolve().is_relative_to(Path(user_site).resolve()):
+            # Installed in user site-packages
             return InstallationMethod(
                 method="user",
                 upgrade_command="pip install --user --upgrade pfsense-redactor"
