@@ -70,17 +70,17 @@ def check_pypi_version(timeout: int = 5) -> str | None:
             data = json.loads(response.read().decode('utf-8'))
             return data['info']['version']
 
-    except urllib.error.HTTPError as e:
-        logger.debug("HTTP error checking PyPI: %s", e)
+    except urllib.error.HTTPError as err:
+        logger.debug("HTTP error checking PyPI: %s", err)
         return None
-    except urllib.error.URLError as e:
-        logger.debug("Network error checking PyPI: %s", e)
+    except urllib.error.URLError as err:
+        logger.debug("Network error checking PyPI: %s", err)
         return None
-    except (json.JSONDecodeError, KeyError) as e:
-        logger.debug("Error parsing PyPI response: %s", e)
+    except (json.JSONDecodeError, KeyError) as err:
+        logger.debug("Error parsing PyPI response: %s", err)
         return None
-    except Exception as e:  # pylint: disable=broad-except
-        logger.debug("Unexpected error checking PyPI: %s", e)
+    except Exception as err:  # pylint: disable=broad-except
+        logger.debug("Unexpected error checking PyPI: %s", err)
         return None
 
 
