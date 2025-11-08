@@ -371,7 +371,7 @@ def test_version_and_check_version_mutually_exclusive(script_path):
     )
 
     # Should fail - these flags are mutually exclusive
-    # (or one takes precedence, depending on implementation)
+    # The CLI returns an error if both --version and --check-version are provided together.
     # At minimum, should handle gracefully
     assert result.returncode == 0 or "error" in result.stderr.lower()
 
