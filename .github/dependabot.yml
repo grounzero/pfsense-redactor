@@ -1,0 +1,32 @@
+version: 2
+updates:
+  # Enable version updates for pip dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "python"
+    groups:
+      # Group pytest updates together
+      pytest:
+        patterns:
+          - "pytest*"
+      # Group GitHub Actions updates
+      actions:
+        patterns:
+          - "actions/*"
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
