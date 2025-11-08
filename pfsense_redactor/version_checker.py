@@ -138,7 +138,8 @@ def detect_installation_method() -> InstallationMethod:
                 method="source",
                 upgrade_command="git pull && pip install -e ."
             )
-    except Exception:  # pylint: disable=broad-except
+    except (ImportError, AttributeError, ValueError, TypeError):
+        # pkg_resources not available or distribution not found
         pass
 
     # Check if installed in user site-packages
@@ -153,7 +154,8 @@ def detect_installation_method() -> InstallationMethod:
                 method="user",
                 upgrade_command="pip install --user --upgrade pfsense-redactor"
             )
-    except Exception:  # pylint: disable=broad-except
+    except (ImportError, AttributeError, ValueError, TypeError, OSError):
+        # site/pkg_resources not available, or path resolution failed
         pass
 
     # Default/unknown method
