@@ -32,7 +32,7 @@ def get_current_version() -> str:
     """Get the current installed version"""
     try:
         # Use importlib.metadata to avoid cyclic import
-        import importlib.metadata  # pylint: disable=C0415
+        import importlib.metadata  # pylint: disable=C0415,no-member
         return importlib.metadata.version('pfsense-redactor')
     except Exception:  # pylint: disable=broad-except
         # Fallback: try to read from __init__.py directly
