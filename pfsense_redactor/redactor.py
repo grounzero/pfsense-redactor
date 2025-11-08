@@ -1710,7 +1710,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
     """Main entry point for the pfSense redactor CLI"""
     # Import version for --version flag
     try:
-        from . import __version__  # pylint: disable=import-outside-toplevel
+        from . import __version__
     except ImportError:
         # Fallback when running as script (not as module)
         __version__ = "1.0.8"
@@ -1802,7 +1802,7 @@ CDATA sections are not preserved.
     # Handle --check-version flag
     if args.check_version:
         # Import version checker
-        from .version_checker import print_version_check  # pylint: disable=C0415
+        from .version_checker import print_version_check
 
         # Setup basic logging for version check
         setup_logging(logging.INFO, use_stderr=False)
