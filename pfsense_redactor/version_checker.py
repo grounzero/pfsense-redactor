@@ -130,32 +130,45 @@ def detect_installation_method() -> InstallationMethod:
 
     # Check if installed as editable (development mode)
     try:
-        import pkg_resources  # pylint: disable=import-outside-toplevel,import-error
-        dist = pkg_resources.get_distribution('pfsense-redactor')
-        if dist.location and Path(dist.location).name == 'pfsense-redactor':
-            # Editable install (likely `pip install -e .`)
-            return InstallationMethod(
-                method="source",
-                upgrade_command="git pull && pip install -e ."
-            )
-    except (ImportError, AttributeError, ValueError, TypeError):
-        # pkg_resources not available or distribution not found
+        import importlib.metadata  # pylint: disable=import-outside-toplevel,no-member
+        dist = importlib.metadata.distribution('pfsense-redactor')
+        # Use the public files() API to check if this is an editable install
+        if dist.read_text('direct_url.json'):
+            # Has direct_url.json which indicates editable or direct install
+            # Check if it's a local directory (editable install)
+            direct_url_data = json.loads(dist.read_text('direct_url.json'))
+            if direct_url_data.get('dir_info', {}).get('editable'):
+                return InstallationMethod(
+                    method="source",
+                    upgrade_command="git pull && pip install -e ."
+                )
+    except (ImportError, AttributeError, ValueError, TypeError, KeyError, FileNotFoundError):
+        # importlib.metadata not available, no direct_url.json, or parsing error
         pass
 
     # Check if installed in user site-packages
     try:
         import site  # pylint: disable=import-outside-toplevel
-        import pkg_resources  # pylint: disable=import-outside-toplevel,import-error
+        import importlib.metadata  # pylint: disable=import-outside-toplevel,no-member
         user_site = site.getusersitepackages()
-        dist = pkg_resources.get_distribution('pfsense-redactor')
-        if user_site and Path(dist.location).resolve().is_relative_to(Path(user_site).resolve()):
-            # Installed in user site-packages
-            return InstallationMethod(
-                method="user",
-                upgrade_command="pip install --user --upgrade pfsense-redactor"
-            )
-    except (ImportError, AttributeError, ValueError, TypeError, OSError):
-        # site/pkg_resources not available, or path resolution failed
+        dist = importlib.metadata.distribution('pfsense-redactor')
+        # Get the location using the metadata's locate_file method
+        dist_files = dist.files
+        if dist_files and user_site:
+            # Check if any of the files are in user site-packages
+            first_file = dist_files[0]
+            location = first_file.locate().resolve().parent
+            # Navigate up to find the site-packages directory
+            while location.parent != location and location.name not in ('site-packages', 'dist-packages'):
+                location = location.parent
+            if location.is_relative_to(Path(user_site).resolve()):
+                # Installed in user site-packages
+                return InstallationMethod(
+                    method="user",
+                    upgrade_command="pip install --user --upgrade pfsense-redactor"
+                )
+    except (ImportError, AttributeError, ValueError, TypeError, OSError, IndexError):
+        # site/importlib.metadata not available, or path resolution failed
         pass
 
     # Default/unknown method
