@@ -1798,7 +1798,7 @@ CDATA sections are not preserved.
     # Handle --check-version flag
     if args.check_version:
         # Import version checker
-        from .version_checker import print_version_check  # pylint: disable=import-outside-toplevel
+        from .version_checker import print_version_check  # pylint: disable=C0415
 
         # Setup basic logging for version check
         setup_logging(logging.INFO, use_stderr=False)
