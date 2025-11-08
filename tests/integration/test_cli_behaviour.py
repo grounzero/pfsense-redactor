@@ -39,7 +39,7 @@ def test_empty_input_file(cli_runner, tmp_path):
     assert "empty" in stderr.lower() or "error" in stderr.lower()
 
 
-def test_output_required_without_special_modes(script_path, create_xml_file, _tmp_path):
+def test_output_required_without_special_modes(script_path, create_xml_file):
     """Test that output file is auto-generated if not provided"""
     xml_file = create_xml_file("""<?xml version="1.0"?>
 <pfsense>
@@ -100,7 +100,7 @@ def test_stats_stderr_with_stdout(cli_runner, create_xml_file):
     assert "Passwords/keys/secrets:" in stderr
 
 
-def test_inplace_modifies_original(cli_runner, create_xml_file, _tmp_path):
+def test_inplace_modifies_original(cli_runner, create_xml_file):
     """Test --inplace overwrites input file"""
     xml_file = create_xml_file("""<?xml version="1.0"?>
 <pfsense>
