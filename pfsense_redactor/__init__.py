@@ -13,7 +13,7 @@ if sys.version_info < (3, 9):
         f"You are using Python {sys.version_info.major}.{sys.version_info.minor}."
     )
 
-__version__ = "1.0.8"
+__version__ = "1.0.9"
 
 # pylint: disable=wrong-import-position
 from .redactor import PfSenseRedactor, main, parse_allowlist_file
