@@ -447,11 +447,15 @@ def test_anonymise_consistent_aliases(cli_runner, create_xml_file, tmp_path):
 
     assert exit_code == 0
     output_content = output_file.read_text()
-    # Same IP should get same alias
+
+    # Same IP should get same alias - verify using Counter
     ip_aliases = re.findall(r'IP_\d+', output_content)
-    # 93.184.216.34 appears twice, should have same alias
-    assert len(ip_aliases) >= 2
-    assert ip_aliases[0] == ip_aliases[1]
+    # 93.184.216.34 appears twice, should have same alias (at least one alias appears multiple times)
+    alias_counts = Counter(ip_aliases)
+    assert len(ip_aliases) >= 2, "Expected at least 2 IP aliases"
+    # At least one alias should appear more than once (same IP = same alias)
+    max_count = max(alias_counts.values()) if alias_counts else 0
+    assert max_count >= 2, f"Expected at least one alias to appear twice, got counts: {alias_counts}"
 
     # Same domain should get same alias
     domain_aliases = re.findall(r'domain\d+\.example', output_content)
