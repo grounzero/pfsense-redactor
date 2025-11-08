@@ -121,7 +121,7 @@ def detect_installation_method() -> InstallationMethod:
 
     # Check if running in a virtual environment
     if hasattr(sys, 'real_prefix') or (
-        hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix
+            hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix
     ):
         return InstallationMethod(
             method="venv",
