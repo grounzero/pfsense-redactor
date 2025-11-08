@@ -12,15 +12,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--version`: Display current version and exit (instant, no network call)
   - `--check-version`: Check PyPI for latest version with context-aware upgrade instructions
   - Automatic installation method detection (pipx, venv, user, source, pip)
-  - Comprehensive test suite: 27 unit tests + 5 integration tests
-  - Perfect linter score (10.00/10) with all Codacy warnings resolved
-
-
-### Added
-- **NEW**: Version checking functionality with `--version` and `--check-version` flags
-  - `--version`: Display current version and exit (instant, no network call)
-  - `--check-version`: Check PyPI for latest version with context-aware upgrade instructions
-  - Automatic installation method detection (pipx, venv, user, source, pip)
 
 ## [1.0.8] - 2025-11-05
 
