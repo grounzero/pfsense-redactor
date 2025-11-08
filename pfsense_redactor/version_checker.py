@@ -32,7 +32,7 @@ def get_current_version() -> str:
     """Get the current installed version"""
     try:
         # Use importlib.metadata to avoid cyclic import
-        import importlib.metadata  # pylint: disable=C0415,no-member
+        import importlib.metadata  # pylint: disable=import-outside-toplevel,no-member
         return importlib.metadata.version('pfsense-redactor')
     except Exception:  # pylint: disable=broad-except
         # Fallback: try to read from __init__.py directly
@@ -130,7 +130,7 @@ def detect_installation_method() -> InstallationMethod:
 
     # Check if installed as editable (development mode)
     try:
-        import pkg_resources  # pylint: disable=C0415,import-error
+        import pkg_resources  # pylint: disable=import-outside-toplevel,import-error
         dist = pkg_resources.get_distribution('pfsense-redactor')
         if dist.location and Path(dist.location).name == 'pfsense-redactor':
             # Editable install (likely `pip install -e .`)
@@ -144,8 +144,8 @@ def detect_installation_method() -> InstallationMethod:
 
     # Check if installed in user site-packages
     try:
-        import site  # pylint: disable=C0415
-        import pkg_resources  # pylint: disable=C0415,import-error
+        import site  # pylint: disable=import-outside-toplevel
+        import pkg_resources  # pylint: disable=import-outside-toplevel,import-error
         user_site = site.getusersitepackages()
         dist = pkg_resources.get_distribution('pfsense-redactor')
         if user_site and Path(dist.location).resolve().is_relative_to(Path(user_site).resolve()):
