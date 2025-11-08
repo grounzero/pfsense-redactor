@@ -31,9 +31,20 @@ class InstallationMethod(NamedTuple):
 def get_current_version() -> str:
     """Get the current installed version"""
     try:
-        from . import __version__  # pylint: disable=import-outside-toplevel
-        return __version__
-    except ImportError:
+        # Use importlib.metadata to avoid cyclic import
+        import importlib.metadata  # pylint: disable=import-outside-toplevel
+        return importlib.metadata.version('pfsense-redactor')
+    except Exception:  # pylint: disable=broad-except
+        # Fallback: try to read from __init__.py directly
+        try:
+            init_file = Path(__file__).parent / '__init__.py'
+            with open(init_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.startswith('__version__'):
+                        # Extract version from __version__ = "x.y.z"
+                        return line.split('=')[1].strip().strip('"').strip("'")
+        except Exception:  # pylint: disable=broad-except
+            pass
         return "unknown"
 
 

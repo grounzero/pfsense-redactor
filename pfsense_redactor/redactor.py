@@ -1714,7 +1714,7 @@ def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-man
     except ImportError:
         # Fallback when running as script (not as module)
         __version__ = "1.0.8"
-    
+
     parser = argparse.ArgumentParser(
         description='Redact sensitive information from pfSense XML configuration files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1749,7 +1749,7 @@ CDATA sections are not preserved.
                         help='Show program version and exit')
     parser.add_argument('--check-version', action='store_true',
                         help='Check for updates from PyPI')
-    
+
     parser.add_argument('input', nargs='?', help='Input pfSense config.xml file')
     parser.add_argument('output', nargs='?', help='Output redacted config.xml file')
     parser.add_argument('--no-redact-ips', action='store_true',
@@ -1799,10 +1799,10 @@ CDATA sections are not preserved.
     if args.check_version:
         # Import version checker
         from .version_checker import print_version_check  # pylint: disable=import-outside-toplevel
-        
+
         # Setup basic logging for version check
         setup_logging(logging.INFO, use_stderr=False)
-        
+
         # Run version check and exit
         success = print_version_check(verbose=False)
         sys.exit(0 if success else 1)
