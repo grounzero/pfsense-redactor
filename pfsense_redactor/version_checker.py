@@ -3,7 +3,7 @@
 Checks PyPI for the latest version and provides upgrade instructions
 based on detected installation method.
 """
-from __future__ import annotations
+from __future__ import annotations  # pylint: disable=no-name-in-module
 
 import json
 import os
@@ -15,14 +15,14 @@ from typing import NamedTuple
 import logging
 
 
-class VersionInfo(NamedTuple):
+class VersionInfo(NamedTuple):  # pylint: disable=too-few-public-methods
     """Version information from PyPI"""
     current: str
     latest: str
     update_available: bool
 
 
-class InstallationMethod(NamedTuple):
+class InstallationMethod(NamedTuple):  # pylint: disable=too-few-public-methods
     """Detected installation method and upgrade command"""
     method: str
     upgrade_command: str
