@@ -1750,7 +1750,7 @@ CDATA sections are not preserved.
     parser.add_argument('--check-version', action='store_true',
                         help='Check for updates from PyPI')
 
-    parser.add_argument('input', nargs='?', help='Input pfSense config.xml file')
+    parser.add_argument('input', nargs='?', help='Input pfSense config.xml file (required unless --check-version is used)')
     parser.add_argument('output', nargs='?', help='Output redacted config.xml file')
     parser.add_argument('--no-redact-ips', action='store_true',
                         help='Do not redact IP addresses')
