@@ -163,7 +163,8 @@ def detect_installation_method() -> InstallationMethod:
             first_file = dist_files[0]
             location = first_file.locate().resolve().parent
             # Navigate up to find the site-packages directory
-            while location.parent != location and location.name not in ('site-packages', 'dist-packages'):
+            # Stop at root (location.parent == location) or when we find site-packages
+            while location.name not in ('site-packages', 'dist-packages') and location != location.parent:
                 location = location.parent
             if location.is_relative_to(Path(user_site).resolve()):
                 # Installed in user site-packages
