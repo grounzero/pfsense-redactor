@@ -282,8 +282,10 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
-[1.0.7]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.7
-[1.0.6]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.6
-[1.0.5]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.5
-[1.0.4]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.4
-[1.0.3]: https://github.com/grounzero/pfsense-redactor/releases/tag/v1.0.3
+[1.0.9]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.9
+[1.0.8]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.8
+[1.0.7]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.7
+[1.0.6]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.6
+[1.0.5]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.5
+[1.0.4]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.4
+[1.0.3]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.3
