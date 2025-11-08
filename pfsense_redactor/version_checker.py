@@ -137,7 +137,7 @@ def detect_installation_method() -> InstallationMethod:
         import importlib.metadata
         dist = importlib.metadata.distribution('pfsense-redactor')
         # Use the public files() API to check if this is an editable install
-        if dist.read_text('direct_url.json'):
+        if dist.files and any(f.name == 'direct_url.json' for f in dist.files):
             # Has direct_url.json which indicates editable or direct install
             # Check if it's a local directory (editable install)
             direct_url_data = json.loads(dist.read_text('direct_url.json'))
