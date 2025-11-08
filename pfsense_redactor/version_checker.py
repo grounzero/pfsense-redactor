@@ -15,6 +15,10 @@ from typing import NamedTuple
 import logging
 
 
+# Installation methods that provide full upgrade instructions
+COMMON_INSTALL_METHODS = ('pipx', 'venv', 'user')
+
+
 class VersionInfo(NamedTuple):  # pylint: disable=too-few-public-methods
     """Version information from PyPI"""
     current: str
@@ -231,7 +235,7 @@ def print_version_check(verbose: bool = False) -> bool:
         logger.info("To upgrade:")
         logger.info("  %s", install_method.upgrade_command)
 
-        if verbose or install_method.method not in ('pipx', 'venv', 'user'):
+        if verbose or install_method.method not in COMMON_INSTALL_METHODS:
             logger.info("")
             logger.info("For other installation methods, see:")
             logger.info("  https://github.com/grounzero/pfsense-redactor#installation")
