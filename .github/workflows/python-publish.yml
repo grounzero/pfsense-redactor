@@ -12,6 +12,11 @@ on:
   release:
     types: [published]
 
+# Prevent multiple publish jobs from running simultaneously
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 permissions:
   contents: read
 
@@ -25,6 +30,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.x"
+          cache: 'pip'
 
       - name: Build release distributions
         run: |
@@ -50,12 +56,7 @@ jobs:
     # For more information, see: https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-protection-rules
     environment:
       name: pypi
-      # OPTIONAL: uncomment and update to include your PyPI project URL in the deployment status:
-      # url: https://pypi.org/p/YOURPROJECT
-      #
-      # ALTERNATIVE: if your GitHub Release name is the PyPI project version string
-      # ALTERNATIVE: exactly, uncomment the following line instead:
-      # url: https://pypi.org/project/YOURPROJECT/${{ github.event.release.name }}
+      url: https://pypi.org/project/pfsense-redactor/${{ github.event.release.tag_name }}
 
     steps:
       - name: Retrieve release distributions
