@@ -45,7 +45,7 @@ jobs:
         pytest -v --cov=pfsense_redactor --cov-report=term-missing --cov-report=xml
     
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v5
       with:
         file: ./tests/coverage.xml
         flags: unittests
