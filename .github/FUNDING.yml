@@ -1,0 +1,16 @@
+# GitHub Sponsors funding configuration
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/displaying-a-sponsor-button
+
+# github: [grounzero]  # Uncomment and add your GitHub username when you set up GitHub Sponsors
+
+# Other platforms (uncomment and configure as needed)
+# patreon: username
+# open_collective: username
+# ko_fi: username
+# tidelift: pypi/pfsense-redactor
+# community_bridge: project-name
+# liberapay: username
+# issuehunt: username
+# otechie: username
+# lfx_crowdfunding: project-name
+# custom: ['https://paypal.me/username', 'https://buymeacoffee.com/username']

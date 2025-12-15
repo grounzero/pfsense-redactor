@@ -1,14 +1,31 @@
 # pfSense XML Configuration Redactor
 
 [![PyPI version](https://badge.fury.io/py/pfsense-redactor.svg)](https://pypi.org/project/pfsense-redactor/)
+[![Python Versions](https://img.shields.io/pypi/pyversions/pfsense-redactor.svg)](https://pypi.org/project/pfsense-redactor/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://github.com/grounzero/pfsense-redactor/actions/workflows/tests.yml/badge.svg)](https://github.com/grounzero/pfsense-redactor/actions/workflows/tests.yml)
+[![Downloads](https://pepy.tech/badge/pfsense-redactor)](https://pepy.tech/project/pfsense-redactor)
 
 Safely redact sensitive fields in a pfSense `config.xml` export so you can share it without exposing passwords, keys, or network identifiers.
 
-**pfsense-redactor** removes secrets and can anonymise network identifiers in pfSense `config.xml` exports before sharing them with support, consultants, auditors, or AI tools.
+**Keywords:** pfSense config.xml redactor, pfSense sanitiser, firewall config sanitisation, VPN config anonymisation, OpenVPN redaction, WireGuard key redaction, IPsec secret removal, network topology anonymiser, Netgate TAC sharing
+
+**pfsense-redactor** redacts secrets and optionally anonymises identifiers in pfSense `config.xml` exports—so you can share them safely with support, vendors, auditors, forums, or AI tools.
 
 Unlike generic XML redaction tools, pfsense-redactor understands pfSense-specific configuration structures and VPN formats.
 
-### When should I use pfsense-redactor?
+## Why pfsense-redactor?
+
+- ✅ **pfSense-native** – Understands pfSense XML structures (IPsec, OpenVPN, WireGuard, packages)
+- ✅ **Zero dependencies** – Pure Python stdlib, runs anywhere (Windows, macOS, Linux)
+- ✅ **Well-tested** – Extensively tested across multiple OSes and Python versions
+- ✅ **Topology-preserving** – Anonymise without breaking routing logic or firewall rules
+- ✅ **Security-first** – Built-in protections against path traversal and symlink attacks
+- ✅ **CI/CD ready** – Suitable for automated compliance workflows and GitOps
+
+---
+
+## When should I use pfsense-redactor?
 
 Use pfsense-redactor when you need to share a pfSense `config.xml` file
 outside the firewall (for example with vendors, consultants, forums, or AI tools)
@@ -17,13 +34,83 @@ breaking topology or routing logic.
 
 ### Quick start (recommended)
 
+#### 1) Preserve private IPs (best for support / troubleshooting)
+
 ```bash
 pfsense-redactor config.xml redacted.xml --keep-private-ips
 ```
 
-This preserves internal routing and firewall context while removing secrets and public identifiers.
+Keeps internal addressing visible while removing secrets and redacting public identifiers.
 
-For pfSense on-box sanitisation, see `diag_sanitize.php` below; pfsense-redactor is intended for off-box use and anonymisation.
+#### 2) Topology-preserving anonymisation (best for vendors / forums / AI)
+
+```bash
+pfsense-redactor config.xml redacted.xml --anonymise
+```
+
+Replaces identifiers with consistent placeholders so relationships remain clear while reducing disclosure.
+
+For pfSense on-firewall sanitisation, see `diag_sanitize.php` below; pfsense-redactor is intended for off-box use and anonymisation.
+
+See the [Usage](#usage) section and the [Command-Line Flags Reference](#command-line-flags-reference) below for all available options.
+
+---
+
+## Use Cases
+
+Common command patterns depending on who you’re sharing with.
+
+### Sharing with Netgate TAC Support
+
+```bash
+# On the firewall (recommended for TAC)
+/usr/local/sbin/diag_sanitize.php /conf/config.xml > /conf/config_sanitised.xml
+
+# Off-box: additional anonymisation before sharing further
+pfsense-redactor config_sanitised.xml support-safe.xml --keep-private-ips --no-redact-domains
+```
+
+### Sharing with AI tools
+
+Use `--aggressive` if you have third-party packages or aren’t sure where secrets live.
+
+```bash
+# Topology-preserving anonymisation (private IPs are kept visible by default with --anonymise)
+pfsense-redactor config.xml ai-ready.xml --anonymise --aggressive
+# Now safe to upload to AI tools for configuration analysis
+```
+
+```bash
+# Anonymise everything (including private IPs)
+pfsense-redactor config.xml ai-ready.xml --anonymise --no-keep-private-ips --aggressive
+# Now safe to upload to AI tools for configuration analysis
+```
+
+### Vendor/MSP Handoffs
+
+```bash
+# Option A: Preserve private IPs for troubleshooting context
+pfsense-redactor config.xml vendor-share.xml --anonymise
+```
+
+```bash
+# Option B: Anonymise everything (including private IPs) for stricter privacy
+pfsense-redactor config.xml vendor-share.xml --anonymise --no-keep-private-ips
+```
+
+### Security Audits
+
+```bash
+# Preview what will be redacted before sharing
+pfsense-redactor config.xml --dry-run-verbose
+```
+
+### Automated Compliance Workflows
+
+```bash
+# CI/CD integration for automated sanitisation
+pfsense-redactor $INPUT_CONFIG $OUTPUT_CONFIG --aggressive --fail-on-warn
+```
 
 ---
 
@@ -57,6 +144,28 @@ Both tools share the same goal: preventing accidental disclosure of sensitive in
 
 ---
 
+## Comparison with Alternatives
+
+<details>
+<summary>Comparison with Alternatives</summary>
+
+| Feature                 | pfsense-redactor  | Generic XML Tools | Manual Redaction | Built-in diag_sanitize.php |
+| ----------------------- | ----------------- | ----------------- | ---------------- | -------------------------- |
+| pfSense-aware structure | ✅                | ❌                | ⚠️ Manual        | ✅                         |
+| Runs off-firewall       | ✅                | ✅                | ✅               | ❌ (pfSense only)          |
+| Network anonymisation   | ✅                | ❌                | ⚠️ Error-prone   | ❌                         |
+| Topology preservation   | ✅                | ❌                | ⚠️ Error-prone   | ✅                         |
+| Configurable modes      | ✅ multiple modes | ❌                | N/A              | ❌ Fixed                   |
+| CIDR allow-lists        | ✅                | ❌                | ⚠️ Error-prone   | ❌                         |
+| CI/CD integration       | ✅                | ⚠️                | ⚠️ Error-prone   | ❌                         |
+| Cross-platform          | ✅                | ⚠️                | ✅               | ❌                         |
+| WireGuard/IPsec aware   | ✅                | ❌                | ⚠️               | ✅                         |
+| Zero dependencies       | ✅                | ⚠️ Varies         | ✅               | ✅                         |
+
+</details>
+
+---
+
 ## FAQ
 
 ### What does pfsense-redactor redact by default?
@@ -84,6 +193,10 @@ Yes. Unlike generic XML redaction tools, pfsense-redactor understands pfSense co
 ### When should I use aggressive mode?
 
 Use `--aggressive` when sharing configurations publicly or when third-party packages may include unknown sensitive fields. This mode applies broader redaction.
+
+### Can I restore the redacted file to pfSense?
+
+No. Redacted output is for analysis/sharing only and must never be imported back into pfSense.
 
 ---
 
@@ -148,35 +261,6 @@ The tool preserves **network architecture and routing logic** whilst sanitising 
 
 ---
 
-## Relationship to pfSense built-in sanitisation
-
-pfSense includes a built-in configuration sanitisation script:
-
-```bash
-/usr/local/sbin/diag_sanitize.php /conf/config.xml > /conf/config_sanitised.xml
-```
-
-This official tool runs **on the firewall itself** and is primarily intended for safely sharing configurations with Netgate support. It removes high-value secrets (password hashes, pre-shared keys, certificates, etc.) while preserving the original network topology.
-
-**pfsense-redactor is complementary, not a replacement.**
-
-| Built-in `diag_sanitize.php` | pfsense-redactor |
-|-----------------------------|------------------|
-| Runs on pfSense only        | Runs anywhere (workstation, CI, automation) |
-| PHP, internal to pfSense    | Python, standalone, MIT-licensed |
-| Fixed sanitisation behaviour | Configurable redaction and anonymisation |
-| Removes secrets             | Removes secrets **and** can anonymise IPs, domains, MACs and URLs |
-| Best suited to Netgate support (TAC) | Best suited to vendors, consultants, AI tools and forums |
-
-pfsense-redactor exists to cover use cases where:
-- the configuration has already been exported,
-- you do not wish to run additional tooling on the firewall,
-- or you require **privacy-preserving anonymisation** in addition to basic secret removal.
-
-Both tools share the same goal: preventing accidental disclosure of sensitive information when sharing pfSense configurations.
-
----
-
 ## Features
 
 ### Protects real secrets
@@ -199,7 +283,7 @@ Both tools share the same goal: preventing accidental disclosure of sensitive in
 ### Smart redaction
 
 | Data            | Behaviour                            |
-| --- | --- |
+| --------------- | ------------------------------------ |
 | Internal IPs    | Preserve with `--keep-private-ips`   |
 | Public IPs      | Mask or anonymise                    |
 | Email addresses | Mask or anonymise                    |
@@ -330,7 +414,10 @@ pfsense-redactor config.xml --inplace --force
 | `--no-redact-domains`    | Do not redact domain names                                                                                                                         |
 | `--redact-url-usernames` | Redact usernames in URLs (default: preserve usernames, always redact passwords)                                                                    |
 
-### Allow-lists
+<details>
+<summary>Allow-lists</summary>
+
+- Allow-lists let you preserve specific well-known IPs and domains that don't leak private information.
 
 | Flag                        | Description                                                                                                              |
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
@@ -339,13 +426,18 @@ pfsense-redactor config.xml --inplace --force
 | `--allowlist-file PATH`     | File containing IPs, CIDR networks, and domains to never redact (one per line)                                           |
 | `--no-default-allowlist`    | Do not load default allow-list files (.pfsense-allowlist in current dir or ~/.pfsense-allowlist)                         |
 
-### Testing & Diagnostics
+</details>
+
+<details>
+<summary>Testing & Diagnostics</summary>
 
 | Flag                | Description                                                             |
 | ------------------- | ----------------------------------------------------------------------- |
 | `--dry-run`         | Show statistics only, do not write output file                          |
 | `--dry-run-verbose` | Show statistics with sample redactions (safely masked to prevent leaks) |
 | `--fail-on-warn`    | Exit with non-zero code if root tag is not 'pfsense' (useful in CI)     |
+
+</details>
 
 ### Output Control
 

@@ -2,20 +2,39 @@
 
 ## Supported Versions
 
-Use this section to tell people about which versions of your project are
-currently being supported with security updates.
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 5.1.x   | :white_check_mark: |
-| 5.0.x   | :x:                |
-| 4.0.x   | :white_check_mark: |
-| < 4.0   | :x:                |
+| Version | Supported              |
+| ------- | ---------------------- |
+| 1.0.x   | ✅ Security updates    |
+| < 1.0   | ❌ No longer supported |
 
 ## Reporting a Vulnerability
 
-Use this section to tell people how to report a vulnerability.
+**What to Include**:
 
-Tell them where to go, how often they can expect to get an update on a
-reported vulnerability, what to expect if the vulnerability is accepted or
-declined, etc.
+1. Detailed description of the vulnerability
+2. Steps to reproduce
+3. Potential impact assessment
+4. Suggested fix (if available)
+
+**Disclosure Policy**:
+
+- We follow coordinated disclosure
+- Security fixes are released ASAP
+- CVEs are requested for significant vulnerabilities
+- Credit given to reporters (unless anonymity requested)
+
+## Security Features
+
+pfSense Redactor includes multiple security protections:
+
+- Path traversal prevention
+- Symlink attack mitigation
+- ReDoS (Regular Expression DoS) protection
+- Input validation for all file operations
+- No external dependencies (reduces supply chain risk)
+
+## Security Audit History
+
+- **2025-12**: v1.0.8 - Symlink security hardening
+- **2025-11**: v1.0.7 - Port validation improvements
+- **2025-10**: v1.0.6 - ReDoS protection added

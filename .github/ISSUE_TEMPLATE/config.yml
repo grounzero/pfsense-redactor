@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/grounzero/pfsense-redactor#readme
+    about: Read the comprehensive README and FAQ
+  - name: 🔒 Security Vulnerability
+    url: https://github.com/grounzero/pfsense-redactor/security/advisories/new
+    about: Report security issues privately (DO NOT file public issues)

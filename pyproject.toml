@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "pfsense-redactor"
 version = "1.0.10"
-description = "Redacts secrets and optionally anonymises identifiers in pfSense config.xml exports for safe sharing"
+description = "Enterprise-grade tool to redact secrets and anonymise identifiers in pfSense/Netgate config.xml exports. Preserves network topology while removing passwords, VPN keys, certificates, public IPs, domains, and MACs for safe sharing with support teams, consultants, AI tools, and forums."
 readme = "README.md"
 authors = [
     {name = "pfSense Redactor Contributors"}
@@ -31,12 +31,21 @@ classifiers = [
     "Topic :: System :: Networking :: Firewalls",
     "Topic :: System :: Systems Administration",
     "Topic :: Utilities",
+    "Topic :: System :: Networking :: Monitoring",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+    "Framework :: Pytest",
+    "Typing :: Typed",
 ]
 
 keywords = [
-  "pfsense", "netgate", "firewall", "configuration", "config", "config.xml",
-  "security", "privacy", "redaction", "anonymiser", "anonymizer",
-  "sanitiser", "sanitizer", "xml", "vpn", "wireguard", "openvpn", "ipsec"
+    "pfsense", "netgate", "firewall", "configuration", "config", "config.xml",
+    "security", "privacy", "redaction", "anonymiser", "anonymizer",
+    "sanitiser", "sanitizer", "xml", "vpn", "wireguard", "openvpn", "ipsec",
+    "config-sanitizer", "data-privacy", "gdpr", "compliance",
+    "network-security", "firewall-management", "devops", "automation",
+    "msp", "managed-services", "siem", "log-sanitization",
+    "pfsense-plus", "pfsense-ce", "netgate-tnsr"
 ]
 
 requires-python = ">=3.9"
