@@ -23,7 +23,7 @@ Describe what you've already attempted:
 
 Provide any relevant context that might help us answer your question:
 
-**Use case**: [e.g., sharing with vendor, AI analysis, support ticket]
+**Use case**: (e.g., sharing with vendor, AI analysis, support ticket)
 
 **Current command** (if applicable):
 
@@ -32,11 +32,11 @@ pfsense-redactor config.xml --keep-private-ips
 ```
 
 **What I'm trying to achieve**:
-[Describe your goal]
+(Describe your goal)
 
 ## Environment (if relevant)
 
-- **OS**: [e.g., Windows 11, macOS 14, Ubuntu 22.04]
+- **OS**: (e.g., Windows 11, macOS 14, Ubuntu 22.04)
 - **Python version**: [run `python --version`]
 - **pfsense-redactor version**: [run `pfsense-redactor --version`]
 
