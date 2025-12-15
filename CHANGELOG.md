@@ -5,7 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.9] - 2025-11-08
+## [1.0.10][] - 2025-12-15
+
+### Changed
+- Improved PyPI metadata with additional classifiers
+- Added code quality tool configurations (Black, isort, mypy)
+- Enhanced project URLs (Bug Tracker, Changelog, Source Code)
+- Updated test snapshots for new version
+
+## [1.0.9][] - 2025-11-08
 
 ### Added
 - **NEW**: Version checking functionality with `--version` and `--check-version` flags
@@ -13,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--check-version`: Check PyPI for latest version with context-aware upgrade instructions
   - Automatic installation method detection (pipx, venv, user, source, pip)
 
-## [1.0.8] - 2025-11-05
+## [1.0.8][] - 2025-11-05
 
 ### Security
 - **FIX**: Added symlink security check for `--inplace` mode
@@ -282,6 +290,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.0.10]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.10
 [1.0.9]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.9
 [1.0.8]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.8
 [1.0.7]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.7
