@@ -32,10 +32,10 @@ Paste any error messages or unexpected output here
 
 ## Environment
 
-- **OS**: [e.g., Windows 11, macOS 14, Ubuntu 22.04]
-- **Python version**: [run `python --version`]
-- **pfsense-redactor version**: [run `pfsense-redactor --version`]
-- **Installation method**: [pip, pipx, source, venv]
+- **OS**: (e.g., Windows 11, macOS 14, Ubuntu 22.04)
+- **Python version**: (run `python --version`)
+- **pfsense-redactor version**: (run `pfsense-redactor --version`)
+- **Installation method**: (pip, pipx, source, venv)
 
 ## Sample Config (if applicable)
 
@@ -47,7 +47,7 @@ If the issue is related to a specific config structure, please provide a **redac
 </example>
 ```
 
-**⚠️ Important**: Never paste real pfSense configs - redact sensitive data first!
+**⚠️ Important**: Never paste real pfSense configs – redact sensitive data first! [Learn more about redacting configs.](https://github.com/grounzero/pfsense-redactor#redacting-configs)
 
 ## Additional Context
 

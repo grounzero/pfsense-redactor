@@ -1,7 +1,7 @@
 ---
 name: Feature Request
 about: Suggest a new feature or enhancement
-title: "[FEATURE] "
+title: "FEATURE "
 labels: enhancement
 assignees: ""
 ---
@@ -56,3 +56,4 @@ Add any other context, screenshots, links, or examples about the feature request
 - [ ] I have searched existing issues/PRs for similar requests
 - [ ] I have clearly described the use case
 - [ ] I have provided examples where relevant
+
