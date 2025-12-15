@@ -4,17 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pfsense-redactor"
-version = "1.0.9"
-description = "Safely removes sensitive information from pfSense config.xml exports"
+version = "1.0.10"
+description = "Redacts secrets and optionally anonymises identifiers in pfSense config.xml exports for safe sharing"
 readme = "README.md"
 authors = [
     {name = "pfSense Redactor Contributors"}
 ]
 license = {text = "MIT"}
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
     "Intended Audience :: System Administrators",
     "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
@@ -22,24 +25,37 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: Implementation :: CPython",
     "Topic :: Security",
+    "Topic :: System :: Networking",
     "Topic :: System :: Networking :: Firewalls",
     "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
 ]
-keywords = ["pfsense", "firewall", "configuration", "config", "privacy", "security", "redaction", "anonymiser", "anonymizer", "sanitiser", "sanitizer", "xml", "netgate"]
+
+keywords = [
+  "pfsense", "netgate", "firewall", "configuration", "config", "config.xml",
+  "security", "privacy", "redaction", "anonymiser", "anonymizer",
+  "sanitiser", "sanitizer", "xml", "vpn", "wireguard", "openvpn", "ipsec"
+]
+
 requires-python = ">=3.9"
 dependencies = []
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.0",
-    "pytest-cov",
+    "pytest==8.4.2",
+    "pytest-cov==7.0.0",
+    "pytest-xdist==3.8.0",
 ]
 
 [project.urls]
 Homepage = "https://github.com/grounzero/pfsense-redactor"
 Repository = "https://github.com/grounzero/pfsense-redactor"
-Issues = "https://github.com/grounzero/pfsense-redactor/issues"
+"Bug Tracker" = "https://github.com/grounzero/pfsense-redactor/issues"
+Documentation = "https://github.com/grounzero/pfsense-redactor#readme"
+Changelog = "https://github.com/grounzero/pfsense-redactor/blob/main/CHANGELOG.md"
+"Source Code" = "https://github.com/grounzero/pfsense-redactor"
 
 [project.scripts]
 pfsense-redactor = "pfsense_redactor.__main__:main"
@@ -73,3 +89,89 @@ max-branches = 15
 max-locals = 15
 max-statements = 60
 max-returns = 8
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = [
+    "-v",
+    "--tb=short",
+    "--strict-markers",
+    "-ra",
+]
+markers = [
+    "slow: marks tests as slow (reference snapshots, full sample processing)",
+    "fast: marks tests as fast (synthetic fixtures, focused tests)",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+norecursedirs = [".git", ".tox", "dist", "build", "*.egg", "reference"]
+
+[tool.coverage.run]
+source = ["pfsense_redactor"]
+omit = [
+    "tests/*",
+    "*/test_*",
+    "*/__pycache__/*",
+    "*/site-packages/*",
+]
+branch = true
+
+[tool.coverage.report]
+precision = 2
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@abstractmethod",
+]
+
+[tool.black]
+line-length = 120
+target-version = ["py39", "py310", "py311", "py312", "py313"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+  | venv
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 120
+py_version = "39"
+skip_gitignore = true
+multi_line_mode = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+src_paths = ["pfsense_redactor", "tests"]
+known_third_party = ["pytest"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true
+exclude = [
+    "tests/",
+    "venv/",
+]

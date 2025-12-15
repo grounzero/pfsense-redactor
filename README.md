@@ -2,7 +2,16 @@
 
 [![PyPI version](https://badge.fury.io/py/pfsense-redactor.svg)](https://pypi.org/project/pfsense-redactor/)
 
-The **pfSense XML Configuration Redactor** safely removes sensitive information from `config.xml` exports before they are shared with support, consultants, auditors, or AI tools for security analysis.
+The **pfSense XML Configuration Redactor** safely removes secrets and optionally anonymises identifiers in pfSense `config.xml` files before they are shared with support, consultants, auditors, or AI tools.
+
+Unlike generic XML redaction tools, pfsense-redactor understands pfSense-specific configuration structures and VPN formats.
+
+### When should I use pfsense-redactor?
+
+Use pfsense-redactor when you need to share a pfSense `config.xml` file
+outside the firewall (e.g. with vendors, consultants, forums, or AI tools)
+and want to remove secrets and/or anonymise network identifiers without
+breaking topology or routing logic.
 
 ## Installation
 
