@@ -37,8 +37,8 @@ pfsense-redactor config.xml --keep-private-ips
 ## Environment (if relevant)
 
 - **OS**: (e.g., Windows 11, macOS 14, Ubuntu 22.04)
-- **Python version**: [run `python --version`]
-- **pfsense-redactor version**: [run `pfsense-redactor --version`]
+- **Python version**: (run `python --version`)
+- **pfsense-redactor version**: (run `pfsense-redactor --version`)
 
 ## Additional Information
 
