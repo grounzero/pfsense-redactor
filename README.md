@@ -199,7 +199,7 @@ Both tools share the same goal: preventing accidental disclosure of sensitive in
 ### Smart redaction
 
 | Data            | Behaviour                            |
-| --------------- | ------------------------------------ |
+| --- | --- |
 | Internal IPs    | Preserve with `--keep-private-ips`   |
 | Public IPs      | Mask or anonymise                    |
 | Email addresses | Mask or anonymise                    |
