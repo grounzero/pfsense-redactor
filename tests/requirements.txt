@@ -1,7 +1,7 @@
 # Test dependencies for pfSense redactor test suite
 
 # Core testing framework
-pytest==8.4.2
+pytest==9.0.3
 
 # Optional: Parallel test execution
 pytest-xdist==3.8.0
