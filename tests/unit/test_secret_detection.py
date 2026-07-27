@@ -12,6 +12,7 @@ Fixtures (basic_redactor, aggressive_redactor, redactor_factory) come from
 tests/conftest.py.
 """
 import xml.etree.ElementTree as ET
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -370,3 +371,119 @@ class TestRedactDescriptions:
         redactor.redact_element(root)
 
         assert 'ACME-Corp-WiFi' not in ET.tostring(root, encoding='unicode')
+
+
+class TestURLPathCredentialFormats:
+    """Credential formats embedded in URL path segments
+
+    The boundaries in _is_secretish_path_segment are load-bearing; each case
+    here corresponds to a format that slipped through in 1.1.0.
+    """
+
+    @pytest.mark.parametrize('segment,description', [
+        ('AKIAIOSFODNN7EXAMPLE', 'AWS access key ID - exactly 20 chars'),
+        ('bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw', 'Telegram bot token - contains a colon'),
+        ('XXXXXXXXXXXXXXXXXXXXXXXX', '24-char token with no digit'),
+        ('4nBv8kQ2rT9wZxL6mYpJ7dCf', 'Slack webhook token'),
+        ('aB3dE5gH7jK9lM1nO3pQ5rS7tU9vW1xY3zA5bC7dE9fG1hI3jK5lM7nO9pQ1rS3t', 'Discord webhook token'),
+    ])
+    def test_credential_segment_detected(self, segment, description):
+        """Each format is recognised as a credential"""
+        from pfsense_redactor.redactor import PfSenseRedactor
+
+        assert PfSenseRedactor._is_secretish_path_segment(segment), description
+
+    @pytest.mark.parametrize('segment,description', [
+        ('Open_VM_Tools_package', 'route name the digit rule protects (21 chars)'),
+        ('Setup_Snort_Package', 'route name, 19 chars'),
+        ('services', 'short route'),
+        ('webhooks', 'short route'),
+        ('sendMessage', 'short route'),
+        ('T024BE7LD', 'short identifier'),
+    ])
+    def test_route_name_not_flagged(self, segment, description):
+        """Ordinary route names must not be mistaken for credentials"""
+        from pfsense_redactor.redactor import PfSenseRedactor
+
+        assert not PfSenseRedactor._is_secretish_path_segment(segment), description
+
+    def test_aws_key_redacted_in_url(self, aggressive_redactor):
+        """End to end: an AWS key ID in a path is redacted"""
+        result = aggressive_redactor.redact_text('https://example.org/api/AKIAIOSFODNN7EXAMPLE/data')
+
+        assert 'AKIAIOSFODNN7EXAMPLE' not in result
+
+    def test_telegram_token_redacted_in_url(self, aggressive_redactor):
+        """The colon must not shield the secret half of the token"""
+        result = aggressive_redactor.redact_text(
+            'https://api.telegram.org/bot123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw/sendMessage'
+        )
+
+        assert 'AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw' not in result
+        assert 'sendMessage' in result, 'the route should survive'
+
+    def test_webhook_element_redacted_whole(self, basic_redactor):
+        """A webhook URL is a credential in its entirety, not just its last segment"""
+        root = ET.fromstring(
+            '<pfsense><a><webhook_url>'
+            'https://hooks.example.com/services/T00/B00/SomeOpaqueTokenValue'
+            '</webhook_url></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+
+        assert 'SomeOpaqueTokenValue' not in ET.tostring(root, encoding='unicode')
+
+
+class TestFilenamesNotTreatedAsDomains:
+    """FQDN substitution must not rewrite filenames and paths
+
+    Rewriting 'haproxy.sh' to 'example.com' corrupts the output rather than
+    redacting it, and pfBlockerNG feed names and cron commands are exactly what
+    people share a config to get help with.
+    """
+
+    @pytest.mark.parametrize('text', [
+        'https://feeds.example.net/lists/emerging-block.rules',
+        'https://updates.example.org/pfblocker/list.txt',
+    ])
+    def test_filename_in_url_path_preserved(self, basic_redactor, text):
+        """The host is masked; the filename in the path is not
+
+        Asserts on the parsed hostname rather than a substring: 'example.com'
+        appearing somewhere in the string would also be satisfied by an
+        unmasked host next to a masked one.
+        """
+        result = basic_redactor.redact_text(text)
+
+        assert urlsplit(result).hostname == 'example.com', 'host should still be masked'
+        assert result.rsplit('/', 1)[-1] == text.rsplit('/', 1)[-1], 'filename should survive'
+
+    @pytest.mark.parametrize('text', [
+        '/usr/local/etc/rc.d/haproxy.sh restart',
+        '/usr/local/etc/snort/snort.conf',
+        'backup-2026.tar.gz',
+        'config.xml',
+    ])
+    def test_filesystem_path_preserved(self, aggressive_redactor, text):
+        """Bare paths and filenames are left alone even under --aggressive"""
+        assert aggressive_redactor.redact_text(text) == text
+
+    @pytest.mark.parametrize('domain', [
+        'host.internal.corp.example',
+        'mail.acme-corp.example',
+        'fw.corp.local',
+    ])
+    def test_real_domains_still_redacted(self, basic_redactor, domain):
+        """The filename rules must not weaken domain redaction
+
+        The input is a bare hostname, so the whole value must be replaced -
+        an equality check, not a substring check.
+        """
+        result = basic_redactor.redact_text(domain)
+
+        assert result == 'example.com'
+
+    def test_ambiguous_extension_redacted_outside_path_context(self, basic_redactor):
+        """'.sh' is a real TLD, so it is only preserved in path context"""
+        assert basic_redactor.redact_text('/etc/rc.d/haproxy.sh') == '/etc/rc.d/haproxy.sh'
+        assert 'haproxy.sh' not in basic_redactor.redact_text('visit haproxy.sh for details')
