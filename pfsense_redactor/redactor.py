@@ -267,6 +267,22 @@ FILE_EXTENSIONS: frozenset[str] = frozenset({
 # content, so a placeholder can only ever be one this module wrote.
 URL_PLACEHOLDER_RE = re.compile(r'\x00URL(\d+)\x00')
 
+# Summary lines, in print order. Labels are parsed by the StatsParser fixture in
+# tests/conftest.py, so the text must not change.
+STAT_LABELS: tuple[tuple[str, str], ...] = (
+    ('secrets_redacted', 'Passwords/keys/secrets'),
+    ('certs_redacted', 'Certificates'),
+    ('ips_redacted', 'IP addresses'),
+    ('macs_redacted', 'MAC addresses'),
+    ('domains_redacted', 'Domain names'),
+    ('emails_redacted', 'Email addresses'),
+    ('urls_redacted', 'URLs'),
+    ('url_secrets_redacted', 'Secrets in URL paths/queries'),
+)
+
+# Sample categories, in the order they are printed for --dry-run-verbose.
+SAMPLE_CATEGORIES: tuple[str, ...] = ('IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key')
+
 # Documentation ranges reserved for examples: RFC 5737 (IPv4) and RFC 3849
 # (IPv6). In anonymise mode these are the values this tool generates, so seeing
 # one means it has already been masked. Built once at import rather than per
@@ -433,6 +449,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     CERT_MIN_LENGTH: int = 50  # Minimum length to treat text as certificate/key blob
     KEY_BLOB_MIN_LENGTH: int = 64  # Minimum length to treat <key> content as PEM blob
     KEY_SHORT_THRESHOLD: int = 40  # Threshold for short key detection (alphanumeric check)
+    RETAINED_PATHS_SHOWN: int = 10  # Max retained high-entropy paths listed in the summary
 
     # Each argument is an independent, user-facing redaction policy toggle
     # mapped 1:1 from a CLI flag; grouping them into a config object would add
@@ -2063,57 +2080,63 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         """Print redaction statistics using logger"""
         self.logger.info("")
         self.logger.info("[+] Redaction summary:")
-        if self.stats['secrets_redacted']:
-            self.logger.info("    - Passwords/keys/secrets: %d", self.stats['secrets_redacted'])
-        if self.stats['certs_redacted']:
-            self.logger.info("    - Certificates: %d", self.stats['certs_redacted'])
-        if self.stats['ips_redacted']:
-            self.logger.info("    - IP addresses: %d", self.stats['ips_redacted'])
-        if self.stats['macs_redacted']:
-            self.logger.info("    - MAC addresses: %d", self.stats['macs_redacted'])
-        if self.stats['domains_redacted']:
-            self.logger.info("    - Domain names: %d", self.stats['domains_redacted'])
-        if self.stats['emails_redacted']:
-            self.logger.info("    - Email addresses: %d", self.stats['emails_redacted'])
-        if self.stats['urls_redacted']:
-            self.logger.info("    - URLs: %d", self.stats['urls_redacted'])
-        if self.stats['url_secrets_redacted']:
-            self.logger.info("    - Secrets in URL paths/queries: %d", self.stats['url_secrets_redacted'])
+        for key, label in STAT_LABELS:
+            if self.stats[key]:
+                self.logger.info("    - %s: %d", label, self.stats[key])
 
-        # Surface values we deliberately did NOT redact so they can be checked
-        # manually - the summary otherwise only reports what was redacted,
-        # which makes retained secrets impossible to audit.
-        if self.stats['high_entropy_retained']:
-            self.logger.warning("")
+        self._print_retained_warning()
+        self._print_anonymisation_stats()
+        self._print_samples()
+
+    def _print_retained_warning(self) -> None:
+        """Report high-entropy values that were deliberately not redacted
+
+        The summary otherwise only reports what was redacted, which makes
+        retained secrets impossible to audit before sharing.
+        """
+        if not self.stats['high_entropy_retained']:
+            return
+
+        self.logger.warning("")
+        self.logger.warning(
+            "[!] %d unrecognised high-entropy value(s) retained. Review before sharing:",
+            self.stats['high_entropy_retained']
+        )
+        for path in self.high_entropy_paths[:self.RETAINED_PATHS_SHOWN]:
+            self.logger.warning("    - %s", path)
+        if len(self.high_entropy_paths) > self.RETAINED_PATHS_SHOWN:
             self.logger.warning(
-                "[!] %d unrecognised high-entropy value(s) retained. Review before sharing:",
-                self.stats['high_entropy_retained']
+                "    - ... and %d more",
+                len(self.high_entropy_paths) - self.RETAINED_PATHS_SHOWN
             )
-            for path in self.high_entropy_paths[:10]:
-                self.logger.warning("    - %s", path)
-            if len(self.high_entropy_paths) > 10:
-                self.logger.warning("    - ... and %d more", len(self.high_entropy_paths) - 10)
-            self.logger.warning("    Re-run with --aggressive to redact these automatically.")
+        self.logger.warning("    Re-run with --aggressive to redact these automatically.")
 
-        if self.anonymise:
-            self.logger.info("")
-            self.logger.info("[+] Anonymisation stats:")
-            self.logger.info("    - Unique IPs anonymised: %d", len(self.ip_aliases))
-            self.logger.info("    - Unique domains anonymised: %d", len(self.domain_aliases))
+    def _print_anonymisation_stats(self) -> None:
+        """Report how many unique identifiers were aliased"""
+        if not self.anonymise:
+            return
 
-        # Print samples if in dry-run-verbose mode
-        if self.dry_run_verbose:
-            self.logger.info("")
-            self.logger.info("[+] Samples of changes (limit N=%d):", self.sample_limit)
-            has_any = any(self.samples.get(cat) for cat in ['IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key'])
-            if has_any:
-                # Print in consistent order
-                for category in ['IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key']:
-                    if category in self.samples and self.samples[category]:
-                        for before_masked, after in self.samples[category]:
-                            self.logger.info("    %s: %s -> %s", category, before_masked, after)
-            else:
-                self.logger.info("    (no examples collected)")
+        self.logger.info("")
+        self.logger.info("[+] Anonymisation stats:")
+        self.logger.info("    - Unique IPs anonymised: %d", len(self.ip_aliases))
+        self.logger.info("    - Unique domains anonymised: %d", len(self.domain_aliases))
+
+    def _print_samples(self) -> None:
+        """Print masked before/after examples for --dry-run-verbose"""
+        if not self.dry_run_verbose:
+            return
+
+        self.logger.info("")
+        self.logger.info("[+] Samples of changes (limit N=%d):", self.sample_limit)
+
+        printed = False
+        for category in SAMPLE_CATEGORIES:
+            for before_masked, after in self.samples.get(category) or ():
+                self.logger.info("    %s: %s -> %s", category, before_masked, after)
+                printed = True
+
+        if not printed:
+            self.logger.info("    (no examples collected)")
 
 
 # ==========================================================================
