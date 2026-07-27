@@ -996,6 +996,53 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         except ValueError:
             return token, ''
 
+    def _strip_ip_token_port(self, token: str) -> tuple[str, str]:
+        """Split a trailing port off an IP token. Returns (token, port_suffix)
+
+        Handles both unbracketed IPv4 (1.2.3.4:80) and bracketed IPv6 with an
+        optional zone identifier ([fe80::1%em0]:51820). An out-of-range or
+        non-numeric port is left attached, so the token simply fails to parse
+        as an address and is returned unchanged by the caller.
+        """
+        # IPv6 must use brackets to carry a port; only peel :port when unbracketed
+        if not token.startswith('['):
+            return self._validate_and_strip_port(token)
+
+        if ']:' not in token:
+            return token, ''
+
+        bracket_end = token.index(']:')
+        port_str = token[bracket_end + 2:]
+
+        try:
+            port_num = int(port_str)
+        except ValueError:
+            return token, ''
+
+        if not 1 <= port_num <= 65535:
+            return token, ''
+
+        return token[:bracket_end + 1], f':{port_num}'
+
+    def _should_preserve_ip(self, ip: IPAddress) -> bool:
+        """Check whether an address should be left as-is rather than masked"""
+        # Common netmasks and unspecified addresses stay readable regardless of
+        # --keep-private-ips
+        if str(ip) in self.always_preserve_ips:
+            return True
+
+        # Allow-listed IPs (opt-in, including CIDR networks)
+        if self._is_ip_allowed(ip):
+            return True
+
+        # In anonymise mode, RFC documentation IPs are our own generated values
+        if self.anonymise and is_rfc_documentation_ip(ip):
+            return True
+
+        # Non-global addresses if requested: RFC1918, ULA, loopback, link-local,
+        # multicast, reserved and unspecified
+        return self.keep_private_ips and not ip.is_global
+
     def _mask_ip_like_tokens(self, text: str) -> str:
         """IP address masking using ipaddress module"""
         def repl(token: str) -> str:
@@ -1004,55 +1051,13 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 return token
             original_token = token
 
-            # Extract optional trailing :port for unbracketed tokens
-            # IPv6 must use brackets to carry a port; we only peel :port when the token contains a dot
-            port_suffix = ''
-            if not token.startswith('['):
-                token, port_suffix = self._validate_and_strip_port(token)
-
-            # Handle bracketed IPv6 with optional zone identifier and port: [fe80::1%em0]:51820
-            # This handles: [IPv6], [IPv6%zone], [IPv6]:port, [IPv6%zone]:port
-            if token.startswith('['):
-                # Pattern match for bracketed IPv6 with port
-                if ']:' in token:
-                    # Extract port from bracketed IPv6
-                    bracket_end = token.index(']:')
-                    port_str = token[bracket_end+2:]  # Port without colon
-
-                    # Validate port range for IPv6
-                    try:
-                        port_num = int(port_str)
-                        if 1 <= port_num <= 65535:
-                            # Valid port, strip and normalise
-                            port_suffix = f':{port_num}'
-                            token = token[:bracket_end+1]  # Keep just [IPv6%zone]
-                        else:
-                            # Invalid port, don't strip
-                            port_suffix = ''
-                    except ValueError:
-                        # Not a valid port number, don't strip
-                        port_suffix = ''
+            token, port_suffix = self._strip_ip_token_port(token)
 
             ip, bracketed, zone = self._parse_ip_token(token)
             if ip is None:
                 return original_token
 
-            # Always preserve common netmasks and unspecified addresses for readability
-            # (regardless of --keep-private-ips setting)
-            if str(ip) in self.always_preserve_ips:
-                return original_token
-
-            # Preserve allow-listed IPs (opt-in, including CIDR networks)
-            if self._is_ip_allowed(ip):
-                return original_token
-
-            # In anonymise mode, preserve RFC documentation IPs (they're our generated values)
-            if self.anonymise and is_rfc_documentation_ip(ip):
-                return original_token
-
-            # Keep non-global IPs if requested (simplified test for RFC1918, ULA, loopback,
-            # link-local, multicast, reserved, and unspecified addresses)
-            if self.keep_private_ips and not ip.is_global:
+            if self._should_preserve_ip(ip):
                 return original_token
 
             # Anonymisation mode
