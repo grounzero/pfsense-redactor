@@ -174,7 +174,7 @@ CERT_KEY_ELEMENTS: frozenset[str] = frozenset({
 SECRET_TAG_PATTERN = re.compile(
     r'passw(?:or)?d|passphrase|(?:^|[_-])pass(?:$|[_-])'
     r'|psk|pre-?shared-?key|shared-?key'
-    r'|secret|token|community|credential|bindpw|licen[cs]e'
+    r'|secret|token|community|credential|bindpw|licen[cs]e|webhook'
     r'|api[_-]?key|account-?key|authorized-?keys'
     r'|priv(?:ate)?[_-]?key|key(?:s)?$|[_-]key\d*$',
     re.IGNORECASE
@@ -246,6 +246,30 @@ BLOB_SECRET_DIRECTIVES: frozenset[str] = frozenset({
 BLOB_MIN_SCAN_LENGTH: int = 32
 BASE64ISH_RE = re.compile(r'^[A-Za-z0-9+/=_\-]+$')
 HEXISH_RE = re.compile(r'^[0-9A-Fa-f]+$')
+
+# Final labels that are file extensions rather than TLDs. FQDN_RE is
+# deliberately broad, so without this 'list.txt' and 'backup-2026.tar.gz' are
+# rewritten to example.com - silently corrupting the pfBlockerNG feed names,
+# script paths and cron commands people share a config to get help with.
+#
+# Only unambiguous entries belong here: '.sh', '.pl', '.io', '.zip' and '.mov'
+# are all real TLDs, so 'haproxy.sh' cannot be resolved by extension alone and
+# is handled by the path-context rule in _redact_fqdns_safe instead.
+FILE_EXTENSIONS: frozenset[str] = frozenset({
+    'txt', 'log', 'conf', 'cfg', 'ini', 'yaml', 'yml', 'json', 'xml', 'csv',
+    'rules', 'list', 'lst', 'tar', 'gz', 'tgz', 'bz2', 'xz', 'zst', 'bak',
+    'pem', 'crt', 'cer', 'csr', 'der', 'p12', 'pfx', 'jks', 'keystore',
+    'sql', 'sqlite', 'db', 'dat', 'pid', 'sock', 'lock', 'tmp', 'swp',
+    'php', 'cgi', 'inc', 'tpl', 'patch', 'diff', 'sample', 'orig', 'dist',
+})
+
+# URL path segment credential detection.
+# 20 because AWS access key IDs (AKIA...) are exactly 20 characters.
+SECRETISH_SEGMENT_MIN_LENGTH: int = 20
+# Above this length an all-letter segment is treated as a token even without a
+# digit. Set clear of 'Open_VM_Tools_package' (21), the route name the digit
+# requirement exists to protect.
+DIGITLESS_TOKEN_LENGTH: int = 24
 
 IP_CONTAINING_ELEMENTS: frozenset[str] = frozenset({
     'ipaddr', 'ipaddrv6', 'gateway', 'dnsserver', 'hostname', 'domain',
@@ -1254,18 +1278,33 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         Uses a lower length floor than _is_high_entropy_value: webhook tokens
         sit around 20-24 chars, below the threshold used for key material.
 
-        A digit is required in addition to letters. Without that, long
-        underscore-joined route names ('Open_VM_Tools_package') look identical
-        to tokens; generated credentials essentially always mix in digits.
-        """
-        if len(segment) <= 20:
-            return False
-        if not BASE64ISH_RE.match(segment):
-            return False
+        Boundaries here are load-bearing, so each is justified:
 
-        has_digit = any(c.isdigit() for c in segment)
-        has_letter = any(c.isalpha() for c in segment)
-        return has_digit and has_letter
+        - >= 20, not > 20. AWS access key IDs (AKIA...) are exactly 20
+          characters, so a > 20 test excluded the entire format.
+        - Colon-separated segments are split first. Telegram bot tokens are
+          'bot<id>:<secret>', and the colon fails BASE64ISH_RE, which let a
+          47-character credential through as an ordinary path segment.
+        - A digit is required only below DIGITLESS_TOKEN_LENGTH. The digit rule
+          exists to protect underscore-joined route names such as
+          'Open_VM_Tools_package' (21 chars); beyond that length an all-letter
+          segment is far more likely to be a token than a route. Requiring a
+          digit unconditionally silently missed alphabetic Slack tokens.
+        """
+        for part in segment.split(':') if ':' in segment else [segment]:
+            if len(part) < SECRETISH_SEGMENT_MIN_LENGTH:
+                continue
+            if not BASE64ISH_RE.match(part):
+                continue
+
+            has_letter = any(c.isalpha() for c in part)
+            has_digit = any(c.isdigit() for c in part)
+            if not has_letter:
+                continue
+            if has_digit or len(part) >= DIGITLESS_TOKEN_LENGTH:
+                return True
+
+        return False
 
     @classmethod
     def _build_redacted_path(cls, path: str) -> tuple[str, bool]:
@@ -1443,6 +1482,29 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # Use re.sub directly to preserve whitespace
         return self.EMAIL_RE.sub(email_mask_safe, text)
 
+    def _stash_urls(self, text: str) -> tuple[str, list[str]]:
+        """Replace URLs with placeholders so later passes cannot rewrite them
+
+        Returns (text, stashed). URLs have already been handled by
+        _mask_url/_redact_url_secrets_only by this point; without stashing, the
+        FQDN pass matches filenames inside the path ('/lists/list.txt') and
+        rewrites them to example.com.
+        """
+        stashed: list[str] = []
+
+        def keep(match: re.Match) -> str:
+            stashed.append(match.group(0))
+            return f'\x00URL{len(stashed) - 1}\x00'
+
+        return self.URL_RE.sub(keep, text), stashed
+
+    @staticmethod
+    def _restore_urls(text: str, stashed: list[str]) -> str:
+        """Put stashed URLs back after later passes have run"""
+        for index, url in enumerate(stashed):
+            text = text.replace(f'\x00URL{index}\x00', url)
+        return text
+
     def _redact_fqdns_safe(self, text: str) -> str:
         """Redact FQDNs with ReDoS protection via length pre-filtering"""
         def fqdn_mask_safe(match):
@@ -1450,6 +1512,16 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             # Pre-filter: Skip obviously too-long domains
             if len(domain) > self.MAX_FQDN_LENGTH:
                 return domain  # Don't process suspiciously long "domains"
+
+            # A filesystem or URL path component, not a hostname. Checked by
+            # context because the extension alone cannot decide it: '.sh' is
+            # both a shell script and Saint Helena's TLD.
+            if match.start() > 0 and text[match.start() - 1] == '/':
+                return domain
+
+            # Unambiguous file extension: 'list.txt', 'backup-2026.tar.gz'
+            if domain.rsplit('.', 1)[-1].lower() in FILE_EXTENSIONS:
+                return domain
 
             if self._is_domain_allowed(domain):
                 return domain
@@ -1512,10 +1584,17 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             result = result.replace('XXX.XXX.XXX.XXX', ipv4_mask_placeholder)
             result = result.replace('XXXX.XXXX.XXXX', cisco_mac_placeholder)
 
+            # Protect URLs for the same reason. Their hosts were already masked
+            # by _redact_urls_safe above; leaving them exposed to the FQDN pass
+            # rewrote filenames in the path (/lists/list.txt -> /lists/
+            # example.com), which corrupts the output rather than redacting it.
+            result, stashed_urls = self._stash_urls(result)
+
             # Redact remaining bare FQDNs with ReDoS protection
             result = self._redact_fqdns_safe(result)
 
-            # Restore IPv4 mask and Cisco MAC format
+            # Restore URLs, IPv4 mask and Cisco MAC format
+            result = self._restore_urls(result, stashed_urls)
             result = result.replace(ipv4_mask_placeholder, 'XXX.XXX.XXX.XXX')
             result = result.replace(cisco_mac_placeholder, 'XXXX.XXXX.XXXX')
 
@@ -1692,17 +1771,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         if '://' not in text:
             return self._redact_blob_text(text)
 
-        stashed: list[str] = []
-
-        def stash(match: re.Match) -> str:
-            stashed.append(self._redact_url_secrets_only(match.group(0)))
-            return f'\x00URL{len(stashed) - 1}\x00'
-
-        result = self._redact_blob_text(self.URL_RE.sub(stash, text))
-
-        for index, url in enumerate(stashed):
-            result = result.replace(f'\x00URL{index}\x00', url)
-        return result
+        stashed_text, stashed = self._stash_urls(self._redact_url_secrets_only(text))
+        return self._restore_urls(self._redact_blob_text(stashed_text), stashed)
 
     def _redact_blob_text(self, text: str) -> str:
         """Redact the value side of key=value pairs and secret-bearing directives"""

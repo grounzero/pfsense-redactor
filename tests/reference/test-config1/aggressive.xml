@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <pfsense>
-  <!-- Redacted using pfsense-redactor v1.1.0 -->
+  <!-- Redacted using pfsense-redactor v1.1.1 -->
   <version>18.2</version>
   <lastchange />
   <system>
@@ -69,7 +69,7 @@
       <repositoryurl />
       <branch />
     </gitsync>
-    <pkg_repo_conf_path>/usr/local/share/pfSense/pkg/repos/example.com</pkg_repo_conf_path>
+    <pkg_repo_conf_path>/usr/local/share/pfSense/pkg/repos/pfSense-repo-devel.conf</pkg_repo_conf_path>
     <already_run_config_upgrade />
     <crypto_hardware>cryptodev</crypto_hardware>
     <language>en_US</language>
@@ -645,7 +645,7 @@
   <aliases>
     <alias>
       <name>pfB_Asia_v4</name>
-      <url>https://127.0.0.1:443/pfblockerng/example.com?pfb=pfB_Asia_v4 &lt;br /&gt;[ 6255147, 6255147_rep, CN, CN_rep ]</url>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Asia_v4 &lt;br /&gt;[ 6255147, 6255147_rep, CN, CN_rep ]</url>
       <updatefreq>32</updatefreq>
       <address />
       <descr>pfBlockerNG  Auto  GeoIP Alias</descr>
@@ -654,7 +654,7 @@
     </alias>
     <alias>
       <name>pfB_Whitelist_v4</name>
-      <url>https://127.0.0.1:443/pfblockerng/example.com?pfb=pfB_Whitelist_v4 &lt;br /&gt;[ Whitelist_custom_v4 ]</url>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Whitelist_v4 &lt;br /&gt;[ Whitelist_custom_v4 ]</url>
       <updatefreq>32</updatefreq>
       <address />
       <descr>pfBlockerNG  Auto  Alias</descr>
@@ -663,7 +663,7 @@
     </alias>
     <alias>
       <name>pfB_Blacklist_v4</name>
-      <url>https://127.0.0.1:443/pfblockerng/example.com?pfb=pfB_Blacklist_v4 &lt;br /&gt;[ C2_IP_Feed_v4, C2_All_Indicator_Feed_v4 ]</url>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Blacklist_v4 &lt;br /&gt;[ C2_IP_Feed_v4, C2_All_Indicator_Feed_v4 ]</url>
       <updatefreq>32</updatefreq>
       <address />
       <descr>pfBlockerNG  Auto  Alias</descr>
@@ -672,7 +672,7 @@
     </alias>
     <alias>
       <name>pfB_DNSBLIP_v4</name>
-      <url>https://127.0.0.1:443/pfblockerng/example.com?pfb=pfB_DNSBLIP_v4 &lt;br /&gt;[ DNSBLIP_v4 ]</url>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_DNSBLIP_v4 &lt;br /&gt;[ DNSBLIP_v4 ]</url>
       <updatefreq>32</updatefreq>
       <address />
       <descr>pfBlockerNG  Auto  Alias</descr>
@@ -746,7 +746,7 @@
       <month>*</month>
       <wday>*</wday>
       <who>root</who>
-      <command>/usr/bin/nice -n20 /etc/example.com</command>
+      <command>/usr/bin/nice -n20 /etc/rc.dyndns.update</command>
     </item>
     <item>
       <minute>*/60</minute>
@@ -809,7 +809,7 @@
       <month>*</month>
       <wday>*</wday>
       <who>root</who>
-      <command>/usr/local/bin/php /usr/local/www/pfblockerng/example.com dcc &gt;&gt; /var/log/pfblockerng/example.com 2&gt;&amp;1</command>
+      <command>/usr/local/bin/php /usr/local/www/pfblockerng/pfblockerng.php dcc &gt;&gt; /var/log/pfblockerng/extras.log 2&gt;&amp;1</command>
     </item>
     <item>
       <minute>0</minute>
@@ -818,7 +818,7 @@
       <month>*</month>
       <wday>*</wday>
       <who>root</who>
-      <command>/usr/local/bin/php /usr/local/www/pfblockerng/example.com cron &gt;&gt; /var/log/pfblockerng/example.com 2&gt;&amp;1</command>
+      <command>/usr/local/bin/php /usr/local/www/pfblockerng/pfblockerng.php cron &gt;&gt; /var/log/pfblockerng/pfblockerng.log 2&gt;&amp;1</command>
     </item>
     <item>
       <minute>0</minute>
@@ -827,7 +827,7 @@
       <month>*</month>
       <wday>*</wday>
       <who>root</who>
-      <command>/usr/local/sbin/squid -k rotate -f /usr/local/etc/squid/example.com</command>
+      <command>/usr/local/sbin/squid -k rotate -f /usr/local/etc/squid/squid.conf</command>
     </item>
     <item>
       <minute>15</minute>
@@ -946,13 +946,13 @@
   <installedpackages>
     <package>
       <name>snort</name>
-      <pkginfolink>https://example.com/example.com/Setup_Snort_Package</pkginfolink>
+      <pkginfolink>https://example.com/index.php/Setup_Snort_Package</pkginfolink>
       <website>http://example.com</website>
       <descr>Snort is an open source network intrusion prevention and detection system (IDS/IPS). Combining the benefits of signature, protocol, and anomaly-based inspection.</descr>
       <version>3.2.9.6_1</version>
-      <configurationfile>/example.com</configurationfile>
+      <configurationfile>/snort.xml</configurationfile>
       <after_install_info>Please visit Services - Snort - Interfaces tab first and select your desired rules. Afterwards visit the Updates tab to download your configured rulesets.</after_install_info>
-      <include_file>/usr/local/pkg/snort/example.com</include_file>
+      <include_file>/usr/local/pkg/snort/snort.inc</include_file>
     </package>
     <package>
       <name>Lightsquid</name>
@@ -960,7 +960,7 @@
 			&amp;lt;strong&amp;gt;Requires Squid package.&amp;lt;/strong&amp;gt;</descr>
       <website>http://example.com/</website>
       <version>3.0.6_4</version>
-      <configurationfile>example.com</configurationfile>
+      <configurationfile>lightsquid.xml</configurationfile>
       <noembedded>true</noembedded>
     </package>
     <package>
@@ -969,17 +969,17 @@
 			Requires Gold Subscription from &amp;lt;a href=&amp;quot;https://example.com Portal&amp;lt;/a&amp;gt;.</descr>
       <website>https://example.com</website>
       <version>1.52</version>
-      <pkginfolink>https://example.com/example.com/AutoConfigBackup</pkginfolink>
-      <configurationfile>example.com</configurationfile>
+      <pkginfolink>https://example.com/index.php/AutoConfigBackup</pkginfolink>
+      <configurationfile>autoconfigbackup.xml</configurationfile>
       <tabs>
         <tab>
           <text>Settings</text>
-          <url>/pkg_edit.php?xml=example.com&amp;id=0</url>
+          <url>/pkg_edit.php?xml=autoconfigbackup.xml&amp;id=0</url>
           <active />
         </tab>
         <tab>
           <text>Restore</text>
-          <url>/example.com</url>
+          <url>/autoconfigbackup.php</url>
         </tab>
         <tab>
           <text>Backup now</text>
@@ -990,24 +990,24 @@
           <url>/autoconfigbackup_stats.php</url>
         </tab>
       </tabs>
-      <include_file>/usr/local/pkg/example.com</include_file>
+      <include_file>/usr/local/pkg/autoconfigbackup.inc</include_file>
     </package>
     <package>
       <name>haproxy-devel</name>
-      <pkginfolink>https://example.com/example.com/haproxy_package</pkginfolink>
+      <pkginfolink>https://example.com/index.php/haproxy_package</pkginfolink>
       <descr>The Reliable, High Performance TCP/HTTP(S) Load Balancer.&amp;lt;br /&amp;gt;
 			This package implements the TCP, HTTP and HTTPS balancing features from haproxy.&amp;lt;br /&amp;gt;
 			Supports ACLs for smart backend switching.</descr>
       <website>http://example.com/</website>
       <version>0.58_2</version>
-      <configurationfile>example.com</configurationfile>
+      <configurationfile>haproxy.xml</configurationfile>
       <logging>
         <logsocket>/tmp/haproxy_chroot/var/run/log</logsocket>
         <facilityname>haproxy</facilityname>
-        <logfilename>example.com</logfilename>
+        <logfilename>haproxy.log</logfilename>
       </logging>
       <filter_rule_function>haproxy_generate_rules</filter_rule_function>
-      <include_file>/usr/local/pkg/haproxy/example.com</include_file>
+      <include_file>/usr/local/pkg/haproxy/haproxy.inc</include_file>
       <plugins>
         <item>
           <type>plugin_carp</type>
@@ -1022,29 +1022,29 @@
       <descr>VMware Tools is a suite of utilities that enhances the performance of the virtual machine's guest operating system and improves management of the virtual machine.</descr>
       <website>http://example.com/</website>
       <version>10.1.0,1</version>
-      <pkginfolink>https://example.com/example.com/Open_VM_Tools_package</pkginfolink>
-      <configurationfile>example.com</configurationfile>
-      <include_file>/usr/local/pkg/example.com</include_file>
+      <pkginfolink>https://example.com/index.php/Open_VM_Tools_package</pkginfolink>
+      <configurationfile>open-vm-tools.xml</configurationfile>
+      <include_file>/usr/local/pkg/open-vm-tools.inc</include_file>
     </package>
     <package>
       <name>squid3</name>
       <internal_name>squid</internal_name>
       <descr>High performance web proxy cache (3.4 branch). It combines Squid as a proxy server with its capabilities of acting as a HTTP / HTTPS reverse proxy.&amp;lt;br /&amp;gt;
 			It includes an Exchange-Web-Access (OWA) Assistant, SSL filtering and antivirus integration via C-ICAP.</descr>
-      <pkginfolink>https://example.com/example.com?board=60.0</pkginfolink>
+      <pkginfolink>https://example.com/index.php?board=60.0</pkginfolink>
       <website>http://example.com/</website>
       <version>0.4.44_1</version>
-      <configurationfile>example.com</configurationfile>
+      <configurationfile>squid.xml</configurationfile>
       <filter_rule_function>squid_generate_rules</filter_rule_function>
       <tabs>
         <tab>
           <text>General</text>
-          <url>/pkg_edit.php?xml=example.com&amp;id=0</url>
+          <url>/pkg_edit.php?xml=squid.xml&amp;id=0</url>
           <active />
         </tab>
         <tab>
           <text>Remote Cache</text>
-          <url>/example.com?xml=squid_upstream.xml</url>
+          <url>/pkg.php?xml=squid_upstream.xml</url>
         </tab>
         <tab>
           <text>Local Cache</text>
@@ -1068,7 +1068,7 @@
         </tab>
         <tab>
           <text>Users</text>
-          <url>/example.com?xml=squid_users.xml</url>
+          <url>/pkg.php?xml=squid_users.xml</url>
         </tab>
         <tab>
           <text>Real Time</text>
@@ -1079,7 +1079,7 @@
           <url>/pkg_edit.php?xml=squid_sync.xml</url>
         </tab>
       </tabs>
-      <include_file>/usr/local/pkg/example.com</include_file>
+      <include_file>/usr/local/pkg/squid.inc</include_file>
     </package>
     <package>
       <name>squidGuard</name>
@@ -1087,12 +1087,12 @@
 			&amp;lt;strong&amp;gt;Works with both Squid (2.7 legacy branch) and Squid3 (3.4 branch) packages.&amp;lt;/strong&amp;gt;</descr>
       <website>http://example.com/</website>
       <version>1.16.16</version>
-      <configurationfile>example.com</configurationfile>
-      <after_install_info>Please visit Services - SquidGuard Proxy Filter - Target Categories and set up at least one category there before enabling SquidGuard. See https://example.com/example.com?topic=94312.0 for details.</after_install_info>
+      <configurationfile>squidguard.xml</configurationfile>
+      <after_install_info>Please visit Services - SquidGuard Proxy Filter - Target Categories and set up at least one category there before enabling SquidGuard. See https://example.com/index.php?topic=94312.0 for details.</after_install_info>
       <tabs>
         <tab>
           <text>General settings</text>
-          <url>/pkg_edit.php?xml=example.com&amp;id=0</url>
+          <url>/pkg_edit.php?xml=squidguard.xml&amp;id=0</url>
           <active />
         </tab>
         <tab>
@@ -1101,19 +1101,19 @@
         </tab>
         <tab>
           <text>Groups ACL</text>
-          <url>/example.com?xml=squidguard_acl.xml</url>
+          <url>/pkg.php?xml=squidguard_acl.xml</url>
         </tab>
         <tab>
           <text>Target categories</text>
-          <url>/example.com?xml=squidguard_dest.xml</url>
+          <url>/pkg.php?xml=squidguard_dest.xml</url>
         </tab>
         <tab>
           <text>Times</text>
-          <url>/example.com?xml=squidguard_time.xml</url>
+          <url>/pkg.php?xml=squidguard_time.xml</url>
         </tab>
         <tab>
           <text>Rewrites</text>
-          <url>/example.com?xml=squidguard_rewr.xml</url>
+          <url>/pkg.php?xml=squidguard_rewr.xml</url>
         </tab>
         <tab>
           <text>Blacklist</text>
@@ -1128,57 +1128,57 @@
           <url>/pkg_edit.php?xml=squidguard_sync.xml</url>
         </tab>
       </tabs>
-      <include_file>/usr/local/pkg/example.com</include_file>
+      <include_file>/usr/local/pkg/squidguard.inc</include_file>
     </package>
     <package>
       <name>Service Watchdog</name>
       <internal_name>Service_Watchdog</internal_name>
       <descr>Monitors for stopped services and restarts them.</descr>
       <version>1.8.5</version>
-      <configurationfile>example.com</configurationfile>
-      <include_file>/usr/local/pkg/example.com</include_file>
+      <configurationfile>servicewatchdog.xml</configurationfile>
+      <include_file>/usr/local/pkg/servicewatchdog.inc</include_file>
     </package>
     <package>
       <name>freeradius3</name>
       <website>http://example.com/</website>
       <descr>A free implementation of the RADIUS protocol.&amp;lt;br /&amp;gt;
 			Supports MySQL, PostgreSQL, LDAP, Kerberos.</descr>
-      <pkginfolink>https://example.com/example.com/FreeRADIUS_2.x_package</pkginfolink>
+      <pkginfolink>https://example.com/index.php/FreeRADIUS_2.x_package</pkginfolink>
       <version>0.15.5_1</version>
-      <configurationfile>example.com</configurationfile>
+      <configurationfile>freeradius.xml</configurationfile>
       <tabs>
         <tab>
           <text>Users</text>
-          <url>/example.com?xml=example.com</url>
+          <url>/pkg.php?xml=freeradius.xml</url>
           <active />
         </tab>
         <tab>
           <text>MACs</text>
-          <url>/example.com?xml=example.com</url>
+          <url>/pkg.php?xml=freeradiusauthorizedmacs.xml</url>
         </tab>
         <tab>
           <text>NAS / Clients</text>
-          <url>/example.com?xml=example.com</url>
+          <url>/pkg.php?xml=freeradiusclients.xml</url>
         </tab>
         <tab>
           <text>Interfaces</text>
-          <url>/example.com?xml=example.com</url>
+          <url>/pkg.php?xml=freeradiusinterfaces.xml</url>
         </tab>
         <tab>
           <text>Settings</text>
-          <url>/pkg_edit.php?xml=example.com&amp;id=0</url>
+          <url>/pkg_edit.php?xml=freeradiussettings.xml&amp;id=0</url>
         </tab>
         <tab>
           <text>EAP</text>
-          <url>/pkg_edit.php?xml=example.com&amp;id=0</url>
+          <url>/pkg_edit.php?xml=freeradiuseapconf.xml&amp;id=0</url>
         </tab>
         <tab>
           <text>SQL</text>
-          <url>/pkg_edit.php?xml=example.com&amp;id=0</url>
+          <url>/pkg_edit.php?xml=freeradiussqlconf.xml&amp;id=0</url>
         </tab>
         <tab>
           <text>LDAP</text>
-          <url>/pkg_edit.php?xml=example.com&amp;id=0</url>
+          <url>/pkg_edit.php?xml=freeradiusmodulesldap.xml&amp;id=0</url>
         </tab>
         <tab>
           <text>View config</text>
@@ -1186,10 +1186,10 @@
         </tab>
         <tab>
           <text>XMLRPC Sync</text>
-          <url>/pkg_edit.php?xml=example.com&amp;id=0</url>
+          <url>/pkg_edit.php?xml=freeradiussync.xml&amp;id=0</url>
         </tab>
       </tabs>
-      <include_file>/usr/local/pkg/example.com</include_file>
+      <include_file>/usr/local/pkg/freeradius.inc</include_file>
     </package>
     <package>
       <name>FRR</name>
@@ -1197,24 +1197,24 @@
       <descr>FRR routing daemon for BGP, OSPF, and OSPF6.&amp;lt;br /&amp;gt;
 			&amp;lt;strong&amp;gt;Conflicts with Quagga OSPF and OpenBGPD; these packages cannot be installed at the same time.&amp;lt;/strong&amp;gt;</descr>
       <version>0.2_1</version>
-      <configurationfile>example.com</configurationfile>
+      <configurationfile>frr.xml</configurationfile>
       <tabs>
         <tab>
           <text>Global Settings</text>
-          <url>pkg_edit.php?xml=example.com</url>
+          <url>pkg_edit.php?xml=frr.xml</url>
           <active />
         </tab>
         <tab>
           <text>Access Lists</text>
-          <url>example.com?xml=frr/frr_global_acls.xml</url>
+          <url>pkg.php?xml=frr/frr_global_acls.xml</url>
         </tab>
         <tab>
           <text>Prefix Lists</text>
-          <url>example.com?xml=frr/frr_global_prefixes.xml</url>
+          <url>pkg.php?xml=frr/frr_global_prefixes.xml</url>
         </tab>
         <tab>
           <text>Route Maps</text>
-          <url>example.com?xml=frr/frr_global_routemaps.xml</url>
+          <url>pkg.php?xml=frr/frr_global_routemaps.xml</url>
         </tab>
         <tab>
           <text>Raw Config</text>
@@ -1237,7 +1237,7 @@
           <url>/status_frr.php</url>
         </tab>
       </tabs>
-      <include_file>/usr/local/pkg/example.com</include_file>
+      <include_file>/usr/local/pkg/frr.inc</include_file>
       <plugins>
         <item>
           <type>plugin_carp</type>
@@ -1248,19 +1248,19 @@
       <name>mailreport</name>
       <descr>Allows you to setup periodic e-mail reports containing command output and log file contents.</descr>
       <version>3.3</version>
-      <configurationfile>example.com</configurationfile>
+      <configurationfile>mailreport.xml</configurationfile>
     </package>
     <package>
       <name>ntopng</name>
       <website>http://example.com/</website>
       <descr>ntopng (replaces ntop) is a network probe that shows network usage in a way similar to what top does for processes. In interactive mode, it displays the network status on the user's terminal. In Web mode it acts as a Web server, creating an HTML dump of the network status. It sports a NetFlow/sFlow emitter/collector, an HTTP-based client interface for creating ntop-centric monitoring applications, and RRD for persistently storing traffic statistics.</descr>
       <version>0.8.12</version>
-      <configurationfile>example.com</configurationfile>
+      <configurationfile>ntopng.xml</configurationfile>
       <noembedded>true</noembedded>
       <tabs>
         <tab>
           <text>ntopng Settings</text>
-          <url>/pkg_edit.php?xml=example.com</url>
+          <url>/pkg_edit.php?xml=ntopng.xml</url>
           <active />
         </tab>
         <tab>
@@ -1268,7 +1268,7 @@
           <url>/ntopng_redirect.php</url>
         </tab>
       </tabs>
-      <include_file>/usr/local/pkg/example.com</include_file>
+      <include_file>/usr/local/pkg/ntopng.inc</include_file>
     </package>
     <package>
       <name>pfBlockerNG-devel</name>
@@ -1279,10 +1279,10 @@
 			Provision to download from diverse List formats.&amp;lt;br /&amp;gt;
 			Advanced Integration for Proofpoint ET IQRisk IP Reputation Threat Sources.&amp;lt;br /&amp;gt;
 			Domain Name (DNSBL) blocking via Unbound DNS Resolver.</descr>
-      <pkginfolink>https://example.com/example.com?topic=102470.0</pkginfolink>
+      <pkginfolink>https://example.com/index.php?topic=102470.0</pkginfolink>
       <version>2.2.1</version>
-      <configurationfile>example.com</configurationfile>
-      <include_file>/usr/local/pkg/pfblockerng/example.com</include_file>
+      <configurationfile>pfblockerng.xml</configurationfile>
+      <include_file>/usr/local/pkg/pfblockerng/pfblockerng.inc</include_file>
     </package>
     <pfblockernglistsv4>
       <config>
@@ -1325,13 +1325,13 @@
         <row>
           <format>auto</format>
           <state>Enabled</state>
-          <url>http://example.com/feeds/example.com</url>
+          <url>http://example.com/feeds/c2-ipmasterlist.txt</url>
           <header>C2_IP_Feed</header>
         </row>
         <row>
           <format>auto</format>
           <state>Enabled</state>
-          <url>http://example.com/feeds/example.com</url>
+          <url>http://example.com/feeds/c2-masterlist.txt</url>
           <header>C2_All_Indicator_Feed</header>
         </row>
         <action>Deny_Inbound</action>
@@ -1510,13 +1510,13 @@
         <row>
           <format>auto</format>
           <state>Enabled</state>
-          <url>https://example.com/example.com</url>
+          <url>https://example.com/hosts.txt</url>
           <header>Adaway</header>
         </row>
         <row>
           <format>auto</format>
           <state>Enabled</state>
-          <url>http://example.com/adservers/example.com?hostformat=hosts&amp;mimetype=plaintext</url>
+          <url>http://example.com/adservers/serverlist.php?hostformat=hosts&amp;mimetype=plaintext</url>
           <header>yoyo</header>
         </row>
         <row>
@@ -1551,7 +1551,7 @@
         <row>
           <format>auto</format>
           <state>Disabled</state>
-          <url>https://example.com/downloads/example.com</url>
+          <url>https://example.com/downloads/dg-ads.acl</url>
           <header>SBL_ADs</header>
         </row>
       </config>
@@ -1568,7 +1568,7 @@
         <row>
           <format>auto</format>
           <state>Disabled</state>
-          <url>https://example.com/BBcan177/4a8bf37c131be4803cb2/raw</url>
+          <url>https://example.com/BBcan177/[REDACTED]/raw</url>
           <header>MS_2</header>
         </row>
       </config>
@@ -1947,7 +1947,7 @@
       <name>ntopng Settings</name>
       <tooltiptext>Set ntopng settings such as password and port.</tooltiptext>
       <section>Diagnostics</section>
-      <url>/pkg_edit.php?xml=example.com</url>
+      <url>/pkg_edit.php?xml=ntopng.xml</url>
     </menu>
     <menu>
       <name>ntopng</name>
@@ -1959,19 +1959,19 @@
       <name>AutoConfigBackup</name>
       <tooltiptext>Set autoconfigbackup settings such as password and port.</tooltiptext>
       <section>Diagnostics</section>
-      <url>/example.com</url>
+      <url>/autoconfigbackup.php</url>
     </menu>
     <menu>
       <name>SquidGuard Proxy Filter</name>
       <tooltiptext>Modify the proxy server's filter settings</tooltiptext>
       <section>Services</section>
-      <url>/pkg_edit.php?xml=example.com&amp;id=0</url>
+      <url>/pkg_edit.php?xml=squidguard.xml&amp;id=0</url>
     </menu>
     <menu>
       <name>Squid Proxy Server</name>
       <tooltiptext>Modify the proxy server settings</tooltiptext>
       <section>Services</section>
-      <url>/pkg_edit.php?xml=example.com&amp;id=0</url>
+      <url>/pkg_edit.php?xml=squid.xml&amp;id=0</url>
     </menu>
     <menu>
       <name>Squid Reverse Proxy</name>
@@ -2000,37 +2000,37 @@
     <menu>
       <name>FRR Global/Zebra</name>
       <section>Services</section>
-      <configfile>example.com</configfile>
-      <url>/pkg_edit.php?xml=example.com</url>
+      <configfile>frr.xml</configfile>
+      <url>/pkg_edit.php?xml=frr.xml</url>
     </menu>
     <menu>
       <name>FRR BGP</name>
       <section>Services</section>
-      <configfile>example.com</configfile>
+      <configfile>frr.xml</configfile>
       <url>pkg_edit.php?xml=frr/frr_bgp.xml</url>
     </menu>
     <menu>
       <name>FRR OSPF</name>
       <section>Services</section>
-      <configfile>example.com</configfile>
+      <configfile>frr.xml</configfile>
       <url>/pkg_edit.php?xml=frr/frr_ospf.xml</url>
     </menu>
     <menu>
       <name>FRR OSPF6</name>
       <section>Services</section>
-      <configfile>example.com</configfile>
+      <configfile>frr.xml</configfile>
       <url>/pkg_edit.php?xml=frr/frr_ospf6.xml</url>
     </menu>
     <menu>
       <name>FRR</name>
       <section>Status</section>
-      <configfile>example.com</configfile>
+      <configfile>frr.xml</configfile>
       <url>/status_frr.php</url>
     </menu>
     <menu>
       <name>FreeRADIUS</name>
       <section>Services</section>
-      <url>/example.com?xml=example.com</url>
+      <url>/pkg.php?xml=freeradius.xml</url>
     </menu>
     <menu>
       <name>Service Watchdog</name>

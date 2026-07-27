@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <pfsense>
-  <!-- Redacted using pfsense-redactor v1.1.0 -->
+  <!-- Redacted using pfsense-redactor v1.1.1 -->
   <version>18.2</version>
   <lastchange />
   <system>
@@ -645,7 +645,7 @@
   <aliases>
     <alias>
       <name>pfB_Asia_v4</name>
-      <url>https://127.0.0.1:443/pfblockerng/domain2.example?pfb=pfB_Asia_v4 &lt;br /&gt;[ 6255147, 6255147_rep, CN, CN_rep ]</url>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Asia_v4 &lt;br /&gt;[ 6255147, 6255147_rep, CN, CN_rep ]</url>
       <updatefreq>32</updatefreq>
       <address />
       <descr>pfBlockerNG  Auto  GeoIP Alias</descr>
@@ -654,7 +654,7 @@
     </alias>
     <alias>
       <name>pfB_Whitelist_v4</name>
-      <url>https://127.0.0.1:443/pfblockerng/domain2.example?pfb=pfB_Whitelist_v4 &lt;br /&gt;[ Whitelist_custom_v4 ]</url>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Whitelist_v4 &lt;br /&gt;[ Whitelist_custom_v4 ]</url>
       <updatefreq>32</updatefreq>
       <address />
       <descr>pfBlockerNG  Auto  Alias</descr>
@@ -663,7 +663,7 @@
     </alias>
     <alias>
       <name>pfB_Blacklist_v4</name>
-      <url>https://127.0.0.1:443/pfblockerng/domain2.example?pfb=pfB_Blacklist_v4 &lt;br /&gt;[ C2_IP_Feed_v4, C2_All_Indicator_Feed_v4 ]</url>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_Blacklist_v4 &lt;br /&gt;[ C2_IP_Feed_v4, C2_All_Indicator_Feed_v4 ]</url>
       <updatefreq>32</updatefreq>
       <address />
       <descr>pfBlockerNG  Auto  Alias</descr>
@@ -672,7 +672,7 @@
     </alias>
     <alias>
       <name>pfB_DNSBLIP_v4</name>
-      <url>https://127.0.0.1:443/pfblockerng/domain2.example?pfb=pfB_DNSBLIP_v4 &lt;br /&gt;[ DNSBLIP_v4 ]</url>
+      <url>https://127.0.0.1:443/pfblockerng/pfblockerng.php?pfb=pfB_DNSBLIP_v4 &lt;br /&gt;[ DNSBLIP_v4 ]</url>
       <updatefreq>32</updatefreq>
       <address />
       <descr>pfBlockerNG  Auto  Alias</descr>
@@ -902,14 +902,14 @@
     <dnssecstripped />
     <hosts>
       <host>pkg</host>
-      <domain>domain3.example</domain>
+      <domain>domain2.example</domain>
       <ip>172.27.10.115</ip>
       <descr />
       <aliases />
     </hosts>
     <hosts>
       <host>release-staging</host>
-      <domain>domain4.example</domain>
+      <domain>domain3.example</domain>
       <ip>172.27.10.115</ip>
       <descr />
       <aliases />
@@ -974,12 +974,12 @@
       <tabs>
         <tab>
           <text>Settings</text>
-          <url>/pkg_edit.php?xml=domain5.example&amp;id=0</url>
+          <url>/pkg_edit.php?xml=autoconfigbackup.xml&amp;id=0</url>
           <active />
         </tab>
         <tab>
           <text>Restore</text>
-          <url>/domain6.example</url>
+          <url>/autoconfigbackup.php</url>
         </tab>
         <tab>
           <text>Backup now</text>
@@ -1039,12 +1039,12 @@
       <tabs>
         <tab>
           <text>General</text>
-          <url>/pkg_edit.php?xml=domain7.example&amp;id=0</url>
+          <url>/pkg_edit.php?xml=squid.xml&amp;id=0</url>
           <active />
         </tab>
         <tab>
           <text>Remote Cache</text>
-          <url>/domain8.example?xml=squid_upstream.xml</url>
+          <url>/pkg.php?xml=squid_upstream.xml</url>
         </tab>
         <tab>
           <text>Local Cache</text>
@@ -1068,7 +1068,7 @@
         </tab>
         <tab>
           <text>Users</text>
-          <url>/domain8.example?xml=squid_users.xml</url>
+          <url>/pkg.php?xml=squid_users.xml</url>
         </tab>
         <tab>
           <text>Real Time</text>
@@ -1092,7 +1092,7 @@
       <tabs>
         <tab>
           <text>General settings</text>
-          <url>/pkg_edit.php?xml=domain9.example&amp;id=0</url>
+          <url>/pkg_edit.php?xml=squidguard.xml&amp;id=0</url>
           <active />
         </tab>
         <tab>
@@ -1101,19 +1101,19 @@
         </tab>
         <tab>
           <text>Groups ACL</text>
-          <url>/domain8.example?xml=squidguard_acl.xml</url>
+          <url>/pkg.php?xml=squidguard_acl.xml</url>
         </tab>
         <tab>
           <text>Target categories</text>
-          <url>/domain8.example?xml=squidguard_dest.xml</url>
+          <url>/pkg.php?xml=squidguard_dest.xml</url>
         </tab>
         <tab>
           <text>Times</text>
-          <url>/domain8.example?xml=squidguard_time.xml</url>
+          <url>/pkg.php?xml=squidguard_time.xml</url>
         </tab>
         <tab>
           <text>Rewrites</text>
-          <url>/domain8.example?xml=squidguard_rewr.xml</url>
+          <url>/pkg.php?xml=squidguard_rewr.xml</url>
         </tab>
         <tab>
           <text>Blacklist</text>
@@ -1149,36 +1149,36 @@
       <tabs>
         <tab>
           <text>Users</text>
-          <url>/domain8.example?xml=domain10.example</url>
+          <url>/pkg.php?xml=freeradius.xml</url>
           <active />
         </tab>
         <tab>
           <text>MACs</text>
-          <url>/domain8.example?xml=domain11.example</url>
+          <url>/pkg.php?xml=freeradiusauthorizedmacs.xml</url>
         </tab>
         <tab>
           <text>NAS / Clients</text>
-          <url>/domain8.example?xml=domain12.example</url>
+          <url>/pkg.php?xml=freeradiusclients.xml</url>
         </tab>
         <tab>
           <text>Interfaces</text>
-          <url>/domain8.example?xml=domain13.example</url>
+          <url>/pkg.php?xml=freeradiusinterfaces.xml</url>
         </tab>
         <tab>
           <text>Settings</text>
-          <url>/pkg_edit.php?xml=domain14.example&amp;id=0</url>
+          <url>/pkg_edit.php?xml=freeradiussettings.xml&amp;id=0</url>
         </tab>
         <tab>
           <text>EAP</text>
-          <url>/pkg_edit.php?xml=domain15.example&amp;id=0</url>
+          <url>/pkg_edit.php?xml=freeradiuseapconf.xml&amp;id=0</url>
         </tab>
         <tab>
           <text>SQL</text>
-          <url>/pkg_edit.php?xml=domain16.example&amp;id=0</url>
+          <url>/pkg_edit.php?xml=freeradiussqlconf.xml&amp;id=0</url>
         </tab>
         <tab>
           <text>LDAP</text>
-          <url>/pkg_edit.php?xml=domain17.example&amp;id=0</url>
+          <url>/pkg_edit.php?xml=freeradiusmodulesldap.xml&amp;id=0</url>
         </tab>
         <tab>
           <text>View config</text>
@@ -1186,7 +1186,7 @@
         </tab>
         <tab>
           <text>XMLRPC Sync</text>
-          <url>/pkg_edit.php?xml=domain18.example&amp;id=0</url>
+          <url>/pkg_edit.php?xml=freeradiussync.xml&amp;id=0</url>
         </tab>
       </tabs>
       <include_file>/usr/local/pkg/freeradius.inc</include_file>
@@ -1201,20 +1201,20 @@
       <tabs>
         <tab>
           <text>Global Settings</text>
-          <url>pkg_edit.php?xml=domain19.example</url>
+          <url>pkg_edit.php?xml=frr.xml</url>
           <active />
         </tab>
         <tab>
           <text>Access Lists</text>
-          <url>domain8.example?xml=frr/frr_global_acls.xml</url>
+          <url>pkg.php?xml=frr/frr_global_acls.xml</url>
         </tab>
         <tab>
           <text>Prefix Lists</text>
-          <url>domain8.example?xml=frr/frr_global_prefixes.xml</url>
+          <url>pkg.php?xml=frr/frr_global_prefixes.xml</url>
         </tab>
         <tab>
           <text>Route Maps</text>
-          <url>domain8.example?xml=frr/frr_global_routemaps.xml</url>
+          <url>pkg.php?xml=frr/frr_global_routemaps.xml</url>
         </tab>
         <tab>
           <text>Raw Config</text>
@@ -1260,7 +1260,7 @@
       <tabs>
         <tab>
           <text>ntopng Settings</text>
-          <url>/pkg_edit.php?xml=domain20.example</url>
+          <url>/pkg_edit.php?xml=ntopng.xml</url>
           <active />
         </tab>
         <tab>
@@ -1325,13 +1325,13 @@
         <row>
           <format>auto</format>
           <state>Enabled</state>
-          <url>http://domain22.example/feeds/domain23.example</url>
+          <url>http://domain4.example/feeds/c2-ipmasterlist.txt</url>
           <header>C2_IP_Feed</header>
         </row>
         <row>
           <format>auto</format>
           <state>Enabled</state>
-          <url>http://domain22.example/feeds/domain24.example</url>
+          <url>http://domain4.example/feeds/c2-masterlist.txt</url>
           <header>C2_All_Indicator_Feed</header>
         </row>
         <action>Deny_Inbound</action>
@@ -1389,7 +1389,7 @@
         <row>
           <format>auto</format>
           <state>Disabled</state>
-          <url>https://domain26.example/blacklist/dyre_sslipblacklist.csv</url>
+          <url>https://domain5.example/blacklist/dyre_sslipblacklist.csv</url>
           <header>Abuse_DYRE</header>
         </row>
       </config>
@@ -1510,25 +1510,25 @@
         <row>
           <format>auto</format>
           <state>Enabled</state>
-          <url>https://domain28.example/domain29.example</url>
+          <url>https://domain6.example/hosts.txt</url>
           <header>Adaway</header>
         </row>
         <row>
           <format>auto</format>
           <state>Enabled</state>
-          <url>http://domain31.example/adservers/domain32.example?hostformat=hosts&amp;mimetype=plaintext</url>
+          <url>http://domain7.example/adservers/serverlist.php?hostformat=hosts&amp;mimetype=plaintext</url>
           <header>yoyo</header>
         </row>
         <row>
           <format>auto</format>
           <state>Enabled</state>
-          <url>http://domain34.example/ad_servers.txt</url>
+          <url>http://domain8.example/ad_servers.txt</url>
           <header>hpHosts_ads</header>
         </row>
         <row>
           <format>auto</format>
           <state>Enabled</state>
-          <url>domain35.example/cameleon/hosts</url>
+          <url>domain9.example/cameleon/hosts</url>
           <header>Cameleon</header>
         </row>
         <action>unbound</action>
@@ -1551,7 +1551,7 @@
         <row>
           <format>auto</format>
           <state>Disabled</state>
-          <url>https://domain37.example/downloads/domain38.example</url>
+          <url>https://domain10.example/downloads/dg-ads.acl</url>
           <header>SBL_ADs</header>
         </row>
       </config>
@@ -1568,7 +1568,7 @@
         <row>
           <format>auto</format>
           <state>Disabled</state>
-          <url>https://domain40.example/BBcan177/4a8bf37c131be4803cb2/raw</url>
+          <url>https://domain11.example/BBcan177/4a8bf37c131be4803cb2/raw</url>
           <header>MS_2</header>
         </row>
       </config>
@@ -1947,7 +1947,7 @@
       <name>ntopng Settings</name>
       <tooltiptext>Set ntopng settings such as password and port.</tooltiptext>
       <section>Diagnostics</section>
-      <url>/pkg_edit.php?xml=domain20.example</url>
+      <url>/pkg_edit.php?xml=ntopng.xml</url>
     </menu>
     <menu>
       <name>ntopng</name>
@@ -1959,19 +1959,19 @@
       <name>AutoConfigBackup</name>
       <tooltiptext>Set autoconfigbackup settings such as password and port.</tooltiptext>
       <section>Diagnostics</section>
-      <url>/domain6.example</url>
+      <url>/autoconfigbackup.php</url>
     </menu>
     <menu>
       <name>SquidGuard Proxy Filter</name>
       <tooltiptext>Modify the proxy server's filter settings</tooltiptext>
       <section>Services</section>
-      <url>/pkg_edit.php?xml=domain9.example&amp;id=0</url>
+      <url>/pkg_edit.php?xml=squidguard.xml&amp;id=0</url>
     </menu>
     <menu>
       <name>Squid Proxy Server</name>
       <tooltiptext>Modify the proxy server settings</tooltiptext>
       <section>Services</section>
-      <url>/pkg_edit.php?xml=domain7.example&amp;id=0</url>
+      <url>/pkg_edit.php?xml=squid.xml&amp;id=0</url>
     </menu>
     <menu>
       <name>Squid Reverse Proxy</name>
@@ -2001,7 +2001,7 @@
       <name>FRR Global/Zebra</name>
       <section>Services</section>
       <configfile>frr.xml</configfile>
-      <url>/pkg_edit.php?xml=domain19.example</url>
+      <url>/pkg_edit.php?xml=frr.xml</url>
     </menu>
     <menu>
       <name>FRR BGP</name>
@@ -2030,7 +2030,7 @@
     <menu>
       <name>FreeRADIUS</name>
       <section>Services</section>
-      <url>/domain8.example?xml=domain10.example</url>
+      <url>/pkg.php?xml=freeradius.xml</url>
     </menu>
     <menu>
       <name>Service Watchdog</name>
@@ -2083,7 +2083,7 @@
         <description />
         <row>
           <state>Enabled</state>
-          <url>https://domain42.example/easylist_noelemhide.txt</url>
+          <url>https://domain12.example/easylist_noelemhide.txt</url>
           <header>HZ</header>
           <easycat>eap,aa,aap</easycat>
         </row>

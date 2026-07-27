@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <pfsense>
-  <!-- Redacted using pfsense-redactor v1.1.0 -->
+  <!-- Redacted using pfsense-redactor v1.1.1 -->
   <version>19.1</version>
   <lastchange />
   <system>
@@ -930,7 +930,7 @@
       <month>*</month>
       <wday>*</wday>
       <who>root</who>
-      <command>/usr/bin/nice -n20 /etc/example.com</command>
+      <command>/usr/bin/nice -n20 /etc/rc.dyndns.update</command>
     </item>
     <item>
       <minute>*/60</minute>

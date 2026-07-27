@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1][] - 2026-07-27
+
+Follow-up to 1.1.0, from a second canary-corpus report. 1.1.0 caught 41/46
+where 1.0.10 caught 15/46; these are the remaining gaps plus one
+over-redaction bug found while confirming them.
+
+### Security
+- **FIX**: Three credential formats bypassed URL path-segment detection:
+  - **AWS access key IDs** (`AKIA...`) are exactly 20 characters, and the
+    length test was `<= 20`, so the entire format was excluded by an
+    off-by-one.
+  - **Telegram bot tokens** are `bot<id>:<secret>`, and the colon failed the
+    base64 character test, so a 47-character credential was treated as an
+    ordinary path segment. Segments are now split on `:` before testing.
+  - **Tokens without digits** were never flagged. The digit requirement exists
+    to protect underscore-joined route names such as `Open_VM_Tools_package`,
+    and is now applied only below 24 characters.
+- **FIX**: `<webhook_url>` and similar elements are now redacted whole. A Slack
+  or Discord webhook URL is a credential in its entirety, not merely a
+  secret-bearing path segment.
+
+### Fixed
+- **FIX**: FQDN substitution rewrote filenames as domains, corrupting output
+  rather than redacting it. `list.txt`, `emerging-block.rules`,
+  `pfblockerng.php` and `haproxy.sh` all became `example.com`.
+
+  This affected **default mode**, not only `--aggressive`: `<url>` is a known
+  URL-bearing element, so pfBlockerNG feed URLs were corrupted without any
+  opt-in. It was also present in this project's own reference snapshots.
+
+  URLs are now protected from the FQDN pass, which has already masked their
+  hosts, and bare filenames are recognised by extension or by filesystem-path
+  context. Context is required because extension alone cannot decide it: `.sh`,
+  `.pl`, `.io` and `.zip` are all real TLDs, so `haproxy.sh` is preserved
+  inside a path but still redacted in prose.
+
+### Known limitation
+- A path segment of 21-23 characters containing no digit is not detected.
+  `Open_VM_Tools_package` (a route name that must be preserved) and a
+  hypothetical 21-character alphabetic token are the same length and shape, so
+  no length threshold separates them. Real Slack and Discord tokens are 24+
+  characters and are detected.
+
 ## [1.1.0][] - 2026-07-27
 
 ### Security
@@ -355,6 +398,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.1.1]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.1
 [1.1.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.0
 [1.0.10]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.10
 [1.0.9]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.9
