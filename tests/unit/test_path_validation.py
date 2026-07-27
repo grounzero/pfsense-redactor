@@ -338,6 +338,13 @@ class TestSensitiveDirectoryComponentMatching:
     ])
     def test_protected_directories_still_blocked(self, path):
         """The security behaviour must not regress"""
+        # POSIX paths resolve drive-relative on Windows ('/root' becomes
+        # 'D:\root'), so they never match the POSIX entries in sensitive_dirs.
+        # That is pre-existing and unrelated to component matching; the Windows
+        # entries (c:\windows, ...) are what protect that platform.
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+
         is_valid, error, _ = validate_file_path(path, allow_absolute=True, is_output=True)
 
         assert is_valid is False, f"{path} must not be writable"
@@ -358,8 +365,11 @@ class TestSensitiveDirectoryComponentMatching:
 
         assert is_valid is True, f"{path} was wrongly blocked: {error}"
 
-    def test_exact_directory_itself_blocked(self, path=None):
+    def test_exact_directory_itself_blocked(self):
         """The protected directory itself, with no trailing component"""
+        if sys.platform == 'win32':
+            pytest.skip("Unix-specific test")
+
         is_valid, _, _ = validate_file_path('/root', allow_absolute=True, is_output=True)
 
         assert is_valid is False
