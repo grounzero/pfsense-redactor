@@ -2466,12 +2466,12 @@ def validate_file_path(
 # ==========================================================================
 # 7. CLI
 # ==========================================================================
-def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-    """Main entry point for the pfSense redactor CLI"""
-    # Version for the --version flag. Resolved rather than imported directly so
-    # that running redactor.py as a script still reports the real version.
-    __version__ = resolve_version()
+def _build_arg_parser(version: str) -> argparse.ArgumentParser:
+    """Construct the CLI parser
 
+    Separated from main() purely for size: 25 add_argument calls with no
+    branching, which dominated main's statement count.
+    """
     parser = argparse.ArgumentParser(
         description='Redact sensitive information from pfSense XML configuration files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2502,7 +2502,7 @@ CDATA sections are not preserved.
         """
     )
 
-    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}',
+    parser.add_argument('--version', action='version', version=f'%(prog)s {version}',
                         help='Show program version and exit')
     parser.add_argument('--check-version', action='store_true',
                         help='Check for updates from PyPI')
@@ -2551,6 +2551,193 @@ CDATA sections are not preserved.
                         help='Redact free-text descriptions and identifiers (descr, detail, hostname, ssid). These often contain personal names, e.g. DHCP static-map descriptions. Off by default as they aid troubleshooting.')
     parser.add_argument('--allow-absolute-paths', action='store_true',
                         help='Allow absolute file paths (e.g., /etc/passwd, C:\\config.xml). By default, only relative paths are permitted for security. Use with caution.')
+    return parser
+
+
+def _resolve_input_path(
+    args: argparse.Namespace, sensitive_dirs: frozenset[str], logger: logging.Logger
+) -> None:
+    """Validate the input path and its file. Exits non-zero on any failure
+
+    Sets args.input to the resolved path, as the inline version did.
+    """
+    # Validate input file path
+    input_valid, input_error, input_resolved = validate_file_path(
+        args.input,
+        allow_absolute=args.allow_absolute_paths,
+        is_output=False,
+        sensitive_dirs=sensitive_dirs
+    )
+    if not input_valid:
+        logger.error("[!] Error: Invalid input path: %s", input_error)
+        sys.exit(1)
+
+    # Check if input file exists (use resolved path)
+    if not input_resolved.exists():
+        logger.error("[!] Error: Input file '%s' not found", args.input)
+        sys.exit(1)
+
+    # SECURITY: Check if input is a symlink when using --inplace
+    # Must check BEFORE file size check (directories appear empty when read as files)
+    if args.inplace:
+        input_path_original = Path(args.input)
+        if input_path_original.is_symlink():
+            # Get the symlink target for the error message
+            try:
+                target = input_path_original.resolve()
+                logger.error("[!] Error: Cannot use --inplace on symlink: %s", args.input)
+                logger.error("    Symlink target: %s", target)
+                logger.error("    Hint: If you intend to modify the target, specify it directly.")
+            except (OSError, RuntimeError):
+                # If we can't resolve the symlink (broken link), still refuse
+                logger.error("[!] Error: Cannot use --inplace on symlink: %s", args.input)
+                logger.error("    Hint: Symlinks are not allowed with --inplace for security reasons.")
+            sys.exit(1)
+
+    # Check if input file is empty
+    if input_resolved.stat().st_size == 0:
+        logger.error("[!] Error: Input file is empty")
+        sys.exit(1)
+
+
+def _resolve_output_path(
+    args: argparse.Namespace, sensitive_dirs: frozenset[str], logger: logging.Logger
+) -> None:
+    """Validate the output path, including the extra --inplace checks"""
+    # Validate output file path (if applicable)
+    # Skip validation in dry-run mode since we won't actually write
+    if args.output and not args.stdout and not args.dry_run:
+        output_valid, output_error, output_resolved = validate_file_path(
+            args.output,
+            allow_absolute=args.allow_absolute_paths,
+            is_output=True,
+            sensitive_dirs=sensitive_dirs
+        )
+        if not output_valid:
+            logger.error("[!] Error: Invalid output path: %s", output_error)
+            sys.exit(1)
+
+        # Check if output file exists (unless force)
+        if not args.force and output_resolved.exists():
+            logger.error("[!] Error: Output file '%s' already exists. Use --force to overwrite.", args.output)
+            sys.exit(1)
+    elif args.dry_run and args.output:
+        # In dry-run mode, still validate the output path for security
+        output_valid, output_error, _ = validate_file_path(
+            args.output,
+            allow_absolute=args.allow_absolute_paths,
+            is_output=True,
+            sensitive_dirs=sensitive_dirs
+        )
+        if not output_valid:
+            logger.error("[!] Error: Invalid output path: %s", output_error)
+            sys.exit(1)
+
+    # Validate inplace mode - extra security check
+    if args.inplace:
+        # Re-validate input path with output restrictions
+        inplace_valid, inplace_error, _ = validate_file_path(
+            args.input,
+            allow_absolute=args.allow_absolute_paths,
+            is_output=True,  # Treat as output for stricter checks
+            sensitive_dirs=sensitive_dirs
+        )
+        if not inplace_valid:
+            logger.error("[!] Error: Cannot use --inplace with this file: %s", inplace_error)
+            sys.exit(1)
+
+
+def _resolve_keep_private_ips(args: argparse.Namespace) -> bool:
+    """Decide whether non-global IPs are preserved
+
+    --anonymise implies keeping them for better context unless the user was
+    explicit either way.
+    """
+    # Default keep_private_ips to True when anonymise is used (better AI context)
+    # unless explicitly disabled with --no-keep-private-ips
+    if args.anonymise and args.keep_private_ips is None:
+        # --anonymise without explicit --keep-private-ips or --no-keep-private-ips
+        keep_private_ips = True
+    elif args.keep_private_ips is None:
+        # No anonymise, no explicit flag
+        keep_private_ips = False
+    else:
+        # Explicit flag was used
+        keep_private_ips = args.keep_private_ips
+    return keep_private_ips
+
+
+def _collect_allowlists(
+    args: argparse.Namespace, logger: logging.Logger
+) -> tuple[set[str], list[IPNetwork], set[str]]:
+    """Merge allow-list entries from default files, --allowlist-file and CLI flags"""
+    # Build allow-lists from multiple sources (merge all)
+    allowlist_ips = set()
+    allowlist_networks = []
+    allowlist_domains = set()
+
+    # 1. Load default allow-list files (unless disabled)
+    if not getattr(args, 'no_default_allowlist', False):
+        default_files = find_default_allowlist_files()
+        for default_file in default_files:
+            file_ips, file_networks, file_domains = parse_allowlist_file(default_file, silent_if_missing=True)
+            allowlist_ips.update(file_ips)
+            allowlist_networks.extend(file_networks)
+            allowlist_domains.update(file_domains)
+            if not args.dry_run and not args.stdout:
+                logger.info("[+] Loaded default allow-list: %s", default_file)
+
+    # 2. Load explicit allow-list file if provided
+    if args.allowlist_file:
+        file_ips, file_networks, file_domains = parse_allowlist_file(args.allowlist_file, silent_if_missing=False)
+        allowlist_ips.update(file_ips)
+        allowlist_networks.extend(file_networks)
+        allowlist_domains.update(file_domains)
+
+    # 3. Add IPs/CIDRs from CLI
+    for entry in args.allowlist_ips or ():
+        _add_cli_allowlist_ip(entry, allowlist_ips, allowlist_networks, logger)
+
+    # 4. Add domains from CLI (case-insensitive)
+    for domain in args.allowlist_domains or ():
+        allowlist_domains.add(domain.lower())
+
+    return allowlist_ips, allowlist_networks, allowlist_domains
+
+
+def _add_cli_allowlist_ip(
+    entry: str, ips: set[str], networks: list[IPNetwork], logger: logging.Logger
+) -> None:
+    """Add one --allowlist-ip entry, exiting if it is neither an IP nor a CIDR
+
+    Unlike allow-list *files*, where an unparseable line is treated as a
+    domain, an explicit --allowlist-ip that does not parse is a user error and
+    is fatal.
+    """
+    try:
+        ipaddress.ip_address(entry)
+        ips.add(entry)
+        return
+    except ValueError:
+        pass
+
+    try:
+        networks.append(ipaddress.ip_network(entry, strict=False))
+        return
+    except ValueError:
+        pass
+
+    logger.error("[!] Error: Invalid IP or CIDR in --allowlist-ip: %s", entry)
+    sys.exit(1)
+
+
+def main() -> None:
+    """Main entry point for the pfSense redactor CLI"""
+    # Version for the --version flag. Resolved rather than imported directly so
+    # that running redactor.py as a script still reports the real version.
+    __version__ = resolve_version()
+
+    parser = _build_arg_parser(__version__)
 
     args = parser.parse_args()
 
@@ -2602,148 +2789,12 @@ CDATA sections are not preserved.
     # Compute sensitive directories once for efficiency
     sensitive_dirs = _get_sensitive_directories()
 
-    # Validate input file path
-    input_valid, input_error, input_resolved = validate_file_path(
-        args.input,
-        allow_absolute=args.allow_absolute_paths,
-        is_output=False,
-        sensitive_dirs=sensitive_dirs
-    )
-    if not input_valid:
-        logger.error("[!] Error: Invalid input path: %s", input_error)
-        sys.exit(1)
+    _resolve_input_path(args, sensitive_dirs, logger)
+    _resolve_output_path(args, sensitive_dirs, logger)
 
-    # Check if input file exists (use resolved path)
-    if not input_resolved.exists():
-        logger.error("[!] Error: Input file '%s' not found", args.input)
-        sys.exit(1)
+    keep_private_ips = _resolve_keep_private_ips(args)
 
-    # SECURITY: Check if input is a symlink when using --inplace
-    # Must check BEFORE file size check (directories appear empty when read as files)
-    if args.inplace:
-        input_path_original = Path(args.input)
-        if input_path_original.is_symlink():
-            # Get the symlink target for the error message
-            try:
-                target = input_path_original.resolve()
-                logger.error("[!] Error: Cannot use --inplace on symlink: %s", args.input)
-                logger.error("    Symlink target: %s", target)
-                logger.error("    Hint: If you intend to modify the target, specify it directly.")
-            except (OSError, RuntimeError):
-                # If we can't resolve the symlink (broken link), still refuse
-                logger.error("[!] Error: Cannot use --inplace on symlink: %s", args.input)
-                logger.error("    Hint: Symlinks are not allowed with --inplace for security reasons.")
-            sys.exit(1)
-
-    # Check if input file is empty
-    if input_resolved.stat().st_size == 0:
-        logger.error("[!] Error: Input file is empty")
-        sys.exit(1)
-
-    # Validate output file path (if applicable)
-    # Skip validation in dry-run mode since we won't actually write
-    if args.output and not args.stdout and not args.dry_run:
-        output_valid, output_error, output_resolved = validate_file_path(
-            args.output,
-            allow_absolute=args.allow_absolute_paths,
-            is_output=True,
-            sensitive_dirs=sensitive_dirs
-        )
-        if not output_valid:
-            logger.error("[!] Error: Invalid output path: %s", output_error)
-            sys.exit(1)
-
-        # Check if output file exists (unless force)
-        if not args.force and output_resolved.exists():
-            logger.error("[!] Error: Output file '%s' already exists. Use --force to overwrite.", args.output)
-            sys.exit(1)
-    elif args.dry_run and args.output:
-        # In dry-run mode, still validate the output path for security
-        output_valid, output_error, _ = validate_file_path(
-            args.output,
-            allow_absolute=args.allow_absolute_paths,
-            is_output=True,
-            sensitive_dirs=sensitive_dirs
-        )
-        if not output_valid:
-            logger.error("[!] Error: Invalid output path: %s", output_error)
-            sys.exit(1)
-
-    # Validate inplace mode - extra security check
-    if args.inplace:
-        # Re-validate input path with output restrictions
-        inplace_valid, inplace_error, _ = validate_file_path(
-            args.input,
-            allow_absolute=args.allow_absolute_paths,
-            is_output=True,  # Treat as output for stricter checks
-            sensitive_dirs=sensitive_dirs
-        )
-        if not inplace_valid:
-            logger.error("[!] Error: Cannot use --inplace with this file: %s", inplace_error)
-            sys.exit(1)
-
-    # Default keep_private_ips to True when anonymise is used (better AI context)
-    # unless explicitly disabled with --no-keep-private-ips
-    if args.anonymise and args.keep_private_ips is None:
-        # --anonymise without explicit --keep-private-ips or --no-keep-private-ips
-        keep_private_ips = True
-    elif args.keep_private_ips is None:
-        # No anonymise, no explicit flag
-        keep_private_ips = False
-    else:
-        # Explicit flag was used
-        keep_private_ips = args.keep_private_ips
-
-    # Build allow-lists from multiple sources (merge all)
-    allowlist_ips = set()
-    allowlist_networks = []
-    allowlist_domains = set()
-
-    # 1. Load default allow-list files (unless disabled)
-    if not getattr(args, 'no_default_allowlist', False):
-        default_files = find_default_allowlist_files()
-        for default_file in default_files:
-            file_ips, file_networks, file_domains = parse_allowlist_file(default_file, silent_if_missing=True)
-            allowlist_ips.update(file_ips)
-            allowlist_networks.extend(file_networks)
-            allowlist_domains.update(file_domains)
-            if not args.dry_run and not args.stdout:
-                logger.info("[+] Loaded default allow-list: %s", default_file)
-
-    # 2. Load explicit allow-list file if provided
-    if args.allowlist_file:
-        file_ips, file_networks, file_domains = parse_allowlist_file(args.allowlist_file, silent_if_missing=False)
-        allowlist_ips.update(file_ips)
-        allowlist_networks.extend(file_networks)
-        allowlist_domains.update(file_domains)
-
-    # 3. Add IPs/CIDRs from CLI
-    if args.allowlist_ips:
-        for entry in args.allowlist_ips:
-            # Try as single IP first
-            try:
-                ipaddress.ip_address(entry)
-                allowlist_ips.add(entry)
-                continue
-            except ValueError:
-                pass
-
-            # Try as CIDR network
-            try:
-                network = ipaddress.ip_network(entry, strict=False)
-                allowlist_networks.append(network)
-                continue
-            except ValueError:
-                pass
-
-            # Invalid entry
-            logger.error("[!] Error: Invalid IP or CIDR in --allowlist-ip: %s", entry)
-            sys.exit(1)
-
-    # 4. Add domains from CLI (case-insensitive)
-    if args.allowlist_domains:
-        for domain in args.allowlist_domains:
-            allowlist_domains.add(domain.lower())
+    allowlist_ips, allowlist_networks, allowlist_domains = _collect_allowlists(args, logger)
 
     # Create redactor and process file
     redactor = PfSenseRedactor(
