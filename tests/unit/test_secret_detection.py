@@ -12,6 +12,7 @@ Fixtures (basic_redactor, aggressive_redactor, redactor_factory) come from
 tests/conftest.py.
 """
 import xml.etree.ElementTree as ET
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -446,10 +447,15 @@ class TestFilenamesNotTreatedAsDomains:
         'https://updates.example.org/pfblocker/list.txt',
     ])
     def test_filename_in_url_path_preserved(self, basic_redactor, text):
-        """The host is masked; the filename in the path is not"""
+        """The host is masked; the filename in the path is not
+
+        Asserts on the parsed hostname rather than a substring: 'example.com'
+        appearing somewhere in the string would also be satisfied by an
+        unmasked host next to a masked one.
+        """
         result = basic_redactor.redact_text(text)
 
-        assert 'example.com' in result, 'host should still be masked'
+        assert urlsplit(result).hostname == 'example.com', 'host should still be masked'
         assert result.rsplit('/', 1)[-1] == text.rsplit('/', 1)[-1], 'filename should survive'
 
     @pytest.mark.parametrize('text', [
@@ -468,11 +474,14 @@ class TestFilenamesNotTreatedAsDomains:
         'fw.corp.local',
     ])
     def test_real_domains_still_redacted(self, basic_redactor, domain):
-        """The filename rules must not weaken domain redaction"""
+        """The filename rules must not weaken domain redaction
+
+        The input is a bare hostname, so the whole value must be replaced -
+        an equality check, not a substring check.
+        """
         result = basic_redactor.redact_text(domain)
 
-        assert domain not in result
-        assert 'example.com' in result
+        assert result == 'example.com'
 
     def test_ambiguous_extension_redacted_outside_path_context(self, basic_redactor):
         """'.sh' is a real TLD, so it is only preserved in path context"""
