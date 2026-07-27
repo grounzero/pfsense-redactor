@@ -11,7 +11,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # pylint: disable=wrong-import-position
-from pfsense_redactor.redactor import validate_file_path, _get_sensitive_directories
+from pfsense_redactor.redactor import (
+    validate_file_path,
+    _get_sensitive_directories,
+    _is_in_sensitive_directory,
+)
 
 
 class TestPathValidation:  # pylint: disable=too-many-public-methods
@@ -364,6 +368,25 @@ class TestSensitiveDirectoryComponentMatching:
         is_valid, error, _ = validate_file_path(path, allow_absolute=True, is_output=True)
 
         assert is_valid is True, f"{path} was wrongly blocked: {error}"
+
+    @pytest.mark.parametrize('entry,separator', [
+        ('/etc', '/'),
+        ('/etc/', '/'),
+        ('c:\\windows', '\\'),
+        ('c:\\windows\\', '\\'),
+    ])
+    def test_matching_survives_trailing_separators(self, entry, separator):
+        """Entry formatting must not decide whether protection applies
+
+        Path.resolve() never returns a trailing separator, so an entry written
+        as '/etc/' would previously fail to match a resolved path of exactly
+        '/etc' - a silent bypass if such an entry were ever added.
+        """
+        sensitive = frozenset({entry})
+        base = entry.rstrip('/\\')
+
+        assert _is_in_sensitive_directory(base, sensitive), 'directory itself'
+        assert _is_in_sensitive_directory(base + separator + 'out.xml', sensitive), 'child path'
 
     def test_exact_directory_itself_blocked(self):
         """The protected directory itself, with no trailing component"""

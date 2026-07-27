@@ -2401,13 +2401,18 @@ def _is_in_sensitive_directory(resolved_str: str, sensitive_dirs: frozenset[str]
     """
     for sensitive_dir in sensitive_dirs:
         try:
-            if resolved_str == sensitive_dir:
+            # Strip any trailing separator first, so the comparisons do not
+            # depend on how the entry was written. Path.resolve() never returns
+            # a trailing separator, so an entry of '/etc/' would otherwise fail
+            # to match a resolved path of exactly '/etc'.
+            base = sensitive_dir.rstrip('/\\')
+
+            if resolved_str == base:
                 return True
 
             # Require a separator after the prefix so only whole path
             # components match. Both separators are checked because the
             # sensitive list spans platforms.
-            base = sensitive_dir.rstrip('/\\')
             if any(resolved_str.startswith(base + sep) for sep in ('/', '\\')):
                 return True
         except (ValueError, AttributeError):
