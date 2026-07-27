@@ -130,6 +130,13 @@ omit = [
     "*/site-packages/*",
 ]
 branch = true
+# Most CLI tests invoke redactor.py through subprocess (see CLIRunner in
+# tests/conftest.py), so without this main(), redact_config() and the
+# allow-list parsing are reported as uncovered despite being exercised by
+# ~100 end-to-end runs. tests/conftest.py starts coverage in child processes;
+# parallel + sigterm let their data files be written and combined.
+parallel = true
+sigterm = true
 
 [tool.coverage.report]
 precision = 2

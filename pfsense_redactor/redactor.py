@@ -570,7 +570,14 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         return value
 
     def _mask_url_sample(self, value: str) -> str:
-        """Mask URL for sample display"""
+        """Mask URL for sample display
+
+        This is the --dry-run-verbose preview, which users run precisely to
+        check what will happen before sharing a config. It masks the host and
+        the userinfo password, but must also redact credentials embedded in the
+        path and query - printing a live token to the console (and from there
+        into CI logs or a pasted ticket) defeats the point of the preview.
+        """
         try:
             parts = urlsplit(value)
             host = parts.hostname or ''
@@ -601,14 +608,18 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             if parts.port:
                 netloc += f":{parts.port}"
 
+            # Credentials also live in the path and query, not just userinfo
+            safe_path, _ = self._build_redacted_path(parts.path)
+            safe_query, _ = self._build_redacted_query(parts.query)
+
             if '[' in masked_host:
-                result = f"{parts.scheme}://{netloc}{parts.path}"
-                if parts.query:
-                    result += f"?{parts.query}"
+                result = f"{parts.scheme}://{netloc}{safe_path}"
+                if safe_query:
+                    result += f"?{safe_query}"
                 if parts.fragment:
                     result += f"#{parts.fragment}"
                 return result
-            return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+            return urlunsplit((parts.scheme, netloc, safe_path, safe_query, parts.fragment))
         except (ValueError, AttributeError):
             pass
         return value
@@ -1190,23 +1201,24 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return netloc
 
-    def _redact_query_secrets(self, query: str) -> str:
-        """Redact query-parameter values whose parameter name names a secret
+    @staticmethod
+    def _build_redacted_query(query: str) -> tuple[str, bool]:
+        """Build a query string with secret-named parameter values redacted
 
-        Anonymising the host while leaving '?token=...' intact gives false
-        reassurance: the credential is still there in full. DynDNS update URLs
-        and licenced feed URLs both put the secret in the query string.
+        Returns (query, changed). Pure: no statistics side effects, so the
+        --dry-run-verbose sample display can reuse it without inflating the
+        redaction counters.
         """
         if not query:
-            return query
+            return query, False
 
         try:
             pairs = parse_qsl(query, keep_blank_values=True, strict_parsing=False)
         except ValueError:
-            return query
+            return query, False
 
         if not pairs:
-            return query
+            return query, False
 
         changed = False
         out = []
@@ -1219,10 +1231,21 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 out.append((name, value))
 
         if not changed:
-            return query
+            return query, False
 
-        self.stats['url_secrets_redacted'] += 1
-        return urlencode(out)
+        return urlencode(out), True
+
+    def _redact_query_secrets(self, query: str) -> str:
+        """Redact query-parameter values whose parameter name names a secret
+
+        Anonymising the host while leaving '?token=...' intact gives false
+        reassurance: the credential is still there in full. DynDNS update URLs
+        and licenced feed URLs both put the secret in the query string.
+        """
+        redacted, changed = self._build_redacted_query(query)
+        if changed:
+            self.stats['url_secrets_redacted'] += 1
+        return redacted
 
     @staticmethod
     def _is_secretish_path_segment(segment: str) -> bool:
@@ -1244,6 +1267,28 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         has_letter = any(c.isalpha() for c in segment)
         return has_digit and has_letter
 
+    @classmethod
+    def _build_redacted_path(cls, path: str) -> tuple[str, bool]:
+        """Build a path with credential-shaped segments redacted
+
+        Returns (path, changed). Pure, for the same reason as
+        _build_redacted_query.
+        """
+        if not path or '/' not in path:
+            return path, False
+
+        segments = path.split('/')
+        changed = False
+        for i, segment in enumerate(segments):
+            if cls._is_secretish_path_segment(segment):
+                segments[i] = '[REDACTED]'
+                changed = True
+
+        if not changed:
+            return path, False
+
+        return '/'.join(segments), True
+
     def _redact_path_secrets(self, path: str) -> str:
         """Redact long high-entropy path segments (aggressive mode only)
 
@@ -1251,21 +1296,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         rather than a query parameter. Gated behind --aggressive because feed
         URLs legitimately carry long path segments.
         """
-        if not path or '/' not in path:
-            return path
-
-        segments = path.split('/')
-        changed = False
-        for i, segment in enumerate(segments):
-            if self._is_secretish_path_segment(segment):
-                segments[i] = '[REDACTED]'
-                changed = True
-
-        if not changed:
-            return path
-
-        self.stats['url_secrets_redacted'] += 1
-        return '/'.join(segments)
+        redacted, changed = self._build_redacted_path(path)
+        if changed:
+            self.stats['url_secrets_redacted'] += 1
+        return redacted
 
     def _rebuild_url(self, parts: SplitResult, masked_host: str, is_ipv6: bool) -> str:
         """Rebuild URL from parts with masked host"""

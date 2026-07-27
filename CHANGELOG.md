@@ -45,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FIX**: Free-text blob elements received *less* URL scanning than unrecognised elements, because
   they reported their text as handled. They are now scanned for URL secrets as well as inline
   `key=value` credentials, and the key=value scanner no longer mistakes a URL scheme for a key.
+- **FIX**: `--dry-run-verbose` printed URL credentials to the console. The sample display masked the
+  host and the userinfo password but passed the path and query through verbatim, so a preview of
+  `https://api.example.com/v1?token=...` showed the token in full — in the terminal, and from there
+  in CI logs or a pasted ticket. This is the flag users run precisely to check what will happen
+  before sharing, so it now redacts path and query secrets too.
 
 ### Added
 - **NEW**: `--redact-descriptions` flag to redact free-text descriptions and identifiers
