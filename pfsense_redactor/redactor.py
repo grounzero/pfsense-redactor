@@ -267,6 +267,29 @@ FILE_EXTENSIONS: frozenset[str] = frozenset({
 # content, so a placeholder can only ever be one this module wrote.
 URL_PLACEHOLDER_RE = re.compile(r'\x00URL(\d+)\x00')
 
+# Documentation ranges reserved for examples: RFC 5737 (IPv4) and RFC 3849
+# (IPv6). In anonymise mode these are the values this tool generates, so seeing
+# one means it has already been masked. Built once at import rather than per
+# call - the check runs for every IP-like token in the config.
+RFC_DOC_NETWORKS_V4: tuple[IPNetwork, ...] = (
+    ipaddress.ip_network('192.0.2.0/24'),
+    ipaddress.ip_network('198.51.100.0/24'),
+    ipaddress.ip_network('203.0.113.0/24'),
+)
+RFC_DOC_NETWORK_V6: IPNetwork = ipaddress.ip_network('2001:db8::/32')
+
+
+def is_rfc_documentation_ip(ip: IPAddress) -> bool:
+    """Check whether an address is in a reserved documentation range
+
+    Shared by the three places that need it: _mask_ip_like_tokens,
+    _is_already_masked_host and _normalise_masked_url. Each previously inlined
+    its own copy and rebuilt the network objects on every call.
+    """
+    if ip.version == 4:
+        return any(ip in net for net in RFC_DOC_NETWORKS_V4)
+    return ip in RFC_DOC_NETWORK_V6
+
 # URL path segment credential detection.
 # 20 because AWS access key IDs (AKIA...) are exactly 20 characters.
 SECRETISH_SEGMENT_MIN_LENGTH: int = 20
@@ -987,19 +1010,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 return original_token
 
             # In anonymise mode, preserve RFC documentation IPs (they're our generated values)
-            if self.anonymise:
-                if ip.version == 4:
-                    rfc5737_ranges = [
-                        ipaddress.ip_network('192.0.2.0/24'),
-                        ipaddress.ip_network('198.51.100.0/24'),
-                        ipaddress.ip_network('203.0.113.0/24'),
-                    ]
-                    if any(ip in net for net in rfc5737_ranges):
-                        return original_token
-                elif ip.version == 6:
-                    rfc3849 = ipaddress.ip_network('2001:db8::/32')
-                    if ip in rfc3849:
-                        return original_token
+            if self.anonymise and is_rfc_documentation_ip(ip):
+                return original_token
 
             # Keep non-global IPs if requested (simplified test for RFC1918, ULA, loopback,
             # link-local, multicast, reserved, and unspecified addresses)
@@ -1082,23 +1094,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # In non-anonymise mode, RFC IPs in original configs should still be redacted
         if self.anonymise:
             try:
-                ip = ipaddress.ip_address(host)
-
-                # RFC 5737 IPv4 documentation ranges
-                if ip.version == 4:
-                    rfc5737_ranges = [
-                        ipaddress.ip_network('192.0.2.0/24'),
-                        ipaddress.ip_network('198.51.100.0/24'),
-                        ipaddress.ip_network('203.0.113.0/24'),
-                    ]
-                    if any(ip in net for net in rfc5737_ranges):
-                        return True
-
-                # RFC 3849 IPv6 documentation range
-                elif ip.version == 6:
-                    rfc3849 = ipaddress.ip_network('2001:db8::/32')
-                    if ip in rfc3849:
-                        return True
+                if is_rfc_documentation_ip(ipaddress.ip_address(host)):
+                    return True
             except ValueError:
                 pass  # Not an IP
 
@@ -1120,16 +1117,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # In anonymise mode, RFC documentation IPs are our own generated values
         if self.anonymise:
             try:
-                ip = ipaddress.ip_address(host)
-                if ip.version == 4:
-                    rfc5737_ranges = [
-                        ipaddress.ip_network('192.0.2.0/24'),
-                        ipaddress.ip_network('198.51.100.0/24'),
-                        ipaddress.ip_network('203.0.113.0/24'),
-                    ]
-                    keep_host = any(ip in net for net in rfc5737_ranges)
-                elif ip.version == 6:
-                    keep_host = ip in ipaddress.ip_network('2001:db8::/32')
+                keep_host = is_rfc_documentation_ip(ipaddress.ip_address(host))
             except ValueError:
                 pass  # Not an IP, continue with domain normalisation
 
