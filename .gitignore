@@ -37,6 +37,12 @@ htmlcov/
 .tox/
 *.cover
 
+# Output files accidentally named after a CLI flag. A shell loop that fails to
+# word-split its arguments passes the whole flag string as the output path, so
+# the redactor writes a file literally called "--dry-run --aggressive". Nothing
+# legitimate in this repository starts with a dash.
+/--*
+
 # IDE
 .vscode/
 .idea/
