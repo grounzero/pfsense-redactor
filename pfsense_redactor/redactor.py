@@ -866,9 +866,14 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # Map overflow to fd00::/8 range
         # overflow 1 (counter 65536) -> fd00::0:1
         # overflow 65536 (counter 131071) -> fd00::1:0
+        #
+        # Split the overflow across two hextets. The previous form was
+        # ((overflow - 1) % 0x10000) + 1, which ranges 1..0x10000 - one past
+        # what a hextet can hold - so every 65536th value produced a five-digit
+        # group and an unparseable address (fd00::0:10000).
         overflow = counter - 0xFFFF
-        hextet3 = ((overflow - 1) % 0x10000) + 1
-        hextet2 = (overflow - 1) // 0x10000
+        hextet2 = overflow // 0x10000
+        hextet3 = overflow % 0x10000
         return f"fd00::{hextet2:x}:{hextet3:x}"
 
     def _warn_ipv4_limit(self, counter: int) -> None:
@@ -2384,10 +2389,26 @@ def _resolve_for_validation(file_path: str, path: Path) -> tuple[Path, bool]:
 
 
 def _is_in_sensitive_directory(resolved_str: str, sensitive_dirs: frozenset[str]) -> bool:
-    """Check whether a resolved output path falls inside a protected directory"""
+    """Check whether a resolved output path falls inside a protected directory
+
+    Matching is component-aware: '/root' must not match '/rootkit', and
+    '/var/log' must not match '/var/logs-archive'. A bare startswith rejected
+    both of those legitimate paths.
+
+    Compared as strings rather than via Path.is_relative_to because
+    sensitive_dirs deliberately holds both POSIX and Windows entries, and the
+    Windows ones are not parseable as paths on POSIX.
+    """
     for sensitive_dir in sensitive_dirs:
         try:
-            if resolved_str.startswith(sensitive_dir):
+            if resolved_str == sensitive_dir:
+                return True
+
+            # Require a separator after the prefix so only whole path
+            # components match. Both separators are checked because the
+            # sensitive list spans platforms.
+            base = sensitive_dir.rstrip('/\\')
+            if any(resolved_str.startswith(base + sep) for sep in ('/', '\\')):
                 return True
         except (ValueError, AttributeError):
             pass

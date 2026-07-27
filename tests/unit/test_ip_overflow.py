@@ -7,6 +7,10 @@ Verifies that when the counter exceeds RFC documentation IP ranges:
 - No duplicate mappings occur
 - Appropriate warnings are logged
 """
+import ipaddress
+
+import pytest
+
 from pfsense_redactor.redactor import PfSenseRedactor
 
 
@@ -188,17 +192,18 @@ class TestIPv6Overflow:
         assert redactor._counter_to_rfc_ip(65538, True) == "fd00::0:3"
 
         # Test boundary at 65536 addresses
-        # counter 131071 = 65535 + 65536, overflow = 65536, offset = 65535
-        # hextet3 = (65535 % 65536) + 1 = 0 + 1 = 1, but wait...
-        # Actually: hextet3 = (65535 % 65536) + 1 = 65535 + 1 = 65536 = 0x10000
-        # hextet2 = 65535 // 65536 = 0
-        # Result: fd00::0:10000
-        assert redactor._counter_to_rfc_ip(65535 + 65536, True) == "fd00::0:10000"
+        # counter 131071 = 65535 + 65536, overflow = 65536
+        # hextet2 = 65536 // 65536 = 1, hextet3 = 65536 % 65536 = 0
+        #
+        # This assertion previously expected "fd00::0:10000", which is not a
+        # valid address: 0x10000 needs five hex digits and a hextet holds four.
+        # The old formula was ((overflow - 1) % 0x10000) + 1, ranging
+        # 1..0x10000. fd00::1:0 is what the implementation comment always said
+        # this counter should produce.
+        assert redactor._counter_to_rfc_ip(65535 + 65536, True) == "fd00::1:0"
 
-        # counter 131072 = 65535 + 65537, overflow = 65537, offset = 65536
-        # hextet3 = (65536 % 65536) + 1 = 0 + 1 = 1
-        # hextet2 = 65536 // 65536 = 1
-        # Result: fd00::1:1
+        # counter 131072 = 65535 + 65537, overflow = 65537
+        # hextet2 = 65537 // 65536 = 1, hextet3 = 65537 % 65536 = 1
         assert redactor._counter_to_rfc_ip(65535 + 65537, True) == "fd00::1:1"
 
     def test_ipv6_no_duplicate_mappings(self):
@@ -308,3 +313,38 @@ class TestIntegrationWithAnonymisation:
         # Last octet should be sequential
         assert int(host2_parts[3]) == int(host1_parts[3]) + 1
         assert int(host3_parts[3]) == int(host2_parts[3]) + 1
+
+
+class TestIPv6OverflowProducesValidAddresses:
+    """The RFC 4193 overflow range must yield parseable addresses
+
+    ((overflow - 1) % 0x10000) + 1 ranges 1..0x10000, one past what a hextet
+    can hold, so every 65536th counter produced a five-digit group such as
+    fd00::0:10000, which is not a valid IPv6 address.
+    """
+
+    @pytest.mark.parametrize('counter', [
+        0xFFFF + 1,      # first overflow
+        131070,          # last before the first hextet rollover
+        131071,          # the rollover itself - previously fd00::0:10000
+        131072,
+        196607,          # second rollover - previously fd00::1:10000
+        262143,          # third rollover
+    ])
+    def test_overflow_address_is_valid(self, basic_redactor, counter):
+        """Every overflow counter maps to a parseable address"""
+        value = basic_redactor._counter_to_rfc_ip(counter, True)
+
+        ipaddress.ip_address(value)  # raises ValueError if malformed
+
+    def test_documented_rollover_mapping(self, basic_redactor):
+        """counter 131071 maps to fd00::1:0, as the code comment states"""
+        assert basic_redactor._counter_to_rfc_ip(131071, True) == 'fd00::1:0'
+        assert basic_redactor._counter_to_rfc_ip(65536, True) == 'fd00::0:1'
+
+    def test_overflow_mappings_stay_unique(self, basic_redactor):
+        """Distinct counters must not collide onto one address"""
+        counters = list(range(131060, 131085)) + list(range(196600, 196615))
+        addresses = [basic_redactor._counter_to_rfc_ip(c, True) for c in counters]
+
+        assert len(set(addresses)) == len(addresses)
