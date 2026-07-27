@@ -42,7 +42,7 @@ import logging
 from pathlib import Path
 from collections import defaultdict
 from collections.abc import Callable
-from typing import Union
+from typing import NoReturn, Union
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode, SplitResult
 import os
 
@@ -2202,54 +2202,62 @@ def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> tupl
     Returns:
         tuple: (set of IP strings, list of IP network objects, set of domains)
     """
-    ips = set()
-    networks = []
-    domains = set()
+    ips: set[str] = set()
+    networks: list[IPNetwork] = []
+    domains: set[str] = set()
 
     try:
         with open(filepath, 'r', encoding='utf-8') as file_handle:
-            for _, line in enumerate(file_handle, 1):
-                line = line.strip()
-                # Skip blank lines and comments
-                if not line or line.startswith('#'):
-                    continue
-
-                # Try to parse as IP address first
-                try:
-                    ipaddress.ip_address(line)
-                    ips.add(line)
-                    continue
-                except ValueError:
-                    pass
-
-                # Try to parse as CIDR network
-                try:
-                    network = ipaddress.ip_network(line, strict=False)
-                    networks.append(network)
-                    continue
-                except ValueError:
-                    pass
-
-                # Not an IP or CIDR, treat as domain (case-insensitive)
-                domains.add(line.lower())
+            for raw_line in file_handle:
+                _classify_allowlist_entry(raw_line.strip(), ips, networks, domains)
 
     except FileNotFoundError:
-        if not silent_if_missing:
-            logger = logging.getLogger('pfsense_redactor')
-            logger.error("[!] Error: Allow-list file '%s' not found", filepath)
-            sys.exit(1)
-        # Silent if missing for default files
-        return set(), [], set()
+        if silent_if_missing:
+            # Default allow-list files are optional
+            return set(), [], set()
+        _exit_allowlist_error("[!] Error: Allow-list file '%s' not found", filepath)
     except (IOError, OSError) as e:
-        logger = logging.getLogger('pfsense_redactor')
-        logger.error("[!] Error reading allow-list file: %s", e)
-        sys.exit(1)
+        _exit_allowlist_error("[!] Error reading allow-list file: %s", e)
     except (ValueError, UnicodeDecodeError) as e:
-        logger = logging.getLogger('pfsense_redactor')
-        logger.error("[!] Error parsing allow-list file: %s", e)
-        sys.exit(1)
+        _exit_allowlist_error("[!] Error parsing allow-list file: %s", e)
 
     return ips, networks, domains
+
+
+def _classify_allowlist_entry(
+    line: str, ips: set[str], networks: list[IPNetwork], domains: set[str]
+) -> None:
+    """Sort one stripped allow-list line into IPs, networks or domains
+
+    Blank lines and whole-line comments are ignored. Anything that parses as
+    neither an address nor a network is treated as a domain, which is why a
+    malformed entry silently becomes a domain rather than an error.
+    """
+    if not line or line.startswith('#'):
+        return
+
+    try:
+        ipaddress.ip_address(line)
+        ips.add(line)
+        return
+    except ValueError:
+        pass
+
+    try:
+        # strict=False so 10.1.2.3/8 is accepted and normalised
+        networks.append(ipaddress.ip_network(line, strict=False))
+        return
+    except ValueError:
+        pass
+
+    # Domain matching is case-insensitive
+    domains.add(line.lower())
+
+
+def _exit_allowlist_error(message: str, detail: object) -> NoReturn:
+    """Report an allow-list failure and exit non-zero"""
+    logging.getLogger('pfsense_redactor').error(message, detail)
+    sys.exit(1)
 
 
 def find_default_allowlist_files() -> list[Path]:

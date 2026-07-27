@@ -28,8 +28,8 @@ class TestLineClassification:
         )
 
         assert ips == {'8.8.8.8', '2001:db8::1'}
-        assert networks == []
-        assert domains == set()
+        assert not networks
+        assert not domains
 
     def test_cidr_networks(self, tmp_path):
         """CIDR entries become network objects, not IP strings"""
