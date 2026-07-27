@@ -295,6 +295,22 @@ RFC_DOC_NETWORKS_V4: tuple[IPNetwork, ...] = (
 RFC_DOC_NETWORK_V6: IPNetwork = ipaddress.ip_network('2001:db8::/32')
 
 
+def _has_mixed_character_classes(compact: str, hex_only: bool) -> bool:
+    """Check a candidate blob mixes character classes rather than being uniform
+
+    A long run of a single class - a numeric ID, or a lowercase word - is far
+    more likely to be ordinary content than encoded key material. Hex strings
+    get a looser rule since they cannot contain much variety by definition.
+    """
+    has_digit = any(c.isdigit() for c in compact)
+    has_upper = any(c.isupper() for c in compact)
+    has_lower = any(c.islower() for c in compact)
+
+    if hex_only:
+        return has_digit and (has_upper or has_lower)
+    return has_digit + has_upper + has_lower >= 2
+
+
 def is_rfc_documentation_ip(ip: IPAddress) -> bool:
     """Check whether an address is in a reserved documentation range
 
@@ -1757,14 +1773,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         if not (BASE64ISH_RE.match(compact) or HEXISH_RE.match(compact)):
             return False
 
-        # Require some mix of character classes so that long runs of a single
-        # class (e.g. a numeric ID, or a lowercase-only word) are not flagged.
-        has_digit = any(c.isdigit() for c in compact)
-        has_upper = any(c.isupper() for c in compact)
-        has_lower = any(c.islower() for c in compact)
-        if HEXISH_RE.match(compact):
-            return has_digit and (has_upper or has_lower)
-        return has_digit + has_upper + has_lower >= 2
+        return _has_mixed_character_classes(compact, hex_only=bool(HEXISH_RE.match(compact)))
 
     def _redact_blob_text_element(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Scan opaque free-text containers for inline credentials
@@ -1963,6 +1972,40 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                     element.attrib[attr], redact_ips, redact_domains
                 )
 
+    def _redact_element_text(
+        self, tag: str, tag_base: str, element: ET.Element,
+        redact_ips: bool, redact_domains: bool
+    ) -> bool:
+        """Run the text-content passes. Returns whether the text was handled
+
+        The return value gates the later passes, so a pass that fully rewrote
+        the text stops a subsequent one from processing it again. Order matters:
+        the URL pass runs last and only on text nothing else claimed.
+        """
+        # Opaque free-text containers (custom_options, upsd_users, ...) that
+        # carry credentials inline rather than in dedicated elements
+        handled = self._redact_blob_text_element(tag, tag_base, element)
+
+        # Descriptions/identifiers - opt-in via --redact-descriptions
+        if self._redact_description_element(tag, tag_base, element):
+            handled = True
+
+        # Unrecognised high-entropy leaf values (third-party package fields)
+        if self._redact_unknown_blob_element(tag, element):
+            handled = True
+
+        if self._redact_ip_containing_element(tag, tag_base, element, redact_ips, redact_domains):
+            handled = True
+
+        # Credentials embedded in URLs in elements that are not known URL
+        # carriers (e.g. <updateurl>, <webhook_url>). Previously these were
+        # only touched under --aggressive, so the token survived by default.
+        # Host anonymisation deliberately stays out of the default path here.
+        if element.text and not handled and '://' in element.text:
+            element.text = self._redact_url_secrets_only(element.text)
+
+        return handled
+
     def redact_element(self, element: ET.Element, redact_ips: bool = True, redact_domains: bool = True) -> None:
         """Recursively redact sensitive information from XML element"""
 
@@ -1985,28 +2028,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # Handle cert/key elements (don't return - continue to process children)
         self._redact_cert_key_element(tag, tag_base, element)
 
-        # Opaque free-text containers (custom_options, upsd_users, ...) that
-        # carry credentials inline rather than in dedicated elements
-        text_already_processed = self._redact_blob_text_element(tag, tag_base, element)
-
-        # Descriptions/identifiers - opt-in via --redact-descriptions
-        if self._redact_description_element(tag, tag_base, element):
-            text_already_processed = True
-
-        # Unrecognised high-entropy leaf values (third-party package fields)
-        if self._redact_unknown_blob_element(tag, element):
-            text_already_processed = True
-
-        # Track whether we already processed text to avoid double processing in aggressive mode
-        if self._redact_ip_containing_element(tag, tag_base, element, redact_ips, redact_domains):
-            text_already_processed = True
-
-        # Credentials embedded in URLs in elements that are not known URL
-        # carriers (e.g. <updateurl>, <webhook_url>). Previously these were
-        # only touched under --aggressive, so the token survived by default.
-        # Host anonymisation deliberately stays out of the default path here.
-        if element.text and not text_already_processed and '://' in element.text:
-            element.text = self._redact_url_secrets_only(element.text)
+        text_already_processed = self._redact_element_text(
+            tag, tag_base, element, redact_ips, redact_domains
+        )
 
         # Redact attributes with sensitive names
         self._redact_sensitive_attributes(element)
@@ -2447,28 +2471,47 @@ def validate_file_path(
             return False, "Path contains directory traversal components (..)", None
 
         resolved, is_absolute_form = _resolve_for_validation(file_path, path)
-        resolved_str = str(resolved).lower()
 
-        # Check if resolved path is in a sensitive directory FIRST
-        # This is the critical security check - do it before the absolute path check
-        # so that even with --allow-absolute-paths, we still block sensitive dirs
-        if is_output and _is_in_sensitive_directory(resolved_str, sensitive_dirs):
-            return False, f"Cannot write to sensitive system directory: {resolved}", None
-
-        # Check if absolute path is allowed (after sensitive dir check)
-        # Allow absolute paths to safe locations (like temp dirs, home, cwd)
-        if is_absolute_form and not allow_absolute:
-            if not _is_safe_absolute_location(resolved_str):
-                return False, f"Absolute paths not allowed (use --allow-absolute-paths): {file_path}", None
-
-        # Additional check: ensure we're not trying to write to system config files
-        if is_output and resolved_str in DANGEROUS_OUTPUT_FILES:
-            return False, f"Cannot write to system configuration file: {resolved}", None
+        # ORDER IS SECURITY-CRITICAL and is asserted by _resolved_path_error:
+        # the sensitive-directory check must run before the absolute-path check,
+        # so --allow-absolute-paths cannot be used to write into a protected
+        # directory.
+        error = _resolved_path_error(
+            file_path, resolved, is_absolute_form, allow_absolute, is_output, sensitive_dirs
+        )
+        if error:
+            return False, error, None
 
         return True, "", resolved
 
     except (OSError, RuntimeError, ValueError) as e:
         return False, f"Error validating path: {e}", None
+
+
+def _resolved_path_error(
+    file_path: str, resolved: Path, is_absolute_form: bool, allow_absolute: bool,
+    is_output: bool, sensitive_dirs: frozenset[str]
+) -> str | None:
+    """Return the first failure among the resolved-path checks, else None
+
+    Checks run in this order deliberately:
+    1. sensitive directory - must precede the absolute check so that
+       --allow-absolute-paths still cannot reach a protected directory
+    2. absolute path outside the safe locations
+    3. specific system configuration files
+    """
+    resolved_str = str(resolved).lower()
+
+    if is_output and _is_in_sensitive_directory(resolved_str, sensitive_dirs):
+        return f"Cannot write to sensitive system directory: {resolved}"
+
+    if is_absolute_form and not allow_absolute and not _is_safe_absolute_location(resolved_str):
+        return f"Absolute paths not allowed (use --allow-absolute-paths): {file_path}"
+
+    if is_output and resolved_str in DANGEROUS_OUTPUT_FILES:
+        return f"Cannot write to system configuration file: {resolved}"
+
+    return None
 
 
 
@@ -2479,8 +2522,8 @@ def validate_file_path(
 def _build_arg_parser(version: str) -> argparse.ArgumentParser:
     """Construct the CLI parser
 
-    Separated from main() purely for size: 25 add_argument calls with no
-    branching, which dominated main's statement count.
+    Split into groups by _add_*_arguments helpers: 25 add_argument calls in
+    one function exceeded the 50-line method limit Codacy enforces.
     """
     parser = argparse.ArgumentParser(
         description='Redact sensitive information from pfSense XML configuration files',
@@ -2517,8 +2560,20 @@ CDATA sections are not preserved.
     parser.add_argument('--check-version', action='store_true',
                         help='Check for updates from PyPI')
 
+    _add_io_arguments(parser)
+    _add_redaction_arguments(parser)
+    _add_output_arguments(parser)
+    _add_allowlist_arguments(parser)
+    return parser
+
+
+def _add_io_arguments(parser: argparse.ArgumentParser) -> None:
+    """Positional input/output paths"""
     parser.add_argument('input', nargs='?', help='Input pfSense config.xml file (required unless --check-version is used)')
     parser.add_argument('output', nargs='?', help='Output redacted config.xml file')
+
+def _add_redaction_arguments(parser: argparse.ArgumentParser) -> None:
+    """Flags controlling what gets redacted and how"""
     parser.add_argument('--no-redact-ips', action='store_true',
                         help='Do not redact IP addresses')
     parser.add_argument('--no-redact-domains', action='store_true',
@@ -2529,6 +2584,9 @@ CDATA sections are not preserved.
                         help='When used with --anonymise, do NOT keep private IPs visible.')
     parser.add_argument('--anonymise', action='store_true',
                         help='Use consistent aliases (IP_1, domain1.example) to preserve topology. Implies --keep-private-ips unless --no-keep-private-ips is specified')
+
+def _add_output_arguments(parser: argparse.ArgumentParser) -> None:
+    """Flags controlling where output goes and how noisy the run is"""
     parser.add_argument('--dry-run', action='store_true',
                         help='Show what would be redacted without writing output')
     parser.add_argument('--stdout', action='store_true',
@@ -2545,6 +2603,9 @@ CDATA sections are not preserved.
                         help='Show detailed debug information')
     parser.add_argument('--fail-on-warn', action='store_true',
                         help='Exit with non-zero code if root tag is not pfsense (useful in CI)')
+
+def _add_allowlist_arguments(parser: argparse.ArgumentParser) -> None:
+    """Allow-list sources and the remaining opt-in redaction flags"""
     parser.add_argument('--allowlist-ip', action='append', dest='allowlist_ips', metavar='IP_OR_CIDR',
                         help='IP or CIDR to never redact (repeatable). Applies to both raw text and URLs.')
     parser.add_argument('--allowlist-domain', action='append', dest='allowlist_domains', metavar='DOMAIN',
@@ -2561,7 +2622,7 @@ CDATA sections are not preserved.
                         help='Redact free-text descriptions and identifiers (descr, detail, hostname, ssid). These often contain personal names, e.g. DHCP static-map descriptions. Off by default as they aid troubleshooting.')
     parser.add_argument('--allow-absolute-paths', action='store_true',
                         help='Allow absolute file paths (e.g., /etc/passwd, C:\\config.xml). By default, only relative paths are permitted for security. Use with caution.')
-    return parser
+
 
 
 def _resolve_input_path(
@@ -2614,47 +2675,42 @@ def _resolve_output_path(
     args: argparse.Namespace, sensitive_dirs: frozenset[str], logger: logging.Logger
 ) -> None:
     """Validate the output path, including the extra --inplace checks"""
-    # Validate output file path (if applicable)
-    # Skip validation in dry-run mode since we won't actually write
-    if args.output and not args.stdout and not args.dry_run:
-        output_valid, output_error, output_resolved = validate_file_path(
-            args.output,
-            allow_absolute=args.allow_absolute_paths,
-            is_output=True,
-            sensitive_dirs=sensitive_dirs
+    # Validated whenever the path will be used. The only skipped case is
+    # --stdout without --dry-run, where args.output is never written.
+    if args.output and (args.dry_run or not args.stdout):
+        resolved = _validate_as_output_target(
+            args.output, args, sensitive_dirs, logger,
+            "[!] Error: Invalid output path: %s"
         )
-        if not output_valid:
-            logger.error("[!] Error: Invalid output path: %s", output_error)
-            sys.exit(1)
 
-        # Check if output file exists (unless force)
-        if not args.force and output_resolved.exists():
+        # Overwrite protection applies only when a write will actually happen
+        if not args.dry_run and not args.stdout and not args.force and resolved.exists():
             logger.error("[!] Error: Output file '%s' already exists. Use --force to overwrite.", args.output)
             sys.exit(1)
-    elif args.dry_run and args.output:
-        # In dry-run mode, still validate the output path for security
-        output_valid, output_error, _ = validate_file_path(
-            args.output,
-            allow_absolute=args.allow_absolute_paths,
-            is_output=True,
-            sensitive_dirs=sensitive_dirs
-        )
-        if not output_valid:
-            logger.error("[!] Error: Invalid output path: %s", output_error)
-            sys.exit(1)
 
-    # Validate inplace mode - extra security check
+    # --inplace rewrites the input, so re-validate it under output rules
     if args.inplace:
-        # Re-validate input path with output restrictions
-        inplace_valid, inplace_error, _ = validate_file_path(
-            args.input,
-            allow_absolute=args.allow_absolute_paths,
-            is_output=True,  # Treat as output for stricter checks
-            sensitive_dirs=sensitive_dirs
+        _validate_as_output_target(
+            args.input, args, sensitive_dirs, logger,
+            "[!] Error: Cannot use --inplace with this file: %s"
         )
-        if not inplace_valid:
-            logger.error("[!] Error: Cannot use --inplace with this file: %s", inplace_error)
-            sys.exit(1)
+
+
+def _validate_as_output_target(
+    candidate: str, args: argparse.Namespace, sensitive_dirs: frozenset[str],
+    logger: logging.Logger, error_template: str
+) -> Path:
+    """Validate a path under output rules, exiting on failure. Returns resolved"""
+    valid, error, resolved = validate_file_path(
+        candidate,
+        allow_absolute=args.allow_absolute_paths,
+        is_output=True,
+        sensitive_dirs=sensitive_dirs
+    )
+    if not valid:
+        logger.error(error_template, error)
+        sys.exit(1)
+    return resolved
 
 
 def _resolve_keep_private_ips(args: argparse.Namespace) -> bool:
@@ -2741,6 +2797,50 @@ def _add_cli_allowlist_ip(
     sys.exit(1)
 
 
+def _handle_early_exit_flags(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """Handle argument combinations that exit before any redaction happens"""
+    if not args.check_version and not args.input:
+        parser.error("the following arguments are required: input")
+
+    if args.check_version:
+        from .version_checker import print_version_check  # pylint: disable=import-outside-toplevel
+
+        setup_logging(logging.INFO, use_stderr=False)
+        success = print_version_check(verbose=False)
+        sys.exit(0 if success else 1)
+
+    if args.quiet and args.verbose:
+        parser.error("--quiet and --verbose are mutually exclusive")
+
+
+def _configure_logging_from_args(args: argparse.Namespace) -> None:
+    """Set up logging at the verbosity the flags ask for
+
+    --stdout routes everything to stderr so the redacted XML on stdout stays
+    machine-readable.
+    """
+    if args.verbose:
+        log_level = logging.DEBUG
+    elif args.quiet:
+        log_level = logging.WARNING
+    else:
+        log_level = logging.INFO
+
+    setup_logging(log_level, use_stderr=args.stdout)
+
+
+def _apply_argument_defaults(args: argparse.Namespace) -> None:
+    """Fill in values implied by other flags, before any validation"""
+    # --dry-run-verbose is a louder --dry-run
+    if args.dry_run_verbose:
+        args.dry_run = True
+
+    # Auto-generate output filename when one is needed but not given
+    if not args.stdout and not args.inplace and not args.dry_run and not args.output:
+        input_path = Path(args.input)
+        args.output = str(input_path.parent / f"{input_path.stem}-redacted{input_path.suffix}")
+
+
 def main() -> None:
     """Main entry point for the pfSense redactor CLI"""
     # Version for the --version flag. Resolved rather than imported directly so
@@ -2751,47 +2851,9 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    # Validate required arguments for normal operation
-    if not args.check_version and not args.input:
-        parser.error("the following arguments are required: input")
-
-    # Handle --check-version flag
-    if args.check_version:
-        # Import version checker
-        from .version_checker import print_version_check
-
-        # Setup basic logging for version check
-        setup_logging(logging.INFO, use_stderr=False)
-
-        # Run version check and exit
-        success = print_version_check(verbose=False)
-        sys.exit(0 if success else 1)
-
-    # Validate mutually exclusive flags
-    if args.quiet and args.verbose:
-        parser.error("--quiet and --verbose are mutually exclusive")
-
-    # Determine log level
-    if args.verbose:
-        log_level = logging.DEBUG
-    elif args.quiet:
-        log_level = logging.WARNING
-    else:
-        log_level = logging.INFO
-
-    # Setup logging (route to stderr when using --stdout)
-    use_stderr = args.stdout
-    setup_logging(log_level, use_stderr)
-
-    # Handle --dry-run-verbose
-    if args.dry_run_verbose:
-        args.dry_run = True
-
-    # Default output filename if not specified
-    if not args.stdout and not args.inplace and not args.dry_run and not args.output:
-        # Auto-generate output filename: input-redacted.xml
-        input_path = Path(args.input)
-        args.output = str(input_path.parent / f"{input_path.stem}-redacted{input_path.suffix}")
+    _handle_early_exit_flags(args, parser)
+    _configure_logging_from_args(args)
+    _apply_argument_defaults(args)
 
     # Get logger for error messages
     logger = logging.getLogger('pfsense_redactor')
