@@ -1,6 +1,34 @@
 """
 pfSense XML Configuration Redactor
 Redacts sensitive information from pfSense config.xml files
+
+Single-module design
+--------------------
+This file is large and deliberately stays that way. It must remain runnable as
+a lone file - copied on its own to a firewall or jump host, with no package
+context and nothing else beside it:
+
+    python3 redactor.py config.xml --stdout
+
+For a tool whose job is to be trusted with secrets, "read this one file, then
+run it" is worth more than a tidier module tree. Any relative or sibling import
+would end that, so there are none; the only package-relative import is the
+optional __version__ lookup in resolve_version(), which falls back cleanly.
+
+Guarded by tests/integration/test_standalone_script.py, and by the C0302
+disable in .pylintrc.
+
+Layout
+------
+Sections below are marked with banner comments, in this order:
+
+    1. Logging          ColouredFormatter, setup_logging
+    2. Constants        element sets, secret/cert tag patterns, deny-list
+    3. Version          resolve_version
+    4. Redactor         PfSenseRedactor - the bulk of the file
+    5. Allowlists       allow-list file parsing
+    6. Path safety      path traversal / sensitive directory validation
+    7. CLI              argparse wiring and main()
 """
 from __future__ import annotations
 
@@ -23,6 +51,9 @@ IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 
 
+# ==========================================================================
+# 1. LOGGING
+# ==========================================================================
 class ColouredFormatter(logging.Formatter):
     """Add ANSI colour codes to log messages for TTY output"""
 
@@ -101,6 +132,9 @@ def setup_logging(level: int = logging.INFO, use_stderr: bool = False) -> loggin
 
 
 # Module-level constants (immutable for safety)
+# ==========================================================================
+# 2. CONSTANTS - element sets, secret/cert tag patterns, deny-list
+# ==========================================================================
 ALWAYS_PRESERVE_IPS: frozenset[str] = frozenset({
     '255.255.255.0', '255.255.0.0', '255.0.0.0',
     '255.255.255.128', '255.255.255.192', '255.255.255.224',
@@ -238,6 +272,9 @@ SENSITIVE_ATTR_PATTERN = re.compile(
 )
 
 
+# ==========================================================================
+# 3. VERSION
+# ==========================================================================
 def resolve_version() -> str:
     """Resolve the package version, whatever the execution context
 
@@ -290,6 +327,9 @@ def _idna_encode(domain: str) -> str:
         return domain
 
 
+# ==========================================================================
+# 4. REDACTOR
+# ==========================================================================
 class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     """pfSense configuration redactor for sensitive data handling
 
@@ -312,6 +352,29 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     - _*_safe(): Includes exception handling/validation (suffix)
 
     Avoid vague verbs like "handle" - be specific about what the method does.
+
+    Method Groups:
+    --------------
+    Roughly the order they appear in, and the order redact_element() calls them.
+
+    - Allow-lists            _normalise_domain, _is_domain_allowed, _is_ip_allowed
+    - Sample masking         _mask_*_sample, _safe_mask_for_sample, _add_sample
+                             (for --dry-run-verbose; never shows a raw secret)
+    - IP anonymisation       _parse_ip_token, _anonymise_ip, _counter_to_rfc_ip,
+                             _mask_ip_like_tokens
+    - Domain anonymisation   _anonymise_domain, _redact_fqdns_safe
+    - URL masking            _mask_url and friends; _redact_query_secrets and
+                             _redact_path_secrets handle embedded credentials,
+                             _redact_netloc_userinfo handles user:pass@host
+    - Tag classification     _is_secret_tag, _is_cert_tag, _get_tag_base
+    - Element redaction      _should_redact_completely, _redact_cert_key_element,
+                             _redact_blob_text*, _redact_unknown_blob_element
+    - Entry points           redact_element (recursive walk), redact_config
+                             (file in/out), _print_stats
+
+    Ordering inside redact_element() is load-bearing: <key> is checked before
+    the generic secret match so the cert/key distinction survives, and
+    text_already_processed gates the later passes.
     """
 
     # Class constants for magic numbers
@@ -1944,6 +2007,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 self.logger.info("    (no examples collected)")
 
 
+# ==========================================================================
+# 5. ALLOWLISTS
+# ==========================================================================
 def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> tuple[set[str], list[IPNetwork], set[str]]:
     """Parse allow-list file containing IPs, CIDR networks, and domains (one per line)
 
@@ -2034,6 +2100,9 @@ def find_default_allowlist_files() -> list[Path]:
 
     return default_files
 
+# ==========================================================================
+# 6. PATH SAFETY
+# ==========================================================================
 def _get_sensitive_directories() -> frozenset[str]:
     """Get list of sensitive system directories that should not be written to
 
@@ -2210,6 +2279,9 @@ def validate_file_path(
 
 
 
+# ==========================================================================
+# 7. CLI
+# ==========================================================================
 def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """Main entry point for the pfSense redactor CLI"""
     # Version for the --version flag. Resolved rather than imported directly so
