@@ -2316,6 +2316,38 @@ def find_default_allowlist_files() -> list[Path]:
 # ==========================================================================
 # 6. PATH SAFETY
 # ==========================================================================
+def _windows_dirs_from_environment() -> set[str]:
+    """Locate the real Windows system directories from the environment
+
+    The hardcoded list assumes C:. Windows can be installed on any drive, and
+    ProgramFiles/ProgramData are relocatable independently of it, so a machine
+    with the system on D: had no protection for D:\\Windows at all.
+
+    Returns an empty set off Windows, where none of these variables are set.
+    """
+    dirs: set[str] = set()
+
+    for variable in ('SystemRoot', 'windir', 'ProgramFiles', 'ProgramFiles(x86)',
+                     'ProgramW6432', 'ProgramData'):
+        value = os.environ.get(variable)
+        if not value:
+            continue
+
+        dirs.add(value.lower())
+
+        # System32 sits under SystemRoot and is worth naming explicitly, since
+        # the most damaging writes land there rather than in the root.
+        #
+        # Joined with a literal backslash rather than os.path.join: these are
+        # Windows paths, and join would use the *host* separator, producing
+        # 'd:\\windows/system32' when the set is built on POSIX - as it is in
+        # the tests that simulate a Windows environment.
+        if variable in ('SystemRoot', 'windir'):
+            dirs.add((value.rstrip('/\\') + '\\system32').lower())
+
+    return dirs
+
+
 def _get_sensitive_directories() -> frozenset[str]:
     """Get list of sensitive system directories that should not be written to
 
@@ -2329,11 +2361,16 @@ def _get_sensitive_directories() -> frozenset[str]:
         '/var/log', '/var/run', '/run',
     }
 
-    # Windows system directories
+    # Windows system directories. The literals assume the system is on C:,
+    # which is usual but not guaranteed - Windows can be installed on any
+    # drive. They are kept because the whole set is applied on every platform
+    # (see below), and supplemented with the real locations read from the
+    # environment, the same way _is_safe_absolute_location reads TMPDIR/TEMP.
     windows_sensitive_dirs = {
         'c:\\windows', 'c:\\windows\\system32', 'c:\\program files',
         'c:\\program files (x86)', 'c:\\programdata',
     }
+    windows_sensitive_dirs |= _windows_dirs_from_environment()
 
     # Normalise paths for comparison (resolve symlinks, make absolute)
     normalised = set()
@@ -2357,7 +2394,11 @@ def _get_sensitive_directories() -> frozenset[str]:
             # Handle errors in path resolution (e.g., permission denied)
             normalised.add(path_str.lower())
 
-    return frozenset(normalised)
+    # Canonicalise: no entry carries a trailing separator, so the set is
+    # predictable for callers and comparisons do not depend on how an entry
+    # was spelled. _is_in_sensitive_directory strips defensively as well,
+    # because it also accepts hand-built sets.
+    return frozenset(entry.rstrip('/\\') or entry for entry in normalised)
 
 
 # System files that must never be written to, compared against the resolved
@@ -2401,13 +2442,18 @@ def _is_in_sensitive_directory(resolved_str: str, sensitive_dirs: frozenset[str]
     """
     for sensitive_dir in sensitive_dirs:
         try:
-            if resolved_str == sensitive_dir:
+            # Strip any trailing separator first, so the comparisons do not
+            # depend on how the entry was written. Path.resolve() never returns
+            # a trailing separator, so an entry of '/etc/' would otherwise fail
+            # to match a resolved path of exactly '/etc'.
+            base = sensitive_dir.rstrip('/\\')
+
+            if resolved_str == base:
                 return True
 
             # Require a separator after the prefix so only whole path
             # components match. Both separators are checked because the
             # sensitive list spans platforms.
-            base = sensitive_dir.rstrip('/\\')
             if any(resolved_str.startswith(base + sep) for sep in ('/', '\\')):
                 return True
         except (ValueError, AttributeError):

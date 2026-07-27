@@ -62,6 +62,15 @@ reviewing that work, both older than 1.1.0.
   under-blocked, so it was a usability failure rather than a security one, and
   every protected directory remains blocked.
 
+- **FIX** (predates 1.1.0): Windows system directories were hardcoded to `C:`,
+  so a machine with Windows installed on any other drive had no write
+  protection for its system directories at all — `D:\\Windows\\System32` was
+  freely writable. The real locations are now read from `SystemRoot`, `windir`,
+  `ProgramFiles`, `ProgramFiles(x86)`, `ProgramW6432` and `ProgramData`, the
+  same way temp directories are already read from `TMPDIR`/`TEMP`. The `C:`
+  literals are kept, since the full set is applied on every platform by design.
+  No effect off Windows, where none of these variables are set.
+
 ### Known limitations
 - A path segment of 21-23 characters containing no digit is not detected.
   `Open_VM_Tools_package` (a route name that must be preserved) and a
