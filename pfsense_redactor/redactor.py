@@ -2031,6 +2031,39 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # Insert comment as first child of root
         root.insert(0, comment)
 
+    def _check_root_tag(self, root: ET.Element) -> bool:
+        """Warn if this does not look like a pfSense config. False means abort
+
+        Namespace-robust. Only --fail-on-warn turns the warning into an abort.
+        """
+        if root.tag.rsplit('}', 1)[-1].lower() == 'pfsense':
+            return True
+
+        msg = f"[!] Warning: Root tag is '{root.tag}', expected 'pfsense'."
+        if self.fail_on_warn:
+            self.logger.error("%s Exiting.", msg)
+            return False
+
+        self.logger.warning("%s Proceeding anyway...", msg)
+        return True
+
+    def _write_output(
+        self, tree: ET.ElementTree, input_file: str, output_file: str | None,
+        stdout_mode: bool, inplace: bool
+    ) -> None:
+        """Write the redacted tree to stdout, over the input, or to a new file"""
+        if stdout_mode:
+            tree.write(sys.stdout.buffer, encoding='utf-8', xml_declaration=True)
+            return
+
+        if inplace:
+            tree.write(input_file, encoding='utf-8', xml_declaration=True)
+            self.logger.info("[+] Redacted configuration written in-place to: %s", input_file)
+            return
+
+        tree.write(output_file, encoding='utf-8', xml_declaration=True)
+        self.logger.info("[+] Redacted configuration written to: %s", output_file)
+
     def redact_config(
         self,
         input_file: str,
@@ -2047,14 +2080,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             tree = ET.parse(input_file)
             root = tree.getroot()
 
-            # G) Sanity check: ensure this is a pfSense config (namespace-robust)
-            root_tag = root.tag.rsplit('}', 1)[-1].lower()
-            if root_tag != 'pfsense':
-                msg = f"[!] Warning: Root tag is '{root.tag}', expected 'pfsense'."
-                if self.fail_on_warn:
-                    self.logger.error("%s Exiting.", msg)
-                    return False
-                self.logger.warning("%s Proceeding anyway...", msg)
+            if not self._check_root_tag(root):
+                return False
 
             if not dry_run and not stdout_mode:
                 self.logger.info("[+] Parsing XML configuration from: %s", input_file)
@@ -2076,15 +2103,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             # Pretty print (Python 3.9+)
             ET.indent(tree, space="  ")
 
-            # Write redacted configuration
-            if stdout_mode:
-                tree.write(sys.stdout.buffer, encoding='utf-8', xml_declaration=True)
-            elif inplace:
-                tree.write(input_file, encoding='utf-8', xml_declaration=True)
-                self.logger.info("[+] Redacted configuration written in-place to: %s", input_file)
-            else:
-                tree.write(output_file, encoding='utf-8', xml_declaration=True)
-                self.logger.info("[+] Redacted configuration written to: %s", output_file)
+            self._write_output(tree, input_file, output_file, stdout_mode, inplace)
 
             # Print summary (always print, logger routes to correct stream)
             self._print_stats()

@@ -110,73 +110,70 @@ def compare_versions(current: str, latest: str) -> bool:
         return False
 
 
-def detect_installation_method() -> InstallationMethod:
-    """Detect how pfsense-redactor was installed
-
-    Returns:
-        InstallationMethod with method name and upgrade command
-    """
-    # Check if running in pipx environment
-    if 'PIPX_HOME' in os.environ or 'pipx' in sys.prefix:
-        return InstallationMethod(
-            method="pipx",
-            upgrade_command="pipx upgrade pfsense-redactor"
-        )
-
-    # Check if running in a virtual environment
-    if hasattr(sys, 'real_prefix') or (
-            hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix
-    ):
-        return InstallationMethod(
-            method="venv",
-            upgrade_command="pip install --upgrade pfsense-redactor"
-        )
-
-    # Check if installed as editable (development mode)
+def _is_editable_install() -> bool:
+    """Check for a pip editable install via direct_url.json"""
     try:
         import importlib.metadata
         dist = importlib.metadata.distribution('pfsense-redactor')
         # Use the public files() API to check if this is an editable install
         if dist.files and any(f.name == 'direct_url.json' for f in dist.files):
-            # Has direct_url.json which indicates editable or direct install
-            # Check if it's a local directory (editable install)
+            # direct_url.json indicates an editable or direct install; dir_info
+            # .editable distinguishes the editable case
             direct_url_data = json.loads(dist.read_text('direct_url.json'))
-            if direct_url_data.get('dir_info', {}).get('editable'):
-                return InstallationMethod(
-                    method="source",
-                    upgrade_command="git pull && pip install -e ."
-                )
+            return bool(direct_url_data.get('dir_info', {}).get('editable'))
     except (ImportError, AttributeError, ValueError, TypeError, KeyError, FileNotFoundError):
         # importlib.metadata not available, no direct_url.json, or parsing error
         pass
+    return False
 
-    # Check if installed in user site-packages
+
+def _is_user_site_install() -> bool:
+    """Check whether the distribution lives in user site-packages"""
     try:
         import site
         import importlib.metadata
         user_site = site.getusersitepackages()
-        dist = importlib.metadata.distribution('pfsense-redactor')
-        # Get the location using the metadata's locate_file method
-        dist_files = dist.files
-        if dist_files and user_site:
-            # Check if any of the files are in user site-packages
-            first_file = dist_files[0]
-            location = first_file.locate().resolve().parent
-            # Navigate up to find the site-packages directory
-            # Stop at root (location.parent == location) or when we find site-packages
-            while location.name not in ('site-packages', 'dist-packages') and location != location.parent:
-                location = location.parent
-            if location.is_relative_to(Path(user_site).resolve()):
-                # Installed in user site-packages
-                return InstallationMethod(
-                    method="user",
-                    upgrade_command="pip install --user --upgrade pfsense-redactor"
-                )
+        dist_files = importlib.metadata.distribution('pfsense-redactor').files
+        if not (dist_files and user_site):
+            return False
+
+        location = dist_files[0].locate().resolve().parent
+        # Walk up to the site-packages directory, stopping at the filesystem root
+        while location.name not in ('site-packages', 'dist-packages') and location != location.parent:
+            location = location.parent
+        return location.is_relative_to(Path(user_site).resolve())
     except (ImportError, AttributeError, ValueError, TypeError, OSError, IndexError):
         # site/importlib.metadata not available, or path resolution failed
-        pass
+        return False
 
-    # Default/unknown method
+
+def detect_installation_method() -> InstallationMethod:
+    """Detect how pfsense-redactor was installed
+
+    Checks are ordered most specific first; the last entry is the fallback.
+
+    Returns:
+        InstallationMethod with method name and upgrade command
+    """
+    def is_pipx() -> bool:
+        return 'PIPX_HOME' in os.environ or 'pipx' in sys.prefix
+
+    def is_venv() -> bool:
+        return hasattr(sys, 'real_prefix') or (
+            hasattr(sys, 'base_prefix') and sys.base_prefix != sys.prefix
+        )
+
+    checks = (
+        (is_pipx, "pipx", "pipx upgrade pfsense-redactor"),
+        (is_venv, "venv", "pip install --upgrade pfsense-redactor"),
+        (_is_editable_install, "source", "git pull && pip install -e ."),
+        (_is_user_site_install, "user", "pip install --user --upgrade pfsense-redactor"),
+    )
+
+    for predicate, method, upgrade_command in checks:
+        if predicate():
+            return InstallationMethod(method=method, upgrade_command=upgrade_command)
+
     return InstallationMethod(
         method="pip",
         upgrade_command="pip install --upgrade pfsense-redactor"
