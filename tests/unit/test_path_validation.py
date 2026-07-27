@@ -2,8 +2,10 @@
 Unit tests for file path validation security
 Tests the validate_file_path function to ensure it properly blocks malicious paths
 """
+import os
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -11,7 +13,12 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # pylint: disable=wrong-import-position
-from pfsense_redactor.redactor import validate_file_path, _get_sensitive_directories
+from pfsense_redactor.redactor import (
+    validate_file_path,
+    _get_sensitive_directories,
+    _is_in_sensitive_directory,
+    _windows_dirs_from_environment,
+)
 
 
 class TestPathValidation:  # pylint: disable=too-many-public-methods
@@ -365,6 +372,25 @@ class TestSensitiveDirectoryComponentMatching:
 
         assert is_valid is True, f"{path} was wrongly blocked: {error}"
 
+    @pytest.mark.parametrize('entry,separator', [
+        ('/etc', '/'),
+        ('/etc/', '/'),
+        ('c:\\windows', '\\'),
+        ('c:\\windows\\', '\\'),
+    ])
+    def test_matching_survives_trailing_separators(self, entry, separator):
+        """Entry formatting must not decide whether protection applies
+
+        Path.resolve() never returns a trailing separator, so an entry written
+        as '/etc/' would previously fail to match a resolved path of exactly
+        '/etc' - a silent bypass if such an entry were ever added.
+        """
+        sensitive = frozenset({entry})
+        base = entry.rstrip('/\\')
+
+        assert _is_in_sensitive_directory(base, sensitive), 'directory itself'
+        assert _is_in_sensitive_directory(base + separator + 'out.xml', sensitive), 'child path'
+
     def test_exact_directory_itself_blocked(self):
         """The protected directory itself, with no trailing component"""
         if sys.platform == 'win32':
@@ -373,3 +399,69 @@ class TestSensitiveDirectoryComponentMatching:
         is_valid, _, _ = validate_file_path('/root', allow_absolute=True, is_output=True)
 
         assert is_valid is False
+
+
+class TestWindowsSystemDirectoriesFromEnvironment:
+    """Windows system directories must be found wherever they are installed
+
+    The hardcoded list assumes C:. Windows can be installed on any drive, and
+    ProgramFiles/ProgramData are relocatable independently of it, so a machine
+    with the system on D: had no protection for D:\\Windows.
+    """
+
+    WINDOWS_ON_D = {
+        'SystemRoot': 'D:\\Windows',
+        'ProgramFiles': 'D:\\Program Files',
+        'ProgramFiles(x86)': 'D:\\Program Files (x86)',
+        'ProgramData': 'D:\\ProgramData',
+    }
+
+    def test_nothing_derived_off_windows(self):
+        """The variables are absent on POSIX, so the set is unchanged there"""
+        if sys.platform == 'win32':
+            pytest.skip("Windows-specific test")
+
+        assert _windows_dirs_from_environment() == set()
+
+    def test_system_root_on_another_drive_is_found(self):
+        """A system installed on D: contributes D:\\Windows, not just C:"""
+        with patch.dict(os.environ, self.WINDOWS_ON_D, clear=False):
+            derived = _windows_dirs_from_environment()
+
+        assert 'd:\\windows' in derived
+        assert 'd:\\windows\\system32' in derived, 'System32 named explicitly'
+        assert 'd:\\program files' in derived
+        assert 'd:\\programdata' in derived
+
+    @pytest.mark.parametrize('path', [
+        'd:\\windows\\system32\\config\\sam',
+        'd:\\windows\\notepad.exe',
+        'd:\\program files\\app\\x.xml',
+        'd:\\programdata\\x.xml',
+    ])
+    def test_paths_under_relocated_system_are_blocked(self, path):
+        """Writes beneath the real system directories are refused"""
+        with patch.dict(os.environ, self.WINDOWS_ON_D, clear=False):
+            sensitive = _get_sensitive_directories()
+
+        assert _is_in_sensitive_directory(path, sensitive) is True
+
+    @pytest.mark.parametrize('path', [
+        'd:\\windows-old\\x.xml',
+        'd:\\users\\me\\out.xml',
+        'd:\\programdata-backup\\x.xml',
+    ])
+    def test_similarly_named_paths_still_allowed(self, path):
+        """Component matching still applies to the derived entries"""
+        with patch.dict(os.environ, self.WINDOWS_ON_D, clear=False):
+            sensitive = _get_sensitive_directories()
+
+        assert _is_in_sensitive_directory(path, sensitive) is False
+
+    def test_trailing_separator_in_environment_value(self):
+        """Environment values may carry a trailing backslash"""
+        with patch.dict(os.environ, {'SystemRoot': 'D:\\Windows\\'}, clear=False):
+            sensitive = _get_sensitive_directories()
+
+        assert _is_in_sensitive_directory('d:\\windows', sensitive) is True
+        assert _is_in_sensitive_directory('d:\\windows\\system32\\x', sensitive) is True
