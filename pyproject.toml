@@ -53,8 +53,10 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = [
-    "pytest==8.4.2",
-    "pytest-cov==7.0.0",
+    # pytest 9.x requires Python >=3.10; 8.4.2 is the last release supporting 3.9.
+    "pytest==9.1.1; python_version >= '3.10'",
+    "pytest==8.4.2; python_version < '3.10'",
+    "pytest-cov==7.1.0",
     "pytest-xdist==3.8.0",
 ]
 

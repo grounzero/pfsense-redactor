@@ -1,13 +1,16 @@
 # Test dependencies for pfSense redactor test suite
 
 # Core testing framework
-pytest==8.4.2
+# pytest 9.x requires Python >=3.10; 8.4.2 is the last release supporting 3.9,
+# so the pin is split by interpreter to keep the 3.9 support matrix installable.
+pytest==9.1.1; python_version >= "3.10"
+pytest==8.4.2; python_version < "3.10"
 
 # Optional: Parallel test execution
 pytest-xdist==3.8.0
 
 # Optional: Coverage reporting
-pytest-cov==7.0.0
+pytest-cov==7.1.0
 
 # Note: No additional dependencies required beyond Python standard library
 # The redactor script itself only uses standard library modules
