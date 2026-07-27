@@ -819,34 +819,34 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             str: RFC documentation IP address or fallback private IP
         """
         if is_ipv6:
-            # RFC 3849: 2001:db8::/32
-            # Map counter to last hextet (1..65535)
-            if counter <= 0xFFFF:
-                return f"2001:db8::{counter:x}"
+            return self._counter_to_rfc_ipv6(counter)
+        return self._counter_to_rfc_ipv4(counter)
 
-            # IPv6 overflow: use RFC 4193 Unique Local Addresses (ULA)
-            # fd00::/8 range for overflow addresses
-            # Log warning on first overflow
-            if counter == 0xFFFF + 1:
-                self.logger.warning(
-                    "[!] Warning: Exceeded RFC 3849 IPv6 limit (65535 addresses). "
-                    "Using RFC 4193 ULA range (fd00::/8) for additional addresses."
-                )
+    def _counter_to_rfc_ipv6(self, counter: int) -> str:
+        """Map a counter into RFC 3849 (2001:db8::/32), then RFC 4193 on overflow"""
+        # Map counter to last hextet (1..65535)
+        if counter <= 0xFFFF:
+            return f"2001:db8::{counter:x}"
 
-            # Map overflow to fd00::/8 range
-            # overflow 1 (counter 65536) -> fd00::0:1
-            # overflow 65536 (counter 131071) -> fd00::1:0
-            overflow = counter - 0xFFFF
-            hextet3 = ((overflow - 1) % 0x10000) + 1
-            hextet2 = (overflow - 1) // 0x10000
-            return f"fd00::{hextet2:x}:{hextet3:x}"
+        # IPv6 overflow: use RFC 4193 Unique Local Addresses (ULA)
+        # fd00::/8 range for overflow addresses
+        # Log warning on first overflow
+        if counter == 0xFFFF + 1:
+            self.logger.warning(
+                "[!] Warning: Exceeded RFC 3849 IPv6 limit (65535 addresses). "
+                "Using RFC 4193 ULA range (fd00::/8) for additional addresses."
+            )
 
-        # RFC 5737 IPv4 documentation ranges (762 total addresses):
-        # - 192.0.2.0/24 (TEST-NET-1): 254 usable (.1 to .254)
-        # - 198.51.100.0/24 (TEST-NET-2): 254 usable (.1 to .254)
-        # - 203.0.113.0/24 (TEST-NET-3): 254 usable (.1 to .254)
+        # Map overflow to fd00::/8 range
+        # overflow 1 (counter 65536) -> fd00::0:1
+        # overflow 65536 (counter 131071) -> fd00::1:0
+        overflow = counter - 0xFFFF
+        hextet3 = ((overflow - 1) % 0x10000) + 1
+        hextet2 = (overflow - 1) // 0x10000
+        return f"fd00::{hextet2:x}:{hextet3:x}"
 
-        # Log warnings at approach thresholds
+    def _warn_ipv4_limit(self, counter: int) -> None:
+        """Warn as the RFC 5737 pool is approached and exhausted"""
         if counter == 700:
             self.logger.warning(
                 "[!] Warning: Approaching RFC 5737 IPv4 limit (700/762 addresses used). "
@@ -861,6 +861,16 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 "[!] Warning: Reached RFC 5737 IPv4 limit (762/762 addresses used). "
                 "Next IP will use RFC 1918 private range."
             )
+
+    def _counter_to_rfc_ipv4(self, counter: int) -> str:
+        """Map a counter into the RFC 5737 ranges, then RFC 1918 on overflow
+
+        RFC 5737 IPv4 documentation ranges (762 total addresses):
+        - 192.0.2.0/24 (TEST-NET-1): 254 usable (.1 to .254)
+        - 198.51.100.0/24 (TEST-NET-2): 254 usable (.1 to .254)
+        - 203.0.113.0/24 (TEST-NET-3): 254 usable (.1 to .254)
+        """
+        self._warn_ipv4_limit(counter)
 
         if counter <= 254:
             # First range: 192.0.2.1 to 192.0.2.254
