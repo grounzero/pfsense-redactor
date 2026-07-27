@@ -2336,9 +2336,14 @@ def _windows_dirs_from_environment() -> set[str]:
         dirs.add(value.lower())
 
         # System32 sits under SystemRoot and is worth naming explicitly, since
-        # the most damaging writes land there rather than in the root
+        # the most damaging writes land there rather than in the root.
+        #
+        # Joined with a literal backslash rather than os.path.join: these are
+        # Windows paths, and join would use the *host* separator, producing
+        # 'd:\\windows/system32' when the set is built on POSIX - as it is in
+        # the tests that simulate a Windows environment.
         if variable in ('SystemRoot', 'windir'):
-            dirs.add(f"{value.rstrip(chr(92))}\\system32".lower())
+            dirs.add((value.rstrip('/\\') + '\\system32').lower())
 
     return dirs
 
@@ -2389,7 +2394,11 @@ def _get_sensitive_directories() -> frozenset[str]:
             # Handle errors in path resolution (e.g., permission denied)
             normalised.add(path_str.lower())
 
-    return frozenset(normalised)
+    # Canonicalise: no entry carries a trailing separator, so the set is
+    # predictable for callers and comparisons do not depend on how an entry
+    # was spelled. _is_in_sensitive_directory strips defensively as well,
+    # because it also accepts hand-built sets.
+    return frozenset(entry.rstrip('/\\') or entry for entry in normalised)
 
 
 # System files that must never be written to, compared against the resolved
