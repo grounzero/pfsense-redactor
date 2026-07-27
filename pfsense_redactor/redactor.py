@@ -637,6 +637,31 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             pass
         return value
 
+    @staticmethod
+    def _mask_sample_host(host: str) -> str:
+        """Mask a URL host for sample display
+
+        IPv6 results are bracketed because they are substituted back into a
+        netloc, which is why this cannot simply reuse _mask_ip_sample.
+        """
+        try:
+            ip = ipaddress.ip_address(host)
+        except (ValueError, ipaddress.AddressValueError):
+            # Domain: keep the first label and the registrable tail
+            host_parts = host.split('.')
+            if len(host_parts) >= 3:
+                return f"{host_parts[0]}.***.{'.'.join(host_parts[-2:])}"
+            if len(host_parts) == 2:
+                return f"***.{host}"
+            return host
+
+        if ip.version == 4:
+            host_parts = host.split('.')
+            return f"{host_parts[0]}.{host_parts[1]}.***.{host_parts[3]}" if len(host_parts) == 4 else host
+
+        host_parts = host.split(':')
+        return f"[{host_parts[0]}:{host_parts[1]}:*:****::{host_parts[-1]}]" if len(host_parts) >= 3 else f"[{host}]"
+
     def _mask_url_sample(self, value: str) -> str:
         """Mask URL for sample display
 
@@ -652,22 +677,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             if not host:
                 return value
 
-            try:
-                ip = ipaddress.ip_address(host)
-                if ip.version == 4:
-                    host_parts = host.split('.')
-                    masked_host = f"{host_parts[0]}.{host_parts[1]}.***.{host_parts[3]}" if len(host_parts) == 4 else host
-                else:
-                    host_parts = host.split(':')
-                    masked_host = f"[{host_parts[0]}:{host_parts[1]}:*:****::{host_parts[-1]}]" if len(host_parts) >= 3 else f"[{host}]"
-            except (ValueError, ipaddress.AddressValueError):
-                host_parts = host.split('.')
-                if len(host_parts) >= 3:
-                    masked_host = f"{host_parts[0]}.***.{'.'.join(host_parts[-2:])}"
-                elif len(host_parts) == 2:
-                    masked_host = f"***.{host}"
-                else:
-                    masked_host = host
+            masked_host = self._mask_sample_host(host)
 
             userinfo = ''
             if parts.username:
