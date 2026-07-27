@@ -5,6 +5,58 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0][] - 2026-07-27
+
+### Security
+- **FIX**: Secret detection matched element names exactly, so the concatenated spellings pfSense
+  and its packages actually emit were never redacted. `REDACT_ELEMENTS` contained `community`,
+  but pfSense writes `<rocommunity>`/`<rwcommunity>`; the entry that existed was the one that
+  never fired. Against a 46-secret canary corpus, 31 secrets (67%) survived in **every** mode.
+  Newly redacted element names include:
+  - SNMP: `rocommunity`, `rwcommunity`
+  - Wireless: `passphrase` (WPA/WPA2 PSK)
+  - VPN: `auth_pass`, `presharedkey` (WireGuard), `ipsecpsk`, `eap_password`
+  - Auth: `radiussecret`, `authorizedkeys`
+  - Packages: `accountkey` (ACME), `dns_cf_token`, `maxmind_key` (pfBlockerNG),
+    `influx_token` (Telegraf), `tlspskvalue` (Zabbix), `access_key`/`secret_access_key` (S3),
+    `userkey` (Pushover), `ha_certificates`/`ssloffloadcert` (HAProxy)
+
+  This also affected this project's own sample configs, where `passwordagain`, `crypto_password`,
+  `redis_password`, `auth_pass` and `rocommunity` values were all being emitted in the clear.
+- **FIX**: `_get_tag_base()` stripped trailing digits but was only applied to IP-bearing elements,
+  so `password` was redacted while `password2` and `passwordagain` were not. It is now applied to
+  secret and certificate matching as well.
+- **FIX**: Credentials embedded in URL query strings were preserved while the hostname was
+  anonymised, giving false reassurance that a URL had been sanitised. Query-parameter values whose
+  parameter name denotes a secret (`token`, `key`, `password`, `license`, …) are now redacted by
+  default. Under `--aggressive`, credential-shaped URL path segments (Slack/Discord webhook
+  tokens) are redacted too.
+- **FIX**: Free-text option blocks (`custom_options`, `upsd_users`, `userparams`, `advanced`, …)
+  were never scanned. `custom_options` is the standard place for OpenVPN directives and commonly
+  holds `askpass` and `auth-user-pass`. These are now scanned for inline `key=value` credentials
+  and secret-bearing directives, and redacted wholesale under `--aggressive`.
+- **FIX**: The PEM/base64 blob heuristic was gated on the tag being exactly `key`, so identical
+  content in any other element passed through untouched.
+
+### Added
+- **NEW**: `--redact-descriptions` flag to redact free-text descriptions and identifiers
+  (`descr`, `detail`, `hostname`, `ssid`). DHCP static-map descriptions are a reliable source of
+  personal names. Off by default, as these fields aid troubleshooting.
+- Unrecognised high-entropy values are now reported in the summary with their element path, so
+  retained secrets can be reviewed manually. Previously the summary only counted what *was*
+  redacted, making retained values impossible to audit. `--aggressive` redacts them outright.
+
+### Changed
+- **BREAKING (output)**: Secret element matching is now pattern-based rather than exact-match, so
+  more fields are redacted by default. A deny-list keeps known non-secrets readable
+  (`snortcommunityrules`, `pass_order`, `password_type`, `source_hash_key`, `certref`, `keylen`).
+  Validated at zero false positives across all 875 unique element names in the sample configs.
+- `--aggressive` now broadens *secret* detection, not just IP/domain rewriting. Previously it
+  changed none of the 31 leaked canaries, despite users reasonably reading it as "redact more
+  secrets".
+- Certificate-shaped elements are redacted only when their content looks like PEM or a long blob,
+  so short certificate *references* stay readable.
+
 ## [1.0.10][] - 2025-12-15
 
 ### Changed
@@ -290,6 +342,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.1.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.0
 [1.0.10]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.10
 [1.0.9]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.9
 [1.0.8]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.8

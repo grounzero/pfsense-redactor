@@ -35,6 +35,7 @@ pfSense Redactor includes multiple security protections:
 
 ## Security Audit History
 
+- **2026-07**: v1.1.0 - Secret detection coverage (pattern-based element matching, URL/blob scanning)
 - **2025-12**: v1.0.8 - Symlink security hardening
 - **2025-11**: v1.0.7 - Port validation improvements
 - **2025-10**: v1.0.6 - ReDoS protection added

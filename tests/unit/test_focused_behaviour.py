@@ -4,6 +4,9 @@ Focused behaviour tests using synthetic mini-fixtures
 These tests use minimal inline XML to verify specific redaction logic
 without depending on large sample files.
 """
+import xml.etree.ElementTree as ET
+
+import pytest
 
 # Synthetic XML fixtures
 SECRETS_XML = """<?xml version="1.0"?>
@@ -695,3 +698,270 @@ class TestRegexPrecompilation:
         # Should mask the IP
         assert "192.168.1.1" not in result
         assert "XXX.XXX.XXX.XXX:8080" in result
+
+
+# Element names that leaked before pattern-based tag matching was added.
+# Every one is a real pfSense or package element name.
+LEAKING_SECRET_ELEMENTS = [
+    'rocommunity', 'rwcommunity',        # SNMP community strings
+    'passphrase',                        # WPA/WPA2 PSK
+    'auth_pass',                         # OpenVPN client password
+    'presharedkey',                      # WireGuard peer PSK
+    'ipsecpsk',                          # Per-user IPsec PSK
+    'eap_password',                      # IPsec EAP credential
+    'radiussecret',                      # Captive Portal RADIUS secret
+    'authorizedkeys',                    # SSH authorized keys
+    'accountkey',                        # ACME account key
+    'dns_cf_token',                      # Cloudflare API token
+    'maxmind_key',                       # pfBlockerNG MaxMind licence key
+    'influx_token',                      # Telegraf InfluxDB token
+    'token',                             # Bare token
+    'access_key', 'secret_access_key',   # S3 credentials
+    'tlspskvalue',                       # Zabbix agent PSK
+    'userkey',                           # Pushover user key
+    'bearer_token',
+]
+
+# Element names that match the secret pattern but are not secrets
+NON_SECRET_ELEMENTS = [
+    'snortcommunityrules',   # Boolean "use community ruleset" toggle
+    'pass_order',            # Snort/Suricata rule ordering
+    'password_type',         # Hashing scheme indicator
+    'source_hash_key',       # HAProxy algorithm selector
+    'certref',               # Certificate reference, not key material
+    'keylen',
+    'sshdkeyonly',
+]
+
+
+class TestSecretElementPatternMatching:
+    """Secret detection must match real element names, not just exact entries"""
+
+    @pytest.mark.parametrize('tag', LEAKING_SECRET_ELEMENTS)
+    def test_secret_element_is_redacted(self, basic_redactor, tag):
+        """Each previously-leaking element name is now redacted"""
+        root = ET.fromstring(f'<pfsense><a><{tag}>CANARY</{tag}></a></pfsense>')
+        basic_redactor.redact_element(root)
+
+        assert 'CANARY' not in ET.tostring(root, encoding='unicode')
+
+    @pytest.mark.parametrize('tag', NON_SECRET_ELEMENTS)
+    def test_non_secret_element_is_preserved(self, basic_redactor, tag):
+        """Deny-listed and non-matching elements keep their values"""
+        root = ET.fromstring(f'<pfsense><a><{tag}>plainvalue</{tag}></a></pfsense>')
+        basic_redactor.redact_element(root)
+
+        assert 'plainvalue' in ET.tostring(root, encoding='unicode')
+
+    def test_numbered_variant_is_redacted(self, basic_redactor):
+        """tag_base must be applied to secret matching, not just IP elements"""
+        root = ET.fromstring(
+            '<pfsense><a><password>A</password><password2>B</password2>'
+            '<passwordagain>C</passwordagain></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+        output = ET.tostring(root, encoding='unicode')
+
+        assert '>A<' not in output
+        assert '>B<' not in output
+        assert '>C<' not in output
+
+    def test_short_cert_reference_is_preserved(self, basic_redactor):
+        """Cert-ish tags holding short reference IDs stay readable"""
+        root = ET.fromstring('<pfsense><a><ssl_ca_cert>5f3a1c9b</ssl_ca_cert></a></pfsense>')
+        basic_redactor.redact_element(root)
+
+        assert '5f3a1c9b' in ET.tostring(root, encoding='unicode')
+
+    def test_cert_element_with_pem_is_redacted(self, basic_redactor):
+        """The same tag holding actual PEM material is redacted"""
+        pem = (
+            '-----BEGIN CERTIFICATE-----\n'
+            'MIIDXTCCAkWgAwIBAgIJAKL0UG+mRKKzMA0GCSqGSIb3DQEBCwUAMEUxCzAJBgNV\n'
+            '-----END CERTIFICATE-----'
+        )
+        root = ET.fromstring(f'<pfsense><a><ha_certificates>{pem}</ha_certificates></a></pfsense>')
+        basic_redactor.redact_element(root)
+        output = ET.tostring(root, encoding='unicode')
+
+        assert 'BEGIN CERTIFICATE' not in output
+        assert '[REDACTED_CERT_OR_KEY]' in output
+
+    def test_key_element_keeps_cert_distinction(self, basic_redactor):
+        """<key> retains its PEM-vs-short-secret handling"""
+        pem = '-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEAu1SU1LfVLPHCoz\n-----END RSA PRIVATE KEY-----'
+        root = ET.fromstring(f'<pfsense><key>{pem}</key></pfsense>')
+        basic_redactor.redact_element(root)
+
+        assert '[REDACTED_CERT_OR_KEY]' in ET.tostring(root, encoding='unicode')
+
+
+class TestBlobTextElements:
+    """Opaque free-text containers are scanned for inline credentials"""
+
+    def test_custom_options_askpass_directive(self, basic_redactor):
+        """askpass argument is redacted in OpenVPN custom_options"""
+        root = ET.fromstring(
+            '<pfsense><a><custom_options>askpass /secret/passfile</custom_options></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+
+        assert '/secret/passfile' not in ET.tostring(root, encoding='unicode')
+
+    def test_upsd_users_inline_password(self, basic_redactor):
+        """key=value is found mid-line, not only at line start"""
+        root = ET.fromstring(
+            '<pfsense><a><upsd_users>[admin] password=hunter2</upsd_users></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+        output = ET.tostring(root, encoding='unicode')
+
+        assert 'hunter2' not in output
+        assert '[admin]' in output, 'non-secret content should survive'
+
+    def test_non_secret_directive_preserved(self, basic_redactor):
+        """Ordinary directives in blob text are left alone"""
+        root = ET.fromstring(
+            '<pfsense><a><custom_options>verb 3\nkeepalive 10 60</custom_options></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+        output = ET.tostring(root, encoding='unicode')
+
+        assert 'verb 3' in output
+        assert 'keepalive 10 60' in output
+
+    def test_aggressive_redacts_blob_wholesale(self, aggressive_redactor):
+        """Aggressive mode does not rely on recognising the inner format"""
+        root = ET.fromstring(
+            '<pfsense><a><userparams>UserParameter=x,cat /root/creds</userparams></a></pfsense>'
+        )
+        aggressive_redactor.redact_element(root)
+
+        assert '/root/creds' not in ET.tostring(root, encoding='unicode')
+
+
+class TestURLSecretRedaction:
+    """Credentials in URL paths and query strings"""
+
+    def test_secret_query_param_redacted(self, basic_redactor):
+        """Anonymising the host is not enough if the token survives"""
+        result = basic_redactor.redact_text(
+            'https://api.dnsprov.example/update?token=s3cr3tvalue&host=fw'
+        )
+
+        assert 's3cr3tvalue' not in result
+        assert 'REDACTED' in result
+
+    def test_non_secret_query_param_preserved(self, basic_redactor):
+        """Ordinary query parameters keep their values"""
+        result = basic_redactor.redact_text('https://feeds.example.net/list.txt?format=csv')
+
+        assert 'format=csv' in result
+
+    def test_url_in_unrecognised_element_is_scanned(self, basic_redactor):
+        """URLs are found by content, not only in known URL-bearing tags"""
+        root = ET.fromstring(
+            '<pfsense><a><updateurl>https://api.example.com/u?token=leakme</updateurl></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+
+        assert 'leakme' not in ET.tostring(root, encoding='unicode')
+
+    def test_webhook_path_token_redacted_aggressive(self, aggressive_redactor):
+        """Webhook secrets live in the path, not the query string
+
+        Uses a .example host rather than the real webhook provider's domain:
+        the redaction under test operates on path segments only, and a
+        realistic provider hostname makes the fixture match secret-scanning
+        patterns and blocks pushes.
+        """
+        result = aggressive_redactor.redact_text(
+            'https://hooks.chat-provider.example/services/T00000000/B00000000/XiFdb92Kd8sM1nRq7vLwP3zY'
+        )
+
+        assert 'XiFdb92Kd8sM1nRq7vLwP3zY' not in result
+
+    def test_short_path_segments_preserved(self, aggressive_redactor):
+        """Ordinary route names are not mistaken for tokens"""
+        result = aggressive_redactor.redact_text('https://feeds.example.net/lists/blocklist')
+
+        assert '/lists/blocklist' in result
+        assert 'REDACTED' not in result
+
+
+class TestHighEntropyBlobs:
+    """Unrecognised high-entropy values are reported, and redacted when asked"""
+
+    BLOB_XML = (
+        '<pfsense><installedpackages><mycustompkg><config>'
+        '<blob>Q0FOQVJZX0JBU0U2NEJMT0JfQ0FOQVJZX0JBU0U2NEJMT0JfQ0FOQVJZ</blob>'
+        '</config></mycustompkg></installedpackages></pfsense>'
+    )
+
+    def test_retained_by_default_but_reported(self, basic_redactor):
+        """Default mode keeps the value but records where it is"""
+        root = ET.fromstring(self.BLOB_XML)
+        basic_redactor.redact_element(root)
+
+        assert basic_redactor.stats['high_entropy_retained'] == 1
+        assert any('blob' in p for p in basic_redactor.high_entropy_paths)
+        assert 'Q0FOQVJZ' in ET.tostring(root, encoding='unicode')
+
+    def test_reported_path_is_fully_qualified(self, basic_redactor):
+        """The reported path locates the element for manual review"""
+        root = ET.fromstring(self.BLOB_XML)
+        basic_redactor.redact_element(root)
+
+        assert 'pfsense/installedpackages/mycustompkg/config/blob' in basic_redactor.high_entropy_paths
+
+    def test_redacted_under_aggressive(self, aggressive_redactor):
+        """Aggressive mode redacts unrecognised blobs"""
+        root = ET.fromstring(self.BLOB_XML)
+        aggressive_redactor.redact_element(root)
+
+        assert 'Q0FOQVJZ' not in ET.tostring(root, encoding='unicode')
+
+    def test_ordinary_text_not_flagged(self, basic_redactor):
+        """Long prose is not mistaken for encoded key material"""
+        root = ET.fromstring(
+            '<pfsense><a><notes>This is a fairly long human readable note about the setup</notes></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+
+        assert basic_redactor.stats['high_entropy_retained'] == 0
+
+
+class TestRedactDescriptions:
+    """--redact-descriptions covers personal names in free-text fields"""
+
+    DESCR_XML = (
+        '<pfsense><dhcpd><lan><staticmap>'
+        '<hostname>ceo-laptop</hostname>'
+        '<descr>CEO Jane Doe personal MBP</descr>'
+        '</staticmap></lan></dhcpd></pfsense>'
+    )
+
+    def test_descriptions_preserved_by_default(self, basic_redactor):
+        """Descriptions aid troubleshooting, so they stay unless asked"""
+        root = ET.fromstring(self.DESCR_XML)
+        basic_redactor.redact_element(root)
+
+        assert 'Jane Doe' in ET.tostring(root, encoding='unicode')
+
+    def test_descriptions_redacted_when_enabled(self, redactor_factory):
+        """The flag removes descriptions and identifiers"""
+        redactor = redactor_factory(redact_descriptions=True)
+        root = ET.fromstring(self.DESCR_XML)
+        redactor.redact_element(root)
+        output = ET.tostring(root, encoding='unicode')
+
+        assert 'Jane Doe' not in output
+        assert 'ceo-laptop' not in output
+
+    def test_ssid_redacted_when_enabled(self, redactor_factory):
+        """SSIDs are organisation-identifying"""
+        redactor = redactor_factory(redact_descriptions=True)
+        root = ET.fromstring('<pfsense><a><ssid>ACME-Corp-WiFi</ssid></a></pfsense>')
+        redactor.redact_element(root)
+
+        assert 'ACME-Corp-WiFi' not in ET.tostring(root, encoding='unicode')
