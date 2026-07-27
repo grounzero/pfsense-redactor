@@ -187,8 +187,12 @@ DESCRIPTION_ELEMENTS: frozenset[str] = frozenset({
 # key<sep>value scanner for BLOB_TEXT_ELEMENTS. Matches anywhere in a line, not
 # just at its start, so '[admin] password=secret' (NUT upsd_users format) is
 # caught as well as a bare 'password=secret'.
+#
+# The (?!//) guard stops a URL scheme being read as a key=value pair: without
+# it 'https://host/x?token=SECRET' matches as key='https', value='//host/...',
+# which consumes the whole URL and hides the token from further scanning.
 BLOB_KV_RE = re.compile(
-    r'(?P<key>[A-Za-z0-9_.\-]+)(?P<sep>\s*[=:]\s*)(?P<value>[^\s,;]+)'
+    r'(?P<key>[A-Za-z0-9_.\-]+)(?P<sep>\s*[=:]\s*)(?P<value>(?!//)[^\s,;]+)'
 )
 
 # Directive style: 'askpass /path/to/passfile' - name and argument separated by
@@ -1003,35 +1007,40 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         Note: RFC documentation IPs are preserved in anonymise mode (they're our generated values)
         """
-        # In anonymise mode, RFC documentation IPs should be left as-is (they're already masked)
+        # An already-masked host says nothing about the rest of the URL: the
+        # query and userinfo beside it still need scrubbing, so every branch
+        # below goes through these rather than returning parts untouched.
+        query = self._redact_query_secrets(parts.query)
+
+        # Whether the host is already masked and should be kept as-is
+        keep_host = False
+
+        # In anonymise mode, RFC documentation IPs are our own generated values
         if self.anonymise:
             try:
                 ip = ipaddress.ip_address(host)
-                # RFC 5737 IPv4 or RFC 3849 IPv6 - already masked, return as-is
                 if ip.version == 4:
                     rfc5737_ranges = [
                         ipaddress.ip_network('192.0.2.0/24'),
                         ipaddress.ip_network('198.51.100.0/24'),
                         ipaddress.ip_network('203.0.113.0/24'),
                     ]
-                    if any(ip in net for net in rfc5737_ranges):
-                        return urlunsplit(parts)
+                    keep_host = any(ip in net for net in rfc5737_ranges)
                 elif ip.version == 6:
-                    rfc3849 = ipaddress.ip_network('2001:db8::/32')
-                    if ip in rfc3849:
-                        return urlunsplit(parts)
+                    keep_host = ip in ipaddress.ip_network('2001:db8::/32')
             except ValueError:
                 pass  # Not an IP, continue with domain normalisation
 
         # In anonymise mode, use a consistent alias for masked URLs
         masked_host = self._anonymise_domain('example.com') if self.anonymise else 'example.com'
 
-        if host == masked_host:
-            return urlunsplit(parts)
+        if keep_host or host == masked_host:
+            netloc, _ = self._redact_netloc_userinfo(parts)
+        else:
+            # Replace IP masks with example.com (or alias)
+            netloc = self._build_netloc(parts, masked_host, False)
 
-        # Replace IP masks with example.com (or alias)
-        netloc = self._build_netloc(parts, masked_host, False)
-        return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+        return urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
 
     def _mask_url_host(self, host: str) -> tuple[str, bool, bool]:
         """Mask URL host. Returns (masked_host, changed, is_ipv6)"""
@@ -1245,6 +1254,29 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return result
 
+    def _redact_netloc_userinfo(self, parts: SplitResult) -> tuple[str, bool]:
+        """Redact credentials in a URL's userinfo, leaving the host untouched
+
+        Returns (netloc, changed).
+
+        The host portion is sliced from the original netloc rather than taken
+        from parts.hostname, because the latter lower-cases it - this function
+        must not alter the host in any way.
+        """
+        if not parts.username:
+            return parts.netloc, False
+
+        host_port = parts.netloc.rsplit('@', 1)[-1]
+
+        # Same policy as _build_netloc: usernames are preserved unless asked
+        # for, passwords are always redacted.
+        userinfo = 'REDACTED' if self.redact_url_usernames else parts.username
+        if parts.password:
+            userinfo += ':REDACTED'
+
+        netloc = f"{userinfo}@{host_port}"
+        return netloc, netloc != parts.netloc
+
     def _redact_url_secrets_only(self, text: str) -> str:
         """Redact credentials inside URLs without touching the host
 
@@ -1253,6 +1285,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         default path would rewrite harmless package metadata URLs (package
         <website>, <pkginfolink>) for no security benefit. The embedded
         credential is the part that matters, so redact just that.
+
+        Userinfo is redacted here as well as in _build_netloc: omitting it left
+        'user:password@host' intact while the query secret next to it showed as
+        [REDACTED], which reads as sanitised when it is not.
         """
         def replacer(match):
             url = match.group(0)
@@ -1263,12 +1299,20 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             if parts is None or not parts.netloc:
                 return url
 
+            netloc, netloc_changed = self._redact_netloc_userinfo(parts)
             path = self._redact_path_secrets(parts.path) if self.aggressive else parts.path
             query = self._redact_query_secrets(parts.query)
-            if path == parts.path and query == parts.query:
+
+            # netloc_changed must be part of this test: a URL carrying
+            # credentials but no secret-named query parameter would otherwise
+            # never be rewritten at all.
+            if not netloc_changed and path == parts.path and query == parts.query:
                 return url
 
-            return urlunsplit((parts.scheme, parts.netloc, path, query, parts.fragment))
+            if netloc_changed:
+                self.stats['url_secrets_redacted'] += 1
+
+            return urlunsplit((parts.scheme, netloc, path, query, parts.fragment))
 
         return self.URL_RE.sub(replacer, text)
 
@@ -1517,7 +1561,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             return True
 
         original = element.text
-        redacted = self._redact_blob_text(original)
+        redacted = self._redact_blob_text_and_urls(original)
+
         if redacted != original:
             element.text = redacted
             self.stats['secrets_redacted'] += 1
@@ -1533,6 +1578,34 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         if name_l in SECRET_TAG_DENYLIST:
             return False
         return bool(SECRET_TAG_PATTERN.search(name_l))
+
+    def _redact_blob_text_and_urls(self, text: str) -> str:
+        """Scan blob text for both inline key=value credentials and URL secrets
+
+        This element reports its text as handled, which suppresses the
+        URL-secret pass in redact_element; without running it here, blob
+        elements would get LESS URL scanning than an unrecognised element.
+
+        The two scanners must not see each other's output. Running the KV scan
+        over an already-redacted URL re-encodes the '[REDACTED]' marker and
+        leaves a stray bracket behind, so URL spans are stashed behind
+        placeholders while the KV scan runs - the same technique redact_text()
+        uses to protect IPv4 masks from the FQDN pass.
+        """
+        if '://' not in text:
+            return self._redact_blob_text(text)
+
+        stashed: list[str] = []
+
+        def stash(match: re.Match) -> str:
+            stashed.append(self._redact_url_secrets_only(match.group(0)))
+            return f'\x00URL{len(stashed) - 1}\x00'
+
+        result = self._redact_blob_text(self.URL_RE.sub(stash, text))
+
+        for index, url in enumerate(stashed):
+            result = result.replace(f'\x00URL{index}\x00', url)
+        return result
 
     def _redact_blob_text(self, text: str) -> str:
         """Redact the value side of key=value pairs and secret-bearing directives"""

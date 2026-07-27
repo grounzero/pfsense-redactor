@@ -37,6 +37,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and secret-bearing directives, and redacted wholesale under `--aggressive`.
 - **FIX**: The PEM/base64 blob heuristic was gated on the tag being exactly `key`, so identical
   content in any other element passed through untouched.
+- **FIX**: URL credentials (`user:password@host`) were preserved in elements that are not known
+  URL carriers, so a URL could be emitted with its query secret shown as `[REDACTED]` while the
+  HTTP-basic password beside it survived in full — output that reads as sanitised when it is not.
+  Userinfo redaction now follows the same policy on every URL path, and a URL carrying credentials
+  is rewritten even when nothing else in it changes.
+- **FIX**: Free-text blob elements received *less* URL scanning than unrecognised elements, because
+  they reported their text as handled. They are now scanned for URL secrets as well as inline
+  `key=value` credentials, and the key=value scanner no longer mistakes a URL scheme for a key.
 
 ### Added
 - **NEW**: `--redact-descriptions` flag to redact free-text descriptions and identifiers

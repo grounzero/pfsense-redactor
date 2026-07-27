@@ -830,6 +830,48 @@ class TestBlobTextElements:
         assert 'verb 3' in output
         assert 'keepalive 10 60' in output
 
+    def test_url_secrets_scanned_in_blob_elements(self, basic_redactor):
+        """Blob elements must not get less URL scanning than unknown elements"""
+        url = 'https://feeds.corp.example/list?token=FEEDTOKEN9999'
+        root = ET.fromstring(
+            f'<pfsense><a><detail>synced from {url}</detail>'
+            f'<otherfield>synced from {url}</otherfield></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+
+        blob_text = root.find('.//detail').text
+        assert 'FEEDTOKEN9999' not in blob_text
+        assert blob_text == root.find('.//otherfield').text, 'parity with unknown element'
+
+    def test_url_in_blob_not_corrupted_by_kv_scanner(self, basic_redactor):
+        """The KV scan must not re-process an already-redacted URL"""
+        root = ET.fromstring(
+            '<pfsense><a><custom_options>'
+            'remote https://x.example/u?token=ABC123'
+            '</custom_options></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+        text = root.find('.//custom_options').text
+
+        assert 'ABC123' not in text
+        assert '%5D]' not in text, 'double-encoded marker left a stray bracket'
+
+    def test_kv_and_url_scanning_coexist(self, basic_redactor):
+        """Directives, key=value pairs and URLs are all handled in one blob"""
+        root = ET.fromstring(
+            '<pfsense><a><custom_options>askpass /secret/pf\n'
+            'password=hunter2\n'
+            'remote https://x.example/u?token=ABC123\n'
+            'verb 3</custom_options></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+        text = root.find('.//custom_options').text
+
+        assert '/secret/pf' not in text
+        assert 'hunter2' not in text
+        assert 'ABC123' not in text
+        assert 'verb 3' in text, 'non-secret directives must survive'
+
     def test_aggressive_redacts_blob_wholesale(self, aggressive_redactor):
         """Aggressive mode does not rely on recognising the inner format"""
         root = ET.fromstring(
@@ -880,6 +922,53 @@ class TestURLSecretRedaction:
         )
 
         assert 'XiFdb92Kd8sM1nRq7vLwP3zY' not in result
+
+    def test_userinfo_redacted_in_unrecognised_element(self, basic_redactor):
+        """A URL's password must not survive beside a [REDACTED] query marker
+
+        Emitting a partially-redacted URL reads as sanitised when it is not.
+        """
+        root = ET.fromstring(
+            '<pfsense><a><updateurl>'
+            'https://ddnsuser:Sup3rS3cret1@members.dyndns.example/nic/update?password=TOKEN'
+            '</updateurl></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+        output = ET.tostring(root, encoding='unicode')
+
+        assert 'Sup3rS3cret1' not in output
+        assert 'TOKEN' not in output
+
+    def test_userinfo_redacted_without_query_secret(self, basic_redactor):
+        """Credentials are redacted even when nothing else in the URL changes"""
+        root = ET.fromstring(
+            '<pfsense><a><backupurl>'
+            'ftp://backupsvc:BackupPw99@backup.corp.example/nightly'
+            '</backupurl></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+
+        assert 'BackupPw99' not in ET.tostring(root, encoding='unicode')
+
+    def test_userinfo_parity_with_known_url_element(self, basic_redactor):
+        """Known and unknown URL carriers must redact credentials alike"""
+        url = 'https://myuser:Sup3rS3cret1@host.example/nic/update?password=TOKEN'
+        root = ET.fromstring(
+            f'<pfsense><a><url>{url}</url><updateurl>{url}</updateurl></a></pfsense>'
+        )
+        basic_redactor.redact_element(root)
+
+        for tag in ('url', 'updateurl'):
+            assert 'Sup3rS3cret1' not in root.find('.//' + tag).text
+
+    def test_masked_host_still_redacts_query_and_userinfo(self, basic_redactor):
+        """An already-masked host does not imply the rest of the URL is safe"""
+        result = basic_redactor.redact_text(
+            'https://user:pw@example.com/nic/update?password=SECRET'
+        )
+
+        assert 'SECRET' not in result
+        assert ':pw@' not in result
 
     def test_short_path_segments_preserved(self, aggressive_redactor):
         """Ordinary route names are not mistaken for tokens"""
