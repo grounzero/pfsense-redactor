@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <pfsense>
-  <!-- Redacted using pfsense-redactor v1.0.10 -->
+  <!-- Redacted using pfsense-redactor v1.1.0 -->
   <version>18.2</version>
   <lastchange />
   <system>
@@ -192,7 +192,7 @@
   <snmpd>
     <syslocation />
     <syscontact />
-    <rocommunity>public</rocommunity>
+    <rocommunity>[REDACTED]</rocommunity>
   </snmpd>
   <diag>
     <ipv6nat />
@@ -1825,9 +1825,9 @@
         <enable_acb>enabled</enable_acb>
         <username>azamat</username>
         <password>[REDACTED]</password>
-        <passwordagain>j0klpSGf</passwordagain>
-        <crypto_password>cisco</crypto_password>
-        <crypto_password2>cisco</crypto_password2>
+        <passwordagain>[REDACTED]</passwordagain>
+        <crypto_password>[REDACTED]</crypto_password>
+        <crypto_password2>[REDACTED]</crypto_password2>
       </config>
     </autoconfigbackup>
     <haproxy>
@@ -2192,8 +2192,8 @@
       <config>
         <enable>on</enable>
         <keepdata>on</keepdata>
-        <redis_password>pfsense</redis_password>
-        <redis_passwordagain>pfsense</redis_passwordagain>
+        <redis_password>[REDACTED]</redis_password>
+        <redis_passwordagain>[REDACTED]</redis_passwordagain>
         <interface_array>lan</interface_array>
         <interface_array>opt1</interface_array>
         <interface_array>wan</interface_array>

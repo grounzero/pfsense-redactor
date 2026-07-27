@@ -1,0 +1,58 @@
+---
+# Codacy configuration
+#
+# STATUS: currently INERT. Verified on 2026-07-27 against PR #49 - every tool
+# disabled below still ran and still reported:
+#
+#     Markdownlint 254 results, Pylint 103, Prospector 12, Bandit 9
+#
+# exclude_paths was ignored too (Markdownlint reported 254 results on '**/*.md',
+# which is excluded here). The cause is .github/workflows/codacy.yml passing
+# `project-token`, documented by the action as retrieving "your remote Codacy
+# configuration" - the server-side dashboard is authoritative and this file is
+# not consulted.
+#
+# To actually disable a tool, turn it off in the Codacy dashboard for this
+# repository. This file is kept as the record of intent, and becomes effective
+# if `project-token` is ever removed from the workflow (which would also drop
+# the dashboard integration).
+#
+# Codacy runs its own default configuration for each tool, which ignores this
+# project's tuned configs. That produced contradictory results: CI pylint
+# scores 10.00/10 on code that Codacy's pylint reported >20 problems in, and
+# Codacy re-raised rules that .pylintrc-tests disables by name for exactly the
+# pytest patterns they were flagging (protected-access on private-method tests,
+# redefined-outer-name on fixtures).
+#
+# A security scanner that contradicts the project's own standards on every PR
+# trains people to ignore it, which defeats the point. So the tools CI already
+# runs with tuned configs are disabled here, leaving Codacy to cover what CI
+# does not.
+#
+# Already enforced in CI (see .github/workflows/pylint.yml and python-app.yml):
+#   - pylint      via .pylintrc (production, strict) and .pylintrc-tests
+#   - flake8      E9,F63,F7,F82
+#   - bandit      via .bandit (excludes tests/, skips B101)
+engines:
+  pylint:
+    enabled: false
+  pylintpython3:
+    enabled: false
+  prospector:
+    enabled: false
+  bandit:
+    enabled: false
+  # Documentation style; no markdownlint config exists in this project, so it
+  # reports house style as defects.
+  markdownlint:
+    enabled: false
+  remark-lint:
+    enabled: false
+
+# Belt and braces: applied regardless of which tool identifiers Codacy honours.
+# Test fixtures deliberately contain fake credentials and call private methods,
+# both of which read as findings to an untuned scanner.
+exclude_paths:
+  - 'tests/**'
+  - 'test-configs/**'
+  - '**/*.md'

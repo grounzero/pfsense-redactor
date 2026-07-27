@@ -5,6 +5,7 @@ Test command-line interface behaviour, error handling, and safety features
 """
 import re
 import subprocess
+import sys
 from collections import Counter
 
 
@@ -49,7 +50,7 @@ def test_output_required_without_special_modes(script_path, create_xml_file):
 
     # Should succeed and auto-generate output filename
     result = subprocess.run(
-        ["python3", script_path, str(xml_file)],
+        [sys.executable, script_path, str(xml_file)],
         capture_output=True,
         text=True,
         check=False
@@ -310,7 +311,7 @@ def test_no_redact_domains_flag(cli_runner, create_xml_file, tmp_path):
 def test_version_flag_shows_version(script_path):
     """Test --version flag shows version number"""
     result = subprocess.run(
-        ["python3", script_path, "--version"],
+        [sys.executable, script_path, "--version"],
         capture_output=True,
         text=True,
         check=False
@@ -328,7 +329,7 @@ def test_version_flag_shows_version(script_path):
 def test_version_flag_no_input_required(script_path):
     """Test --version doesn't require input file"""
     result = subprocess.run(
-        ["python3", script_path, "--version"],
+        [sys.executable, script_path, "--version"],
         capture_output=True,
         text=True,
         check=False
@@ -344,7 +345,7 @@ def test_check_version_flag_no_input_required(script_path):
     """Test --check-version doesn't require input file"""
     # Note: This will try to contact PyPI, so we expect either success or network error
     result = subprocess.run(
-        ["python3", script_path, "--check-version"],
+        [sys.executable, script_path, "--check-version"],
         capture_output=True,
         text=True,
         timeout=10,  # Timeout in case network hangs
@@ -364,7 +365,7 @@ def test_check_version_flag_no_input_required(script_path):
 def test_version_and_check_version_mutually_exclusive(script_path):
     """Test --version and --check-version cannot be used together"""
     result = subprocess.run(
-        ["python3", script_path, "--version", "--check-version"],
+        [sys.executable, script_path, "--version", "--check-version"],
         capture_output=True,
         text=True,
         check=False
@@ -379,7 +380,7 @@ def test_version_and_check_version_mutually_exclusive(script_path):
 def test_input_required_without_version_flags(script_path):
     """Test input argument is required when not using version flags"""
     result = subprocess.run(
-        ["python3", script_path],
+        [sys.executable, script_path],
         capture_output=True,
         text=True,
         check=False

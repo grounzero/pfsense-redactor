@@ -11,6 +11,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege for GITHUB_TOKEN: this workflow only checks out the code and
+# runs a linter. Without an explicit block the token inherits the repository
+# default, which can include write scopes.
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest

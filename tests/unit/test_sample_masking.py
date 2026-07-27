@@ -329,3 +329,105 @@ class TestSecretSampleStarFlooding:
 
         assert masked == "******** (len=9)"
         assert masked.count('*') == 8
+
+
+class TestSampleMaskingNeverLeaksSecrets:
+    """The --dry-run-verbose preview must not print credentials
+
+    Users run --dry-run-verbose specifically to check what will happen before
+    sharing a config. Its output goes to a terminal, and from there into CI
+    logs and pasted tickets, so a live token printed here defeats the point.
+
+    _mask_url_sample was previously untested (36 of its 44 statements) and
+    passed the query string through verbatim.
+    """
+
+    SECRETS = (
+        'SECRETTOKEN', 'Sup3rS3cret1', 'TOKEN99',
+        'XiFdb92Kd8sM1nRq7vLwP3zY', 'IPV6SECRET',
+    )
+
+    def _assert_no_secret(self, masked):
+        for secret in self.SECRETS:
+            assert secret not in masked, f"sample display leaked {secret!r}: {masked}"
+
+    def test_query_secret_not_shown(self, basic_redactor):
+        """The demonstrated leak: query values printed in full"""
+        masked = basic_redactor._safe_mask_for_sample(
+            'https://api.example.com/v1?token=SECRETTOKEN', 'URL'
+        )
+        self._assert_no_secret(masked)
+
+    def test_userinfo_password_not_shown(self, basic_redactor):
+        """Userinfo password masking still works alongside the query fix"""
+        masked = basic_redactor._safe_mask_for_sample(
+            'https://ddnsuser:Sup3rS3cret1@members.dyndns.example/u?password=TOKEN99', 'URL'
+        )
+        self._assert_no_secret(masked)
+
+    def test_path_token_not_shown(self, basic_redactor):
+        """Webhook-style credentials live in the path, not the query"""
+        masked = basic_redactor._safe_mask_for_sample(
+            'https://hooks.example.com/services/T00/B00/XiFdb92Kd8sM1nRq7vLwP3zY', 'URL'
+        )
+        self._assert_no_secret(masked)
+
+    def test_ipv6_branch_also_redacts_query(self, basic_redactor):
+        """The bracketed-IPv6 branch builds the URL separately - check it too"""
+        masked = basic_redactor._safe_mask_for_sample(
+            'https://[2001:db8::1]:8443/p?apikey=IPV6SECRET', 'URL'
+        )
+        self._assert_no_secret(masked)
+
+    def test_non_secret_query_preserved(self, basic_redactor):
+        """Masking must stay useful: ordinary parameters still readable"""
+        masked = basic_redactor._safe_mask_for_sample(
+            'https://feeds.example.net/lists/blocklist?format=csv', 'URL'
+        )
+        assert 'format=csv' in masked
+
+    def test_display_masking_does_not_inflate_stats(self, basic_redactor):
+        """Sample display must have no redaction-counter side effects"""
+        basic_redactor._safe_mask_for_sample(
+            'https://api.example.com/v1?token=SECRETTOKEN', 'URL'
+        )
+
+        assert basic_redactor.stats['url_secrets_redacted'] == 0
+
+    def test_malformed_url_returns_something_safe(self, basic_redactor):
+        """A URL that will not parse must not raise, and must not leak"""
+        masked = basic_redactor._safe_mask_for_sample('not a url at all', 'URL')
+
+        assert isinstance(masked, str)
+
+    def test_ip_host_url_masked(self, basic_redactor):
+        """IPv4 literal hosts take a different branch to domains"""
+        masked = basic_redactor._safe_mask_for_sample(
+            'https://198.51.100.7/v1?token=SECRETTOKEN', 'URL'
+        )
+        self._assert_no_secret(masked)
+        assert '198.51.100.7' not in masked
+
+    def test_mac_sample_masks_middle_octets(self, basic_redactor):
+        """Cover the MAC masker, previously exercised only via subprocess"""
+        masked = basic_redactor._safe_mask_for_sample('aa:bb:cc:dd:ee:ff', 'MAC')
+
+        assert masked.startswith('aa:bb:')
+        assert 'cc:dd' not in masked
+
+    def test_fqdn_sample_keeps_tld(self, basic_redactor):
+        """FQDN masker keeps enough to be recognisable without full disclosure"""
+        masked = basic_redactor._safe_mask_for_sample('host.internal.corp.example', 'FQDN')
+
+        assert '***' in masked
+        assert masked.endswith('corp.example')
+
+    def test_ip_sample_masks_third_octet(self, basic_redactor):
+        """IPv4 sample masker hides the third octet"""
+        masked = basic_redactor._safe_mask_for_sample('192.0.2.55', 'IP')
+
+        assert masked == '192.0.***.55'
+
+    def test_unknown_category_returns_value_unchanged(self, basic_redactor):
+        """Unknown categories fall through rather than raising"""
+        assert basic_redactor._safe_mask_for_sample('plain', 'NoSuchCategory') == 'plain'

@@ -54,6 +54,27 @@ jobs:
           # This will handover control about PR rejection to the GitHub side
           max-allowed-issues: 2147483647
 
+      # Codacy emits one SARIF run per analysis tool, and can emit several runs
+      # for the same tool. Since 2025-07-21 the CodeQL Action refuses a file
+      # containing multiple runs that resolve to the same category, failing with
+      # "does not support uploading multiple SARIF runs with the same category".
+      #
+      # A `category:` input does not help - it applies one category to the whole
+      # upload, which is the collision. The category actually comes from each
+      # run's automationDetails.id, so give every run a distinct one. The index
+      # is included because tool names are not guaranteed to be unique.
+      #
+      # See: https://github.blog/changelog/2025-07-21-code-scanning-will-stop-combining-multiple-sarif-runs-uploaded-in-the-same-sarif-file/
+      - name: Give each SARIF run a distinct category
+        run: |
+          jq '.runs |= [ to_entries[]
+                | .value + {automationDetails:
+                    {id: ("codacy/" + (.value.tool.driver.name // "tool")
+                          + "/" + (.key|tostring) + "/")}} ]' \
+             results.sarif > results.categorised.sarif
+          mv results.categorised.sarif results.sarif
+          echo "runs: $(jq '.runs|length' results.sarif), unique categories: $(jq -r '[.runs[].automationDetails.id]|unique|length' results.sarif)"
+
       # Upload the SARIF file generated in the previous step
       - name: Upload SARIF results file
         uses: github/codeql-action/upload-sarif@v4

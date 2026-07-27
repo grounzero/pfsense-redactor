@@ -192,7 +192,14 @@ Yes. Unlike generic XML redaction tools, pfsense-redactor understands pfSense co
 
 ### When should I use aggressive mode?
 
-Use `--aggressive` when sharing configurations publicly or when third-party packages may include unknown sensitive fields. This mode applies broader redaction.
+Use `--aggressive` when sharing configurations publicly or when third-party packages may include unknown sensitive fields.
+
+Aggressive mode broadens both secret detection and identifier rewriting. On top of the default behaviour it will:
+
+- Redact unrecognised high-entropy values (base64/hex/PEM-shaped) in any element, rather than reporting them
+- Redact free-text option blocks (`custom_options`, `userparams`, `upsd_users`, `advanced`, …) wholesale
+- Redact credential-shaped URL **path** segments, such as Slack/Discord webhook tokens
+- Apply IP/domain redaction to all element text, not just known fields
 
 ### Can I restore the redacted file to pfSense?
 
@@ -299,6 +306,7 @@ The tool preserves **network architecture and routing logic** whilst sanitising 
 | `--keep-private-ips` | Preserve private IPs (best for support/AI)                                   |
 | `--anonymise`        | Replace identifiers with consistent placeholders (`IP_1`, `domain3.example`) |
 | `--aggressive`       | Scrub **all** fields (plugins/custom XML)                                    |
+| `--redact-descriptions` | Also redact descriptions, hostnames and SSIDs (may contain personal names) |
 
 ---
 
@@ -409,10 +417,11 @@ pfsense-redactor config.xml --inplace --force
 | `--keep-private-ips`     | Keep non-global IP addresses visible (RFC1918/ULA/loopback/link-local). Netmasks and unspecified addresses (0.0.0.0, ::) always preserved          |
 | `--no-keep-private-ips`  | When used with `--anonymise`, do NOT keep private IPs visible (mask all IPs)                                                                       |
 | `--anonymise`            | Use consistent aliases (IP_1, domain1.example) to preserve network topology. Implies `--keep-private-ips` unless `--no-keep-private-ips` specified |
-| `--aggressive`           | Apply IP/domain redaction to all element text, not just known fields                                                                               |
+| `--aggressive`           | Broaden secret detection (high-entropy values, free-text option blocks, URL path tokens) and apply IP/domain redaction to all element text          |
 | `--no-redact-ips`        | Do not redact IP addresses                                                                                                                         |
 | `--no-redact-domains`    | Do not redact domain names                                                                                                                         |
 | `--redact-url-usernames` | Redact usernames in URLs (default: preserve usernames, always redact passwords)                                                                    |
+| `--redact-descriptions`  | Redact free-text descriptions and identifiers (`descr`, `detail`, `hostname`, `ssid`). Off by default as these aid troubleshooting                  |
 
 <details>
 <summary>Allow-lists</summary>

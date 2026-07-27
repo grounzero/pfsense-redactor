@@ -1,6 +1,34 @@
 """
 pfSense XML Configuration Redactor
 Redacts sensitive information from pfSense config.xml files
+
+Single-module design
+--------------------
+This file is large and deliberately stays that way. It must remain runnable as
+a lone file - copied on its own to a firewall or jump host, with no package
+context and nothing else beside it:
+
+    python3 redactor.py config.xml --stdout
+
+For a tool whose job is to be trusted with secrets, "read this one file, then
+run it" is worth more than a tidier module tree. Any relative or sibling import
+would end that, so there are none; the only package-relative import is the
+optional __version__ lookup in resolve_version(), which falls back cleanly.
+
+Guarded by tests/integration/test_standalone_script.py, and by the C0302
+disable in .pylintrc.
+
+Layout
+------
+Sections below are marked with banner comments, in this order:
+
+    1. Logging          ColouredFormatter, setup_logging
+    2. Constants        element sets, secret/cert tag patterns, deny-list
+    3. Version          resolve_version
+    4. Redactor         PfSenseRedactor - the bulk of the file
+    5. Allowlists       allow-list file parsing
+    6. Path safety      path traversal / sensitive directory validation
+    7. CLI              argparse wiring and main()
 """
 from __future__ import annotations
 
@@ -15,7 +43,7 @@ from pathlib import Path
 from collections import defaultdict
 from collections.abc import Callable
 from typing import Union
-from urllib.parse import urlsplit, urlunsplit, SplitResult
+from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode, SplitResult
 import os
 
 # Type aliases (using Union for Python 3.9 compatibility)
@@ -23,6 +51,9 @@ IPAddress = Union[ipaddress.IPv4Address, ipaddress.IPv6Address]
 IPNetwork = Union[ipaddress.IPv4Network, ipaddress.IPv6Network]
 
 
+# ==========================================================================
+# 1. LOGGING
+# ==========================================================================
 class ColouredFormatter(logging.Formatter):
     """Add ANSI colour codes to log messages for TTY output"""
 
@@ -101,6 +132,9 @@ def setup_logging(level: int = logging.INFO, use_stderr: bool = False) -> loggin
 
 
 # Module-level constants (immutable for safety)
+# ==========================================================================
+# 2. CONSTANTS - element sets, secret/cert tag patterns, deny-list
+# ==========================================================================
 ALWAYS_PRESERVE_IPS: frozenset[str] = frozenset({
     '255.255.255.0', '255.255.0.0', '255.0.0.0',
     '255.255.255.128', '255.255.255.192', '255.255.255.224',
@@ -125,6 +159,93 @@ CERT_KEY_ELEMENTS: frozenset[str] = frozenset({
     'cert',  # Can contain PEM directly in some configs
     'public-key',
 })
+
+# Substring-tolerant secret element matching.
+#
+# REDACT_ELEMENTS above is an exact-match set, which misses the concatenated
+# spellings pfSense and its packages actually emit: <rocommunity>/<rwcommunity>
+# rather than <community>, <radiussecret> rather than <radius_secret>,
+# <auth_pass>, <ipsecpsk>, <tlspskvalue>, <passwordagain> and so on.
+#
+# Matching is deliberately substring-based (not \b-anchored) because those
+# concatenated forms are precisely what leaks. False positives are handled by
+# SECRET_TAG_DENYLIST below rather than by narrowing the pattern - consistent
+# with this tool's general stance that over-redaction beats under-redaction.
+SECRET_TAG_PATTERN = re.compile(
+    r'passw(?:or)?d|passphrase|(?:^|[_-])pass(?:$|[_-])'
+    r'|psk|pre-?shared-?key|shared-?key'
+    r'|secret|token|community|credential|bindpw|licen[cs]e'
+    r'|api[_-]?key|account-?key|authorized-?keys'
+    r'|priv(?:ate)?[_-]?key|key(?:s)?$|[_-]key\d*$',
+    re.IGNORECASE
+)
+
+# Certificate-ish tags are redacted only when the content actually looks like
+# PEM/blob material, so short certificate *references* (refid-style IDs, which
+# are useful for understanding config structure) survive intact.
+CERT_TAG_PATTERN = re.compile(r'cert(?:ificate)?s?$|ssloffload', re.IGNORECASE)
+
+# Tags that match SECRET_TAG_PATTERN but are not secrets.
+#
+# IMPORTANT: this deny-list gates SECRET_TAG_PATTERN/CERT_TAG_PATTERN only. It
+# must never be consulted for REDACT_ELEMENTS or CERT_KEY_ELEMENTS membership -
+# 'public-key' is in CERT_KEY_ELEMENTS and must keep its existing PEM/length
+# behaviour.
+SECRET_TAG_DENYLIST: frozenset[str] = frozenset({
+    # Certificate/key references and metadata, not key material
+    'certref', 'caref', 'ssl-certref', 'sslcertref', 'keylen', 'keyid',
+    'crypto', 'tokenize', 'keyname',
+    'publickey', 'pubkey', 'public-key', 'sshdkeyonly',
+    # Observed false positives in real pfSense/package configs
+    'pass_order',            # Snort/Suricata rule ordering
+    'password_type',         # Indicates hashing scheme, not a credential
+    'snortcommunityrules',   # Boolean "use community ruleset" toggle
+    'sendcommunity',         # Boolean toggle
+    'source_hash_key',       # HAProxy load-balancing algorithm selector
+})
+
+# Opaque free-text containers that routinely carry credentials inline.
+# custom_options is the standard place for OpenVPN/Unbound/Squid directives and
+# frequently holds askpass, auth-user-pass and inline keys.
+BLOB_TEXT_ELEMENTS: frozenset[str] = frozenset({
+    'custom_options', 'custom_options_squid3', 'advanced', 'advancedoptions',
+    'userparams', 'upsd_users', 'objectparameters', 'advanced_bind',
+    'detail',
+})
+
+# Free-text/identifier elements redacted only under --redact-descriptions.
+DESCRIPTION_ELEMENTS: frozenset[str] = frozenset({
+    'descr', 'detail', 'hostname', 'ssid',
+})
+
+# key<sep>value scanner for BLOB_TEXT_ELEMENTS. Matches anywhere in a line, not
+# just at its start, so '[admin] password=secret' (NUT upsd_users format) is
+# caught as well as a bare 'password=secret'.
+#
+# The (?!//) guard stops a URL scheme being read as a key=value pair: without
+# it 'https://host/x?token=SECRET' matches as key='https', value='//host/...',
+# which consumes the whole URL and hides the token from further scanning.
+BLOB_KV_RE = re.compile(
+    r'(?P<key>[A-Za-z0-9_.\-]+)(?P<sep>\s*[=:]\s*)(?P<value>(?!//)[^\s,;]+)'
+)
+
+# Directive style: 'askpass /path/to/passfile' - name and argument separated by
+# whitespace, at the start of a line.
+BLOB_DIRECTIVE_RE = re.compile(
+    r'^(?P<indent>\s*)(?P<key>[A-Za-z0-9_.\-]+)(?P<sep>\s+)(?P<value>\S.*?)(?P<trail>\s*)$'
+)
+
+# Directive names inside blob text whose *argument* is a secret even though the
+# directive name itself does not match SECRET_TAG_PATTERN.
+BLOB_SECRET_DIRECTIVES: frozenset[str] = frozenset({
+    'askpass', 'auth-user-pass', 'tls-auth', 'tls-crypt', 'tls-crypt-v2',
+    'secret', 'crl-verify', 'http-proxy-user-pass',
+})
+
+# High-entropy blob detection for elements not otherwise recognised.
+BLOB_MIN_SCAN_LENGTH: int = 32
+BASE64ISH_RE = re.compile(r'^[A-Za-z0-9+/=_\-]+$')
+HEXISH_RE = re.compile(r'^[0-9A-Fa-f]+$')
 
 IP_CONTAINING_ELEMENTS: frozenset[str] = frozenset({
     'ipaddr', 'ipaddrv6', 'gateway', 'dnsserver', 'hostname', 'domain',
@@ -151,6 +272,43 @@ SENSITIVE_ATTR_PATTERN = re.compile(
 )
 
 
+# ==========================================================================
+# 3. VERSION
+# ==========================================================================
+def resolve_version() -> str:
+    """Resolve the package version, whatever the execution context
+
+    Used by both --version and the redaction comment stamped into output.
+
+    Order:
+    1. The package's __version__ (normal installed/module use)
+    2. pyproject.toml, for running redactor.py directly from a source checkout,
+       where the relative import is unavailable
+    3. "unknown"
+
+    No version literal is hardcoded here on purpose: an earlier hardcoded
+    fallback drifted two releases behind, and reporting a wrong version is
+    worse than reporting none.
+    """
+    try:
+        from . import __version__  # pylint: disable=import-outside-toplevel,cyclic-import
+        return __version__
+    except (ImportError, AttributeError):
+        pass
+
+    try:
+        pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
+        if pyproject_path.exists():
+            content = pyproject_path.read_text(encoding='utf-8')
+            match = re.search(r'^version\s*=\s*["\']([^"\']+)["\']', content, re.MULTILINE)
+            if match:
+                return match.group(1)
+    except (OSError, UnicodeDecodeError):
+        pass
+
+    return "unknown"
+
+
 @functools.lru_cache(maxsize=256)
 def _idna_encode(domain: str) -> str:
     """Cache IDNA encoding for performance (domains are often repeated)
@@ -169,6 +327,9 @@ def _idna_encode(domain: str) -> str:
         return domain
 
 
+# ==========================================================================
+# 4. REDACTOR
+# ==========================================================================
 class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     """pfSense configuration redactor for sensitive data handling
 
@@ -191,6 +352,29 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     - _*_safe(): Includes exception handling/validation (suffix)
 
     Avoid vague verbs like "handle" - be specific about what the method does.
+
+    Method Groups:
+    --------------
+    Roughly the order they appear in, and the order redact_element() calls them.
+
+    - Allow-lists            _normalise_domain, _is_domain_allowed, _is_ip_allowed
+    - Sample masking         _mask_*_sample, _safe_mask_for_sample, _add_sample
+                             (for --dry-run-verbose; never shows a raw secret)
+    - IP anonymisation       _parse_ip_token, _anonymise_ip, _counter_to_rfc_ip,
+                             _mask_ip_like_tokens
+    - Domain anonymisation   _anonymise_domain, _redact_fqdns_safe
+    - URL masking            _mask_url and friends; _redact_query_secrets and
+                             _redact_path_secrets handle embedded credentials,
+                             _redact_netloc_userinfo handles user:pass@host
+    - Tag classification     _is_secret_tag, _is_cert_tag, _get_tag_base
+    - Element redaction      _should_redact_completely, _redact_cert_key_element,
+                             _redact_blob_text*, _redact_unknown_blob_element
+    - Entry points           redact_element (recursive walk), redact_config
+                             (file in/out), _print_stats
+
+    Ordering inside redact_element() is load-bearing: <key> is checked before
+    the generic secret match so the cert/key distinction survives, and
+    text_already_processed gates the later passes.
     """
 
     # Class constants for magic numbers
@@ -199,7 +383,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     KEY_BLOB_MIN_LENGTH: int = 64  # Minimum length to treat <key> content as PEM blob
     KEY_SHORT_THRESHOLD: int = 40  # Threshold for short key detection (alphanumeric check)
 
-    def __init__(
+    # Each argument is an independent, user-facing redaction policy toggle
+    # mapped 1:1 from a CLI flag; grouping them into a config object would add
+    # indirection without removing any of the choices.
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         keep_private_ips: bool = False,
         anonymise: bool = False,
@@ -209,7 +396,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         allowlist_domains: set[str] | None = None,
         allowlist_networks: list[IPNetwork] | None = None,
         dry_run_verbose: bool = False,
-        redact_url_usernames: bool = False
+        redact_url_usernames: bool = False,
+        redact_descriptions: bool = False
     ) -> None:
         self.keep_private_ips = keep_private_ips
         self.anonymise = anonymise
@@ -217,6 +405,12 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self.fail_on_warn = fail_on_warn
         self.dry_run_verbose = dry_run_verbose
         self.redact_url_usernames = redact_url_usernames
+        self.redact_descriptions = redact_descriptions
+
+        # Element paths of high-entropy values retained (not redacted) so they
+        # can be surfaced in the summary for manual review
+        self.high_entropy_paths: list[str] = []
+        self._path_stack: list[str] = []
 
         # Get logger instance
         self.logger = logging.getLogger('pfsense_redactor')
@@ -376,7 +570,14 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         return value
 
     def _mask_url_sample(self, value: str) -> str:
-        """Mask URL for sample display"""
+        """Mask URL for sample display
+
+        This is the --dry-run-verbose preview, which users run precisely to
+        check what will happen before sharing a config. It masks the host and
+        the userinfo password, but must also redact credentials embedded in the
+        path and query - printing a live token to the console (and from there
+        into CI logs or a pasted ticket) defeats the point of the preview.
+        """
         try:
             parts = urlsplit(value)
             host = parts.hostname or ''
@@ -407,14 +608,18 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             if parts.port:
                 netloc += f":{parts.port}"
 
+            # Credentials also live in the path and query, not just userinfo
+            safe_path, _ = self._build_redacted_path(parts.path)
+            safe_query, _ = self._build_redacted_query(parts.query)
+
             if '[' in masked_host:
-                result = f"{parts.scheme}://{netloc}{parts.path}"
-                if parts.query:
-                    result += f"?{parts.query}"
+                result = f"{parts.scheme}://{netloc}{safe_path}"
+                if safe_query:
+                    result += f"?{safe_query}"
                 if parts.fragment:
                     result += f"#{parts.fragment}"
                 return result
-            return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+            return urlunsplit((parts.scheme, netloc, safe_path, safe_query, parts.fragment))
         except (ValueError, AttributeError):
             pass
         return value
@@ -876,35 +1081,40 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         Note: RFC documentation IPs are preserved in anonymise mode (they're our generated values)
         """
-        # In anonymise mode, RFC documentation IPs should be left as-is (they're already masked)
+        # An already-masked host says nothing about the rest of the URL: the
+        # query and userinfo beside it still need scrubbing, so every branch
+        # below goes through these rather than returning parts untouched.
+        query = self._redact_query_secrets(parts.query)
+
+        # Whether the host is already masked and should be kept as-is
+        keep_host = False
+
+        # In anonymise mode, RFC documentation IPs are our own generated values
         if self.anonymise:
             try:
                 ip = ipaddress.ip_address(host)
-                # RFC 5737 IPv4 or RFC 3849 IPv6 - already masked, return as-is
                 if ip.version == 4:
                     rfc5737_ranges = [
                         ipaddress.ip_network('192.0.2.0/24'),
                         ipaddress.ip_network('198.51.100.0/24'),
                         ipaddress.ip_network('203.0.113.0/24'),
                     ]
-                    if any(ip in net for net in rfc5737_ranges):
-                        return urlunsplit(parts)
+                    keep_host = any(ip in net for net in rfc5737_ranges)
                 elif ip.version == 6:
-                    rfc3849 = ipaddress.ip_network('2001:db8::/32')
-                    if ip in rfc3849:
-                        return urlunsplit(parts)
+                    keep_host = ip in ipaddress.ip_network('2001:db8::/32')
             except ValueError:
                 pass  # Not an IP, continue with domain normalisation
 
         # In anonymise mode, use a consistent alias for masked URLs
         masked_host = self._anonymise_domain('example.com') if self.anonymise else 'example.com'
 
-        if host == masked_host:
-            return urlunsplit(parts)
+        if keep_host or host == masked_host:
+            netloc, _ = self._redact_netloc_userinfo(parts)
+        else:
+            # Replace IP masks with example.com (or alias)
+            netloc = self._build_netloc(parts, masked_host, False)
 
-        # Replace IP masks with example.com (or alias)
-        netloc = self._build_netloc(parts, masked_host, False)
-        return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+        return urlunsplit((parts.scheme, netloc, parts.path, query, parts.fragment))
 
     def _mask_url_host(self, host: str) -> tuple[str, bool, bool]:
         """Mask URL host. Returns (masked_host, changed, is_ipv6)"""
@@ -991,20 +1201,125 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return netloc
 
+    @staticmethod
+    def _build_redacted_query(query: str) -> tuple[str, bool]:
+        """Build a query string with secret-named parameter values redacted
+
+        Returns (query, changed). Pure: no statistics side effects, so the
+        --dry-run-verbose sample display can reuse it without inflating the
+        redaction counters.
+        """
+        if not query:
+            return query, False
+
+        try:
+            pairs = parse_qsl(query, keep_blank_values=True, strict_parsing=False)
+        except ValueError:
+            return query, False
+
+        if not pairs:
+            return query, False
+
+        changed = False
+        out = []
+        for name, value in pairs:
+            name_l = name.lower()
+            if value and name_l not in SECRET_TAG_DENYLIST and SECRET_TAG_PATTERN.search(name_l):
+                out.append((name, '[REDACTED]'))
+                changed = True
+            else:
+                out.append((name, value))
+
+        if not changed:
+            return query, False
+
+        return urlencode(out), True
+
+    def _redact_query_secrets(self, query: str) -> str:
+        """Redact query-parameter values whose parameter name names a secret
+
+        Anonymising the host while leaving '?token=...' intact gives false
+        reassurance: the credential is still there in full. DynDNS update URLs
+        and licenced feed URLs both put the secret in the query string.
+        """
+        redacted, changed = self._build_redacted_query(query)
+        if changed:
+            self.stats['url_secrets_redacted'] += 1
+        return redacted
+
+    @staticmethod
+    def _is_secretish_path_segment(segment: str) -> bool:
+        """Check whether a URL path segment looks like an embedded credential
+
+        Uses a lower length floor than _is_high_entropy_value: webhook tokens
+        sit around 20-24 chars, below the threshold used for key material.
+
+        A digit is required in addition to letters. Without that, long
+        underscore-joined route names ('Open_VM_Tools_package') look identical
+        to tokens; generated credentials essentially always mix in digits.
+        """
+        if len(segment) <= 20:
+            return False
+        if not BASE64ISH_RE.match(segment):
+            return False
+
+        has_digit = any(c.isdigit() for c in segment)
+        has_letter = any(c.isalpha() for c in segment)
+        return has_digit and has_letter
+
+    @classmethod
+    def _build_redacted_path(cls, path: str) -> tuple[str, bool]:
+        """Build a path with credential-shaped segments redacted
+
+        Returns (path, changed). Pure, for the same reason as
+        _build_redacted_query.
+        """
+        if not path or '/' not in path:
+            return path, False
+
+        segments = path.split('/')
+        changed = False
+        for i, segment in enumerate(segments):
+            if cls._is_secretish_path_segment(segment):
+                segments[i] = '[REDACTED]'
+                changed = True
+
+        if not changed:
+            return path, False
+
+        return '/'.join(segments), True
+
+    def _redact_path_secrets(self, path: str) -> str:
+        """Redact long high-entropy path segments (aggressive mode only)
+
+        Slack/Discord-style webhooks carry the credential as a path segment
+        rather than a query parameter. Gated behind --aggressive because feed
+        URLs legitimately carry long path segments.
+        """
+        redacted, changed = self._build_redacted_path(path)
+        if changed:
+            self.stats['url_secrets_redacted'] += 1
+        return redacted
+
     def _rebuild_url(self, parts: SplitResult, masked_host: str, is_ipv6: bool) -> str:
         """Rebuild URL from parts with masked host"""
         netloc = self._build_netloc(parts, masked_host, is_ipv6)
 
+        path = parts.path
+        query = self._redact_query_secrets(parts.query)
+        if self.aggressive:
+            path = self._redact_path_secrets(path)
+
         # Manual construction for masked IPv6 (urlunsplit doesn't like invalid IPv6)
         if is_ipv6 and 'XXXX:XXXX' in masked_host:
-            result = f"{parts.scheme}://{netloc}{parts.path}"
-            if parts.query:
-                result += f"?{parts.query}"
+            result = f"{parts.scheme}://{netloc}{path}"
+            if query:
+                result += f"?{query}"
             if parts.fragment:
                 result += f"#{parts.fragment}"
             return result
 
-        return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+        return urlunsplit((parts.scheme, netloc, path, query, parts.fragment))
 
     def _mask_url(self, url: str) -> str:
         """Mask URL hostname whilst preserving structure, credentials, and port"""
@@ -1035,6 +1350,68 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             self._add_sample('URL', url, result)
 
         return result
+
+    def _redact_netloc_userinfo(self, parts: SplitResult) -> tuple[str, bool]:
+        """Redact credentials in a URL's userinfo, leaving the host untouched
+
+        Returns (netloc, changed).
+
+        The host portion is sliced from the original netloc rather than taken
+        from parts.hostname, because the latter lower-cases it - this function
+        must not alter the host in any way.
+        """
+        if not parts.username:
+            return parts.netloc, False
+
+        host_port = parts.netloc.rsplit('@', 1)[-1]
+
+        # Same policy as _build_netloc: usernames are preserved unless asked
+        # for, passwords are always redacted.
+        userinfo = 'REDACTED' if self.redact_url_usernames else parts.username
+        if parts.password:
+            userinfo += ':REDACTED'
+
+        netloc = f"{userinfo}@{host_port}"
+        return netloc, netloc != parts.netloc
+
+    def _redact_url_secrets_only(self, text: str) -> str:
+        """Redact credentials inside URLs without touching the host
+
+        Used for elements that are not known URL carriers. Those elements only
+        get host anonymisation under --aggressive, and widening that to the
+        default path would rewrite harmless package metadata URLs (package
+        <website>, <pkginfolink>) for no security benefit. The embedded
+        credential is the part that matters, so redact just that.
+
+        Userinfo is redacted here as well as in _build_netloc: omitting it left
+        'user:password@host' intact while the query secret next to it showed as
+        [REDACTED], which reads as sanitised when it is not.
+        """
+        def replacer(match):
+            url = match.group(0)
+            if len(url) > self.MAX_URL_LENGTH:
+                return url
+
+            parts = self._parse_url_safely(url)
+            if parts is None or not parts.netloc:
+                return url
+
+            netloc, netloc_changed = self._redact_netloc_userinfo(parts)
+            path = self._redact_path_secrets(parts.path) if self.aggressive else parts.path
+            query = self._redact_query_secrets(parts.query)
+
+            # netloc_changed must be part of this test: a URL carrying
+            # credentials but no secret-named query parameter would otherwise
+            # never be rewritten at all.
+            if not netloc_changed and path == parts.path and query == parts.query:
+                return url
+
+            if netloc_changed:
+                self.stats['url_secrets_redacted'] += 1
+
+            return urlunsplit((parts.scheme, netloc, path, query, parts.fragment))
+
+        return self.URL_RE.sub(replacer, text)
 
     def _redact_urls_safe(self, text: str) -> str:
         """Redact URLs with ReDoS protection via length pre-filtering"""
@@ -1166,9 +1543,38 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         self._add_sample(category, original, replacement)
 
-    def _should_redact_completely(self, tag: str, element: ET.Element, redact_ips: bool, redact_domains: bool) -> bool:
+    def _is_secret_tag(self, tag: str, tag_base: str) -> bool:
+        """Check whether a tag names a secret-bearing element
+
+        Matches in three ways:
+        1. Exact membership of REDACT_ELEMENTS (tag or digit-stripped base)
+        2. SECRET_TAG_PATTERN substring match, unless deny-listed
+
+        The digit-stripped base handles numbered variants (password2, key3).
+        """
+        if tag in self.redact_elements or tag_base in self.redact_elements:
+            return True
+
+        if tag in SECRET_TAG_DENYLIST or tag_base in SECRET_TAG_DENYLIST:
+            return False
+
+        return bool(SECRET_TAG_PATTERN.search(tag) or SECRET_TAG_PATTERN.search(tag_base))
+
+    def _is_cert_tag(self, tag: str, tag_base: str) -> bool:
+        """Check whether a tag names a certificate/key-bearing element"""
+        if tag in self.cert_key_elements or tag_base in self.cert_key_elements:
+            return True
+
+        if tag in SECRET_TAG_DENYLIST or tag_base in SECRET_TAG_DENYLIST:
+            return False
+
+        return bool(CERT_TAG_PATTERN.search(tag) or CERT_TAG_PATTERN.search(tag_base))
+
+    def _should_redact_completely(
+        self, tag: str, tag_base: str, element: ET.Element, redact_ips: bool, redact_domains: bool
+    ) -> bool:
         """Check if element should be completely redacted and handle it. Returns True if handled."""
-        if tag not in self.redact_elements:
+        if not self._is_secret_tag(tag, tag_base):
             return False
 
         if element.text:
@@ -1187,22 +1593,194 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return True
 
-    def _redact_key_element_if_needed(self, tag: str, element: ET.Element, redact_ips: bool, redact_domains: bool) -> bool:
-        """Redact <key> element if needed - can be short secret or PEM blob. Returns True if handled."""
-        if tag != 'key' or not element.text:
+    def _looks_like_secret_blob(self, text: str) -> bool:
+        """Check whether text looks like PEM or long base64/hex key material
+
+        Uses the class length constants. Previously inlined in the <key> handler;
+        extracted so unrecognised elements can be screened with the same rules.
+        """
+        if not text:
             return False
 
-        text = element.text.strip()
-        # Check if it's a PEM blob or long base64-like content
-        # Uses class constants for length thresholds
-        is_pem_or_blob = (
+        return bool(
             self.PEM_MARKER.search(text) or
             len(text) >= self.KEY_BLOB_MIN_LENGTH or
             (len(text) > self.KEY_SHORT_THRESHOLD and
              text.replace('\n', '').replace('\r', '').replace(' ', '').isalnum())
         )
 
-        if is_pem_or_blob:
+    def _is_high_entropy_value(self, text: str) -> bool:
+        """Check whether a leaf value looks like an encoded secret
+
+        Stricter than _looks_like_secret_blob: requires the whole value to be
+        base64/hex-shaped, so ordinary long prose is not flagged.
+        """
+        if len(text) < BLOB_MIN_SCAN_LENGTH:
+            return False
+
+        if self.PEM_MARKER.search(text):
+            return True
+
+        # Strip line wrapping only. Spaces must NOT be stripped: doing so turns
+        # ordinary prose ("This is a fairly long note") into an unbroken
+        # alphanumeric run that looks exactly like base64.
+        compact = text.replace('\n', '').replace('\r', '')
+        if len(compact) < BLOB_MIN_SCAN_LENGTH or ' ' in compact or '\t' in compact:
+            return False
+
+        if not (BASE64ISH_RE.match(compact) or HEXISH_RE.match(compact)):
+            return False
+
+        # Require some mix of character classes so that long runs of a single
+        # class (e.g. a numeric ID, or a lowercase-only word) are not flagged.
+        has_digit = any(c.isdigit() for c in compact)
+        has_upper = any(c.isupper() for c in compact)
+        has_lower = any(c.islower() for c in compact)
+        if HEXISH_RE.match(compact):
+            return has_digit and (has_upper or has_lower)
+        return has_digit + has_upper + has_lower >= 2
+
+    def _redact_blob_text_element(self, tag: str, tag_base: str, element: ET.Element) -> bool:
+        """Scan opaque free-text containers for inline credentials
+
+        Returns True if the element's text was processed.
+        """
+        if tag not in BLOB_TEXT_ELEMENTS and tag_base not in BLOB_TEXT_ELEMENTS:
+            return False
+        if not element.text or not element.text.strip():
+            return False
+
+        if self.aggressive:
+            # Under --aggressive these blobs are redacted wholesale - their
+            # contents are unparseable in general and may carry secrets in
+            # forms no scanner will recognise.
+            self._redact_text_and_track(element, 'Secret')
+            return True
+
+        original = element.text
+        redacted = self._redact_blob_text_and_urls(original)
+
+        if redacted != original:
+            element.text = redacted
+            self.stats['secrets_redacted'] += 1
+            self._add_sample('Secret', original, redacted)
+        return True
+
+    @staticmethod
+    def _is_secret_key_name(name: str) -> bool:
+        """Check whether a key/directive name inside blob text denotes a secret"""
+        name_l = name.lower()
+        if name_l in BLOB_SECRET_DIRECTIVES:
+            return True
+        if name_l in SECRET_TAG_DENYLIST:
+            return False
+        return bool(SECRET_TAG_PATTERN.search(name_l))
+
+    def _redact_blob_text_and_urls(self, text: str) -> str:
+        """Scan blob text for both inline key=value credentials and URL secrets
+
+        This element reports its text as handled, which suppresses the
+        URL-secret pass in redact_element; without running it here, blob
+        elements would get LESS URL scanning than an unrecognised element.
+
+        The two scanners must not see each other's output. Running the KV scan
+        over an already-redacted URL re-encodes the '[REDACTED]' marker and
+        leaves a stray bracket behind, so URL spans are stashed behind
+        placeholders while the KV scan runs - the same technique redact_text()
+        uses to protect IPv4 masks from the FQDN pass.
+        """
+        if '://' not in text:
+            return self._redact_blob_text(text)
+
+        stashed: list[str] = []
+
+        def stash(match: re.Match) -> str:
+            stashed.append(self._redact_url_secrets_only(match.group(0)))
+            return f'\x00URL{len(stashed) - 1}\x00'
+
+        result = self._redact_blob_text(self.URL_RE.sub(stash, text))
+
+        for index, url in enumerate(stashed):
+            result = result.replace(f'\x00URL{index}\x00', url)
+        return result
+
+    def _redact_blob_text(self, text: str) -> str:
+        """Redact the value side of key=value pairs and secret-bearing directives"""
+        out = []
+        for line in text.splitlines(keepends=True):
+            stripped = line.rstrip('\r\n')
+            newline = line[len(stripped):]
+
+            # 'askpass /path/to/file' style directives, whose name carries the
+            # meaning rather than the argument
+            directive = BLOB_DIRECTIVE_RE.match(stripped)
+            if directive and directive.group('key').lower() in BLOB_SECRET_DIRECTIVES:
+                out.append(
+                    f"{directive.group('indent')}{directive.group('key')}"
+                    f"{directive.group('sep')}[REDACTED]{newline}"
+                )
+                continue
+
+            # key=value / key: value pairs anywhere in the line
+            replaced = BLOB_KV_RE.sub(
+                lambda m: (
+                    f"{m.group('key')}{m.group('sep')}[REDACTED]"
+                    if self._is_secret_key_name(m.group('key')) else m.group(0)
+                ),
+                stripped
+            )
+            out.append(replaced + newline)
+        return ''.join(out)
+
+    def _redact_description_element(self, tag: str, tag_base: str, element: ET.Element) -> bool:
+        """Redact description/identifier free text (opt-in via --redact-descriptions)"""
+        if not self.redact_descriptions:
+            return False
+        if tag not in DESCRIPTION_ELEMENTS and tag_base not in DESCRIPTION_ELEMENTS:
+            return False
+        if not element.text or not element.text.strip():
+            return False
+
+        self._redact_text_and_track(element, 'Secret')
+        return True
+
+    def _redact_unknown_blob_element(self, tag: str, element: ET.Element) -> bool:
+        """Handle high-entropy values in elements we do not otherwise recognise
+
+        Default: record the value's location so users can audit it manually.
+        --aggressive: redact it.
+
+        The <key> handler already covers its own tag; everything else previously
+        sailed through regardless of how much it looked like key material.
+        """
+        if tag == 'key' or len(element) > 0:
+            return False
+        if not element.text:
+            return False
+
+        text = element.text.strip()
+        if not self._is_high_entropy_value(text):
+            return False
+
+        # _path_stack holds ancestors only; this element's own tag completes it
+        path = '/'.join([*self._path_stack, tag])
+
+        if self.aggressive:
+            self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
+            return True
+
+        self.stats['high_entropy_retained'] += 1
+        if path not in self.high_entropy_paths:
+            self.high_entropy_paths.append(path)
+        return False
+
+    def _redact_key_element_if_needed(self, tag: str, element: ET.Element, redact_ips: bool, redact_domains: bool) -> bool:
+        """Redact <key> element if needed - can be short secret or PEM blob. Returns True if handled."""
+        if tag != 'key' or not element.text:
+            return False
+
+        text = element.text.strip()
+        if self._looks_like_secret_blob(text):
             self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
         else:
             # Short key - treat as secret
@@ -1214,9 +1792,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return True
 
-    def _redact_cert_key_element(self, tag: str, element: ET.Element) -> bool:
+    def _redact_cert_key_element(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Redact certificate/key elements. Returns True if this is a cert/key element."""
-        if tag not in self.cert_key_elements:
+        if not self._is_cert_tag(tag, tag_base):
             return False
 
         # Use class constant for minimum certificate length
@@ -1249,7 +1827,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self, element: ET.Element, text_already_processed: bool, redact_ips: bool, redact_domains: bool
     ) -> None:
         """Redact text and attributes in aggressive mode"""
-        if self._normalise_tag(element.tag) in self.redact_elements:
+        tag = self._normalise_tag(element.tag)
+        if self._is_secret_tag(tag, self._get_tag_base(tag)):
             return
 
         # Process text if not already done
@@ -1276,28 +1855,52 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # Strip trailing digits from tag to handle numbered variants (e.g., dnsserver6 -> dnsserver)
         tag_base = self._get_tag_base(tag)
 
-        # Handle complete redaction cases
-        if self._should_redact_completely(tag, element, redact_ips, redact_domains):
-            return
-
-        # Handle special cases
+        # <key> is handled specially (PEM blob vs short secret) and must be
+        # checked before the generic secret match, which would otherwise claim
+        # it via SECRET_TAG_PATTERN and lose the cert/key distinction.
         if self._redact_key_element_if_needed(tag, element, redact_ips, redact_domains):
             return
 
+        # Handle complete redaction cases
+        if self._should_redact_completely(tag, tag_base, element, redact_ips, redact_domains):
+            return
+
         # Handle cert/key elements (don't return - continue to process children)
-        self._redact_cert_key_element(tag, element)
+        self._redact_cert_key_element(tag, tag_base, element)
+
+        # Opaque free-text containers (custom_options, upsd_users, ...) that
+        # carry credentials inline rather than in dedicated elements
+        text_already_processed = self._redact_blob_text_element(tag, tag_base, element)
+
+        # Descriptions/identifiers - opt-in via --redact-descriptions
+        if self._redact_description_element(tag, tag_base, element):
+            text_already_processed = True
+
+        # Unrecognised high-entropy leaf values (third-party package fields)
+        if self._redact_unknown_blob_element(tag, element):
+            text_already_processed = True
 
         # Track whether we already processed text to avoid double processing in aggressive mode
-        text_already_processed = self._redact_ip_containing_element(
-            tag, tag_base, element, redact_ips, redact_domains
-        )
+        if self._redact_ip_containing_element(tag, tag_base, element, redact_ips, redact_domains):
+            text_already_processed = True
+
+        # Credentials embedded in URLs in elements that are not known URL
+        # carriers (e.g. <updateurl>, <webhook_url>). Previously these were
+        # only touched under --aggressive, so the token survived by default.
+        # Host anonymisation deliberately stays out of the default path here.
+        if element.text and not text_already_processed and '://' in element.text:
+            element.text = self._redact_url_secrets_only(element.text)
 
         # Redact attributes with sensitive names
         self._redact_sensitive_attributes(element)
 
         # Recursively process child elements
-        for child in element:
-            self.redact_element(child, redact_ips, redact_domains)
+        self._path_stack.append(tag)
+        try:
+            for child in element:
+                self.redact_element(child, redact_ips, redact_domains)
+        finally:
+            self._path_stack.pop()
 
         # Aggressive mode: apply redaction to text content, tail, and attributes
         if self.aggressive:
@@ -1305,26 +1908,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
     def _add_redaction_comment(self, root: ET.Element) -> None:
         """Add a comment to the XML indicating it was redacted"""
-        # Import version from package
-        # Handle circular import gracefully - version may not be available during module init
-        try:
-            from . import __version__  # pylint: disable=import-outside-toplevel,cyclic-import
-            version = __version__
-        except (ImportError, AttributeError):
-            # Fallback: try to get version from pyproject.toml or use unknown
-            try:
-                # pylint: disable=import-outside-toplevel,reimported,redefined-outer-name
-                pyproject_path = Path(__file__).parent.parent / "pyproject.toml"
-                if pyproject_path.exists():
-                    content = pyproject_path.read_text(encoding='utf-8')
-                    match = re.search(r'version\s*=\s*["\']([^"\']+)["\']', content)
-                    version = match.group(1) if match else "unknown"
-                else:
-                    version = "unknown"
-            except Exception:  # pylint: disable=broad-except
-                version = "unknown"
-
-        comment_text = f" Redacted using pfsense-redactor v{version} "
+        comment_text = f" Redacted using pfsense-redactor v{resolve_version()} "
         comment = ET.Comment(comment_text)
 
         # Insert comment as first child of root
@@ -1418,6 +2002,23 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             self.logger.info("    - Email addresses: %d", self.stats['emails_redacted'])
         if self.stats['urls_redacted']:
             self.logger.info("    - URLs: %d", self.stats['urls_redacted'])
+        if self.stats['url_secrets_redacted']:
+            self.logger.info("    - Secrets in URL paths/queries: %d", self.stats['url_secrets_redacted'])
+
+        # Surface values we deliberately did NOT redact so they can be checked
+        # manually - the summary otherwise only reports what was redacted,
+        # which makes retained secrets impossible to audit.
+        if self.stats['high_entropy_retained']:
+            self.logger.warning("")
+            self.logger.warning(
+                "[!] %d unrecognised high-entropy value(s) retained. Review before sharing:",
+                self.stats['high_entropy_retained']
+            )
+            for path in self.high_entropy_paths[:10]:
+                self.logger.warning("    - %s", path)
+            if len(self.high_entropy_paths) > 10:
+                self.logger.warning("    - ... and %d more", len(self.high_entropy_paths) - 10)
+            self.logger.warning("    Re-run with --aggressive to redact these automatically.")
 
         if self.anonymise:
             self.logger.info("")
@@ -1440,6 +2041,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 self.logger.info("    (no examples collected)")
 
 
+# ==========================================================================
+# 5. ALLOWLISTS
+# ==========================================================================
 def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> tuple[set[str], list[IPNetwork], set[str]]:
     """Parse allow-list file containing IPs, CIDR networks, and domains (one per line)
 
@@ -1530,6 +2134,9 @@ def find_default_allowlist_files() -> list[Path]:
 
     return default_files
 
+# ==========================================================================
+# 6. PATH SAFETY
+# ==========================================================================
 def _get_sensitive_directories() -> frozenset[str]:
     """Get list of sensitive system directories that should not be written to
 
@@ -1706,14 +2313,14 @@ def validate_file_path(
 
 
 
+# ==========================================================================
+# 7. CLI
+# ==========================================================================
 def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
     """Main entry point for the pfSense redactor CLI"""
-    # Import version for --version flag
-    try:
-        from . import __version__
-    except ImportError:
-        # Fallback when running as script (not as module)
-        __version__ = "1.0.8"
+    # Version for the --version flag. Resolved rather than imported directly so
+    # that running redactor.py as a script still reports the real version.
+    __version__ = resolve_version()
 
     parser = argparse.ArgumentParser(
         description='Redact sensitive information from pfSense XML configuration files',
@@ -1790,6 +2397,8 @@ CDATA sections are not preserved.
                         help='Like --dry-run, but also show examples of what would be redacted')
     parser.add_argument('--redact-url-usernames', action='store_true',
                         help='Redact usernames in URLs (e.g., ftp://user@host becomes ftp://REDACTED@host). By default, usernames are preserved whilst passwords are always redacted.')
+    parser.add_argument('--redact-descriptions', action='store_true',
+                        help='Redact free-text descriptions and identifiers (descr, detail, hostname, ssid). These often contain personal names, e.g. DHCP static-map descriptions. Off by default as they aid troubleshooting.')
     parser.add_argument('--allow-absolute-paths', action='store_true',
                         help='Allow absolute file paths (e.g., /etc/passwd, C:\\config.xml). By default, only relative paths are permitted for security. Use with caution.')
 
@@ -1996,7 +2605,8 @@ CDATA sections are not preserved.
         allowlist_domains=allowlist_domains,
         allowlist_networks=allowlist_networks,
         dry_run_verbose=args.dry_run_verbose,
-        redact_url_usernames=args.redact_url_usernames
+        redact_url_usernames=args.redact_url_usernames,
+        redact_descriptions=args.redact_descriptions
     )
 
     success = redactor.redact_config(

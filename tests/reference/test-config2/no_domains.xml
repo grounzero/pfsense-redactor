@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <pfsense>
-  <!-- Redacted using pfsense-redactor v1.0.10 -->
+  <!-- Redacted using pfsense-redactor v1.1.0 -->
   <version>19.1</version>
   <lastchange />
   <system>
@@ -279,7 +279,7 @@
   <snmpd>
     <syslocation />
     <syscontact />
-    <rocommunity>public</rocommunity>
+    <rocommunity>[REDACTED]</rocommunity>
   </snmpd>
   <diag>
     <ipv6nat>
@@ -1014,7 +1014,7 @@
   <openvpn>
     <openvpn-client>
       <auth_user>ACCOUNTNUMBERHERE</auth_user>
-      <auth_pass>M</auth_pass>
+      <auth_pass>[REDACTED]</auth_pass>
       <vpnid>1</vpnid>
       <protocol>UDP4</protocol>
       <dev_mode>tun</dev_mode>
@@ -1057,7 +1057,7 @@
     </openvpn-client>
     <openvpn-client>
       <auth_user>ACCOUNTNUMBERHERE</auth_user>
-      <auth_pass>M</auth_pass>
+      <auth_pass>[REDACTED]</auth_pass>
       <vpnid>2</vpnid>
       <protocol>UDP4</protocol>
       <dev_mode>tun</dev_mode>

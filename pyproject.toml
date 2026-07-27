@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pfsense-redactor"
-version = "1.0.10"
+version = "1.1.0"
 description = "Enterprise-grade tool to redact secrets and anonymise identifiers in pfSense/Netgate config.xml exports. Preserves network topology while removing passwords, VPN keys, certificates, public IPs, domains, and MACs for safe sharing with support teams, consultants, AI tools, and forums."
 readme = "README.md"
 authors = [
@@ -130,6 +130,13 @@ omit = [
     "*/site-packages/*",
 ]
 branch = true
+# Most CLI tests invoke redactor.py through subprocess (see CLIRunner in
+# tests/conftest.py), so without this main(), redact_config() and the
+# allow-list parsing are reported as uncovered despite being exercised by
+# ~100 end-to-end runs. tests/conftest.py starts coverage in child processes;
+# parallel + sigterm let their data files be written and combined.
+parallel = true
+sigterm = true
 
 [tool.coverage.report]
 precision = 2

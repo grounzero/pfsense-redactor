@@ -248,9 +248,18 @@ class TestURLInvalidPortHandling:
 
     def test_url_query_params_preserved_with_invalid_port(self, redactor):
         """Query params should be preserved when invalid port is omitted"""
-        result = redactor.redact_text('http://testhost.com:99999/path?key=value')
+        # Uses a non-sensitive parameter name: parameters whose name denotes a
+        # secret (key, token, password, ...) are redacted by design, which is
+        # not what this test is about.
+        result = redactor.redact_text('http://testhost.com:99999/path?page=value')
         # Invalid port omitted, query params preserved
-        assert result == 'http://example.com/path?key=value'
+        assert result == 'http://example.com/path?page=value'
+
+    def test_url_secret_query_param_redacted_with_invalid_port(self, redactor):
+        """Secret-named query params are redacted even when the port is invalid"""
+        result = redactor.redact_text('http://testhost.com:99999/path?key=value')
+        assert 'value' not in result
+        assert 'REDACTED' in result
 
     def test_url_fragment_preserved_with_invalid_port(self, redactor):
         """Fragment should be preserved when invalid port is omitted"""

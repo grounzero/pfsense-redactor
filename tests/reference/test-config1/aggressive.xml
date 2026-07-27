@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <pfsense>
-  <!-- Redacted using pfsense-redactor v1.0.10 -->
+  <!-- Redacted using pfsense-redactor v1.1.0 -->
   <version>18.2</version>
   <lastchange />
   <system>
@@ -192,7 +192,7 @@
   <snmpd>
     <syslocation />
     <syscontact />
-    <rocommunity>public</rocommunity>
+    <rocommunity>[REDACTED]</rocommunity>
   </snmpd>
   <diag>
     <ipv6nat />
@@ -650,7 +650,7 @@
       <address />
       <descr>pfBlockerNG  Auto  GeoIP Alias</descr>
       <type>urltable</type>
-      <detail>DO NOT EDIT THIS ALIAS</detail>
+      <detail>[REDACTED]</detail>
     </alias>
     <alias>
       <name>pfB_Whitelist_v4</name>
@@ -659,7 +659,7 @@
       <address />
       <descr>pfBlockerNG  Auto  Alias</descr>
       <type>urltable</type>
-      <detail>DO NOT EDIT THIS ALIAS</detail>
+      <detail>[REDACTED]</detail>
     </alias>
     <alias>
       <name>pfB_Blacklist_v4</name>
@@ -668,7 +668,7 @@
       <address />
       <descr>pfBlockerNG  Auto  Alias</descr>
       <type>urltable</type>
-      <detail>DO NOT EDIT THIS ALIAS</detail>
+      <detail>[REDACTED]</detail>
     </alias>
     <alias>
       <name>pfB_DNSBLIP_v4</name>
@@ -677,28 +677,28 @@
       <address />
       <descr>pfBlockerNG  Auto  Alias</descr>
       <type>urltable</type>
-      <detail>DO NOT EDIT THIS ALIAS</detail>
+      <detail>[REDACTED]</detail>
     </alias>
     <alias>
       <name>Alias_1</name>
       <type>host</type>
       <address>XXX.XXX.XXX.XXX XXX.XXX.XXX.XXX Alias2</address>
       <descr />
-      <detail>Entry added Mon, 19 Mar 2018 13:16:33 +0000||Entry added Mon, 19 Mar 2018 13:16:33 +0000||Entry added Mon, 19 Mar 2018 13:16:33 +0000</detail>
+      <detail>[REDACTED]</detail>
     </alias>
     <alias>
       <name>Test</name>
       <type>host</type>
       <address>XXX.XXX.XXX.XXX Test1</address>
       <descr />
-      <detail>Entry added Tue, 27 Feb 2018 14:25:35 +0000||Entry added Wed, 28 Feb 2018 06:49:30 +0000</detail>
+      <detail>[REDACTED]</detail>
     </alias>
     <alias>
       <name>Test1</name>
       <type>host</type>
       <address>XXX.XXX.XXX.XXX</address>
       <descr />
-      <detail>Entry added Wed, 28 Feb 2018 06:49:16 +0000</detail>
+      <detail>[REDACTED]</detail>
     </alias>
   </aliases>
   <proxyarp />
@@ -896,7 +896,7 @@
     <dnssec />
     <active_interface />
     <outgoing_interface />
-    <custom_options>c2VydmVyOmluY2x1ZGU6IC92YXIvdW5ib3VuZC9wZmJfZG5zYmwuKmNvbmY=</custom_options>
+    <custom_options>[REDACTED]</custom_options>
     <hideidentity />
     <hideversion />
     <dnssecstripped />
@@ -1585,7 +1585,7 @@
       <openappid_rules_detectors>on</openappid_rules_detectors>
       <hide_deprecated_rules>off</hide_deprecated_rules>
       <curl_no_verify_ssl_peer>off</curl_no_verify_ssl_peer>
-      <oinkmastercode>c4e000842278df905ba5795132288ddc7c996d14</oinkmastercode>
+      <oinkmastercode>[REDACTED_CERT_OR_KEY]</oinkmastercode>
       <etpro_code />
       <rm_blocked>never_b</rm_blocked>
       <autorulesupdate7>12h_up</autorulesupdate7>
@@ -1825,9 +1825,9 @@
         <enable_acb>enabled</enable_acb>
         <username>azamat</username>
         <password>[REDACTED]</password>
-        <passwordagain>j0klpSGf</passwordagain>
-        <crypto_password>cisco</crypto_password>
-        <crypto_password2>cisco</crypto_password2>
+        <passwordagain>[REDACTED]</passwordagain>
+        <crypto_password>[REDACTED]</crypto_password>
+        <crypto_password2>[REDACTED]</crypto_password2>
       </config>
     </autoconfigbackup>
     <haproxy>
@@ -2192,8 +2192,8 @@
       <config>
         <enable>on</enable>
         <keepdata>on</keepdata>
-        <redis_password>pfsense</redis_password>
-        <redis_passwordagain>pfsense</redis_passwordagain>
+        <redis_password>[REDACTED]</redis_password>
+        <redis_passwordagain>[REDACTED]</redis_passwordagain>
         <interface_array>lan</interface_array>
         <interface_array>opt1</interface_array>
         <interface_array>wan</interface_array>

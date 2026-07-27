@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -63,6 +64,30 @@ def update_reference():
     return os.environ.get("UPDATE_REFERENCE", "0") == "1"
 
 
+def subprocess_env() -> dict[str, str]:
+    """Environment for child processes, with coverage enabled when measuring
+
+    Child processes do not start coverage on their own, so CLI runs invoked
+    through subprocess were reported as uncovered despite being exercised
+    end-to-end. Setting COVERAGE_PROCESS_START and putting the hook directory
+    on PYTHONPATH lets tests/_coverage_hook/sitecustomize.py start measurement
+    before redactor.py is imported.
+
+    Only applied when the parent is itself running under coverage, so ordinary
+    test runs are unaffected.
+    """
+    env = os.environ.copy()
+
+    if "coverage" not in sys.modules:
+        return env
+
+    env["COVERAGE_PROCESS_START"] = str(PROJECT_ROOT / "pyproject.toml")
+    hook_dir = str(Path(__file__).parent / "_coverage_hook")
+    existing = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{hook_dir}{os.pathsep}{existing}" if existing else hook_dir
+    return env
+
+
 class CLIRunner:
     """Helper class to run the pfsense-redactor CLI and capture results"""
 
@@ -82,7 +107,12 @@ class CLIRunner:
         Returns:
             Tuple of (exit_code, stdout, stderr)
         """
-        cmd = ["python3", self.script_path, input_file]
+        # sys.executable, not "python3": the latter resolves off PATH and can
+        # be a different interpreter to the one running pytest, so on the
+        # 3.9-3.13 matrix the CLI could be exercised under the wrong version.
+        # It also keeps subprocesses inside the venv, which is what lets
+        # coverage instrument them (see [tool.coverage.run] in pyproject.toml).
+        cmd = [sys.executable, self.script_path, input_file]
 
         if output_file:
             cmd.append(output_file)
@@ -95,6 +125,7 @@ class CLIRunner:
             capture_output=True,
             text=True,
             cwd=str(PROJECT_ROOT),
+            env=subprocess_env(),
             check=False
         )
 
