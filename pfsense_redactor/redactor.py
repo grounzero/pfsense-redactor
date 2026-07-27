@@ -2331,6 +2331,81 @@ def _get_sensitive_directories() -> frozenset[str]:
     return frozenset(normalised)
 
 
+# System files that must never be written to, compared against the resolved
+# lower-cased path. Checked in addition to the sensitive-directory scan.
+DANGEROUS_OUTPUT_FILES: frozenset[str] = frozenset({
+    '/etc/passwd', '/etc/shadow', '/etc/group', '/etc/sudoers',
+    '/etc/hosts', '/etc/fstab', '/etc/crontab',
+    'c:\\windows\\system32\\config\\sam',
+    'c:\\windows\\system32\\config\\system',
+})
+
+
+def _resolve_for_validation(file_path: str, path: Path) -> tuple[Path, bool]:
+    """Resolve a path to absolute form. Returns (resolved, was_absolute)
+
+    Windows drive-letter paths are detected explicitly because Path.is_absolute
+    returns False for them on POSIX, which would otherwise let 'C:\\...' be
+    treated as relative and resolved against the working directory.
+    """
+    is_windows_absolute = (
+        len(file_path) >= 3 and
+        file_path[1:3] in (':\\', ':/')  # C:\ or C:/
+    )
+    is_absolute_form = path.is_absolute() or is_windows_absolute
+
+    # Follows symlinks; relative paths resolve against the working directory
+    resolved = path.resolve() if is_absolute_form else (Path.cwd() / path).resolve()
+    return resolved, is_absolute_form
+
+
+def _is_in_sensitive_directory(resolved_str: str, sensitive_dirs: frozenset[str]) -> bool:
+    """Check whether a resolved output path falls inside a protected directory"""
+    for sensitive_dir in sensitive_dirs:
+        try:
+            if resolved_str.startswith(sensitive_dir):
+                return True
+        except (ValueError, AttributeError):
+            pass
+    return False
+
+
+def _is_safe_absolute_location(resolved_str: str) -> bool:
+    """Check whether an absolute path points somewhere writing is acceptable
+
+    Safe means the current working directory, the user's home, or a system
+    temp directory. Called only when --allow-absolute-paths was not given, and
+    only after the sensitive-directory check has already run.
+    """
+    # Normalise to forward slashes so Windows and POSIX compare alike
+    resolved_normalised = resolved_str.replace('\\', '/')
+
+    safe_prefixes = [
+        str(Path.home()).lower(),
+        str(Path.cwd()).lower(),
+        str(Path(os.environ.get('TMPDIR', '/tmp'))).lower(),
+        str(Path(os.environ.get('TEMP', '/tmp'))).lower(),
+        str(Path(os.environ.get('TMP', '/tmp'))).lower(),
+        '/tmp',  # Standard Unix temp directory
+        '/private/tmp',  # macOS /tmp (canonical path)
+        '/var/folders',  # macOS temp
+        '/private/var/folders',  # macOS temp (canonical)
+    ]
+
+    # The cwd itself is safe, as well as anything beneath it
+    cwd_normalised = str(Path.cwd()).lower().replace('\\', '/')
+    if not cwd_normalised.endswith('/'):
+        cwd_normalised += '/'
+    if resolved_normalised.startswith(cwd_normalised) or resolved_normalised == cwd_normalised.rstrip('/'):
+        return True
+
+    # Require the separator so /tmpfoo does not match the /tmp prefix
+    return any(
+        resolved_normalised.startswith(prefix if prefix.endswith('/') else prefix + '/')
+        for prefix in (p.replace('\\', '/') for p in safe_prefixes)
+    )
+
+
 def validate_file_path(
     file_path: str,
     allow_absolute: bool = False,
@@ -2371,89 +2446,24 @@ def validate_file_path(
         if '..' in path.parts:
             return False, "Path contains directory traversal components (..)", None
 
-        # Check if this looks like a Windows absolute path (e.g., C:\, D:\)
-        # On Unix systems, Path.is_absolute() returns False for Windows paths
-        is_windows_absolute = (
-            len(file_path) >= 3 and
-            file_path[1:3] in (':\\', ':/')  # C:\ or C:/
-        )
-
-        # Resolve the path to its absolute form (follows symlinks)
-        # Use Path.cwd() as base for relative paths
-        if path.is_absolute() or is_windows_absolute:
-            resolved = path.resolve()
-        else:
-            # For relative paths, resolve against current working directory
-            resolved = (Path.cwd() / path).resolve()
-
+        resolved, is_absolute_form = _resolve_for_validation(file_path, path)
         resolved_str = str(resolved).lower()
 
         # Check if resolved path is in a sensitive directory FIRST
         # This is the critical security check - do it before the absolute path check
         # so that even with --allow-absolute-paths, we still block sensitive dirs
-        if is_output:
-            for sensitive_dir in sensitive_dirs:
-                # Check if resolved path is within or equal to sensitive directory
-                try:
-                    # Use is_relative_to for Python 3.9+
-                    if resolved_str.startswith(sensitive_dir):
-                        return False, f"Cannot write to sensitive system directory: {resolved}", None
-                except (ValueError, AttributeError):
-                    pass
+        if is_output and _is_in_sensitive_directory(resolved_str, sensitive_dirs):
+            return False, f"Cannot write to sensitive system directory: {resolved}", None
 
         # Check if absolute path is allowed (after sensitive dir check)
         # Allow absolute paths to safe locations (like temp dirs, home, cwd)
-        if (path.is_absolute() or is_windows_absolute) and not allow_absolute:
-            # Normalise resolved path for comparison (convert backslashes to forward slashes)
-            resolved_normalised = resolved_str.replace('\\', '/')
-
-            # Check if this is a "safe" absolute path (temp dir, home, or under cwd)
-            # Normalise all safe prefixes to use forward slashes for consistent comparison
-            safe_prefixes_raw = [
-                str(Path.home()).lower(),
-                str(Path.cwd()).lower(),
-                str(Path(os.environ.get('TMPDIR', '/tmp'))).lower(),
-                str(Path(os.environ.get('TEMP', '/tmp'))).lower(),
-                str(Path(os.environ.get('TMP', '/tmp'))).lower(),
-                '/tmp',  # Standard Unix temp directory
-                '/private/tmp',  # macOS /tmp (canonical path)
-                '/var/folders',  # macOS temp
-                '/private/var/folders',  # macOS temp (canonical)
-            ]
-
-            # Normalise all safe prefixes to use forward slashes
-            safe_prefixes_normalised = [prefix.replace('\\', '/') for prefix in safe_prefixes_raw]
-
-            # Check if path is under CWD
-            cwd_normalised = str(Path.cwd()).lower().replace('\\', '/')
-
-            # Ensure CWD ends with separator for proper prefix matching
-            if not cwd_normalised.endswith('/'):
-                cwd_normalised += '/'
-
-            is_under_cwd = resolved_normalised.startswith(cwd_normalised) or resolved_normalised == cwd_normalised.rstrip('/')
-
-            # Check other safe prefixes (also normalised)
-            is_under_safe_prefix = any(
-                resolved_normalised.startswith(prefix if prefix.endswith('/') else prefix + '/')
-                for prefix in safe_prefixes_normalised
-            )
-
-            is_safe = is_under_cwd or is_under_safe_prefix
-
-            if not is_safe:
+        if is_absolute_form and not allow_absolute:
+            if not _is_safe_absolute_location(resolved_str):
                 return False, f"Absolute paths not allowed (use --allow-absolute-paths): {file_path}", None
 
         # Additional check: ensure we're not trying to write to system config files
-        if is_output:
-            dangerous_files = {
-                '/etc/passwd', '/etc/shadow', '/etc/group', '/etc/sudoers',
-                '/etc/hosts', '/etc/fstab', '/etc/crontab',
-                'c:\\windows\\system32\\config\\sam',
-                'c:\\windows\\system32\\config\\system',
-            }
-            if resolved_str in {f.lower() for f in dangerous_files}:
-                return False, f"Cannot write to system configuration file: {resolved}", None
+        if is_output and resolved_str in DANGEROUS_OUTPUT_FILES:
+            return False, f"Cannot write to system configuration file: {resolved}", None
 
         return True, "", resolved
 
