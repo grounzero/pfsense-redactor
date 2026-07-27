@@ -42,7 +42,7 @@ import logging
 from pathlib import Path
 from collections import defaultdict
 from collections.abc import Callable
-from typing import Union
+from typing import NoReturn, Union
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode, SplitResult
 import os
 
@@ -267,6 +267,61 @@ FILE_EXTENSIONS: frozenset[str] = frozenset({
 # content, so a placeholder can only ever be one this module wrote.
 URL_PLACEHOLDER_RE = re.compile(r'\x00URL(\d+)\x00')
 
+# Summary lines, in print order. Labels are parsed by the StatsParser fixture in
+# tests/conftest.py, so the text must not change.
+STAT_LABELS: tuple[tuple[str, str], ...] = (
+    ('secrets_redacted', 'Passwords/keys/secrets'),
+    ('certs_redacted', 'Certificates'),
+    ('ips_redacted', 'IP addresses'),
+    ('macs_redacted', 'MAC addresses'),
+    ('domains_redacted', 'Domain names'),
+    ('emails_redacted', 'Email addresses'),
+    ('urls_redacted', 'URLs'),
+    ('url_secrets_redacted', 'Secrets in URL paths/queries'),
+)
+
+# Sample categories, in the order they are printed for --dry-run-verbose.
+SAMPLE_CATEGORIES: tuple[str, ...] = ('IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key')
+
+# Documentation ranges reserved for examples: RFC 5737 (IPv4) and RFC 3849
+# (IPv6). In anonymise mode these are the values this tool generates, so seeing
+# one means it has already been masked. Built once at import rather than per
+# call - the check runs for every IP-like token in the config.
+RFC_DOC_NETWORKS_V4: tuple[IPNetwork, ...] = (
+    ipaddress.ip_network('192.0.2.0/24'),
+    ipaddress.ip_network('198.51.100.0/24'),
+    ipaddress.ip_network('203.0.113.0/24'),
+)
+RFC_DOC_NETWORK_V6: IPNetwork = ipaddress.ip_network('2001:db8::/32')
+
+
+def _has_mixed_character_classes(compact: str, hex_only: bool) -> bool:
+    """Check a candidate blob mixes character classes rather than being uniform
+
+    A long run of a single class - a numeric ID, or a lowercase word - is far
+    more likely to be ordinary content than encoded key material. Hex strings
+    get a looser rule since they cannot contain much variety by definition.
+    """
+    has_digit = any(c.isdigit() for c in compact)
+    has_upper = any(c.isupper() for c in compact)
+    has_lower = any(c.islower() for c in compact)
+
+    if hex_only:
+        return has_digit and (has_upper or has_lower)
+    return has_digit + has_upper + has_lower >= 2
+
+
+def is_rfc_documentation_ip(ip: IPAddress) -> bool:
+    """Check whether an address is in a reserved documentation range
+
+    Shared by the three places that need it: _mask_ip_like_tokens,
+    _is_already_masked_host and _normalise_masked_url. Each previously inlined
+    its own copy and rebuilt the network objects on every call.
+    """
+    if ip.version == 4:
+        return any(ip in net for net in RFC_DOC_NETWORKS_V4)
+    return ip in RFC_DOC_NETWORK_V6
+
 # URL path segment credential detection.
 # 20 because AWS access key IDs (AKIA...) are exactly 20 characters.
 SECRETISH_SEGMENT_MIN_LENGTH: int = 20
@@ -410,6 +465,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     CERT_MIN_LENGTH: int = 50  # Minimum length to treat text as certificate/key blob
     KEY_BLOB_MIN_LENGTH: int = 64  # Minimum length to treat <key> content as PEM blob
     KEY_SHORT_THRESHOLD: int = 40  # Threshold for short key detection (alphanumeric check)
+    RETAINED_PATHS_SHOWN: int = 10  # Max retained high-entropy paths listed in the summary
 
     # Each argument is an independent, user-facing redaction policy toggle
     # mapped 1:1 from a CLI flag; grouping them into a config object would add
@@ -597,6 +653,31 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             pass
         return value
 
+    @staticmethod
+    def _mask_sample_host(host: str) -> str:
+        """Mask a URL host for sample display
+
+        IPv6 results are bracketed because they are substituted back into a
+        netloc, which is why this cannot simply reuse _mask_ip_sample.
+        """
+        try:
+            ip = ipaddress.ip_address(host)
+        except (ValueError, ipaddress.AddressValueError):
+            # Domain: keep the first label and the registrable tail
+            host_parts = host.split('.')
+            if len(host_parts) >= 3:
+                return f"{host_parts[0]}.***.{'.'.join(host_parts[-2:])}"
+            if len(host_parts) == 2:
+                return f"***.{host}"
+            return host
+
+        if ip.version == 4:
+            host_parts = host.split('.')
+            return f"{host_parts[0]}.{host_parts[1]}.***.{host_parts[3]}" if len(host_parts) == 4 else host
+
+        host_parts = host.split(':')
+        return f"[{host_parts[0]}:{host_parts[1]}:*:****::{host_parts[-1]}]" if len(host_parts) >= 3 else f"[{host}]"
+
     def _mask_url_sample(self, value: str) -> str:
         """Mask URL for sample display
 
@@ -612,22 +693,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             if not host:
                 return value
 
-            try:
-                ip = ipaddress.ip_address(host)
-                if ip.version == 4:
-                    host_parts = host.split('.')
-                    masked_host = f"{host_parts[0]}.{host_parts[1]}.***.{host_parts[3]}" if len(host_parts) == 4 else host
-                else:
-                    host_parts = host.split(':')
-                    masked_host = f"[{host_parts[0]}:{host_parts[1]}:*:****::{host_parts[-1]}]" if len(host_parts) >= 3 else f"[{host}]"
-            except (ValueError, ipaddress.AddressValueError):
-                host_parts = host.split('.')
-                if len(host_parts) >= 3:
-                    masked_host = f"{host_parts[0]}.***.{'.'.join(host_parts[-2:])}"
-                elif len(host_parts) == 2:
-                    masked_host = f"***.{host}"
-                else:
-                    masked_host = host
+            masked_host = self._mask_sample_host(host)
 
             userinfo = ''
             if parts.username:
@@ -779,34 +845,34 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             str: RFC documentation IP address or fallback private IP
         """
         if is_ipv6:
-            # RFC 3849: 2001:db8::/32
-            # Map counter to last hextet (1..65535)
-            if counter <= 0xFFFF:
-                return f"2001:db8::{counter:x}"
+            return self._counter_to_rfc_ipv6(counter)
+        return self._counter_to_rfc_ipv4(counter)
 
-            # IPv6 overflow: use RFC 4193 Unique Local Addresses (ULA)
-            # fd00::/8 range for overflow addresses
-            # Log warning on first overflow
-            if counter == 0xFFFF + 1:
-                self.logger.warning(
-                    "[!] Warning: Exceeded RFC 3849 IPv6 limit (65535 addresses). "
-                    "Using RFC 4193 ULA range (fd00::/8) for additional addresses."
-                )
+    def _counter_to_rfc_ipv6(self, counter: int) -> str:
+        """Map a counter into RFC 3849 (2001:db8::/32), then RFC 4193 on overflow"""
+        # Map counter to last hextet (1..65535)
+        if counter <= 0xFFFF:
+            return f"2001:db8::{counter:x}"
 
-            # Map overflow to fd00::/8 range
-            # overflow 1 (counter 65536) -> fd00::0:1
-            # overflow 65536 (counter 131071) -> fd00::1:0
-            overflow = counter - 0xFFFF
-            hextet3 = ((overflow - 1) % 0x10000) + 1
-            hextet2 = (overflow - 1) // 0x10000
-            return f"fd00::{hextet2:x}:{hextet3:x}"
+        # IPv6 overflow: use RFC 4193 Unique Local Addresses (ULA)
+        # fd00::/8 range for overflow addresses
+        # Log warning on first overflow
+        if counter == 0xFFFF + 1:
+            self.logger.warning(
+                "[!] Warning: Exceeded RFC 3849 IPv6 limit (65535 addresses). "
+                "Using RFC 4193 ULA range (fd00::/8) for additional addresses."
+            )
 
-        # RFC 5737 IPv4 documentation ranges (762 total addresses):
-        # - 192.0.2.0/24 (TEST-NET-1): 254 usable (.1 to .254)
-        # - 198.51.100.0/24 (TEST-NET-2): 254 usable (.1 to .254)
-        # - 203.0.113.0/24 (TEST-NET-3): 254 usable (.1 to .254)
+        # Map overflow to fd00::/8 range
+        # overflow 1 (counter 65536) -> fd00::0:1
+        # overflow 65536 (counter 131071) -> fd00::1:0
+        overflow = counter - 0xFFFF
+        hextet3 = ((overflow - 1) % 0x10000) + 1
+        hextet2 = (overflow - 1) // 0x10000
+        return f"fd00::{hextet2:x}:{hextet3:x}"
 
-        # Log warnings at approach thresholds
+    def _warn_ipv4_limit(self, counter: int) -> None:
+        """Warn as the RFC 5737 pool is approached and exhausted"""
         if counter == 700:
             self.logger.warning(
                 "[!] Warning: Approaching RFC 5737 IPv4 limit (700/762 addresses used). "
@@ -821,6 +887,16 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 "[!] Warning: Reached RFC 5737 IPv4 limit (762/762 addresses used). "
                 "Next IP will use RFC 1918 private range."
             )
+
+    def _counter_to_rfc_ipv4(self, counter: int) -> str:
+        """Map a counter into the RFC 5737 ranges, then RFC 1918 on overflow
+
+        RFC 5737 IPv4 documentation ranges (762 total addresses):
+        - 192.0.2.0/24 (TEST-NET-1): 254 usable (.1 to .254)
+        - 198.51.100.0/24 (TEST-NET-2): 254 usable (.1 to .254)
+        - 203.0.113.0/24 (TEST-NET-3): 254 usable (.1 to .254)
+        """
+        self._warn_ipv4_limit(counter)
 
         if counter <= 254:
             # First range: 192.0.2.1 to 192.0.2.254
@@ -936,6 +1012,53 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         except ValueError:
             return token, ''
 
+    def _strip_ip_token_port(self, token: str) -> tuple[str, str]:
+        """Split a trailing port off an IP token. Returns (token, port_suffix)
+
+        Handles both unbracketed IPv4 (1.2.3.4:80) and bracketed IPv6 with an
+        optional zone identifier ([fe80::1%em0]:51820). An out-of-range or
+        non-numeric port is left attached, so the token simply fails to parse
+        as an address and is returned unchanged by the caller.
+        """
+        # IPv6 must use brackets to carry a port; only peel :port when unbracketed
+        if not token.startswith('['):
+            return self._validate_and_strip_port(token)
+
+        if ']:' not in token:
+            return token, ''
+
+        bracket_end = token.index(']:')
+        port_str = token[bracket_end + 2:]
+
+        try:
+            port_num = int(port_str)
+        except ValueError:
+            return token, ''
+
+        if not 1 <= port_num <= 65535:
+            return token, ''
+
+        return token[:bracket_end + 1], f':{port_num}'
+
+    def _should_preserve_ip(self, ip: IPAddress) -> bool:
+        """Check whether an address should be left as-is rather than masked"""
+        # Common netmasks and unspecified addresses stay readable regardless of
+        # --keep-private-ips
+        if str(ip) in self.always_preserve_ips:
+            return True
+
+        # Allow-listed IPs (opt-in, including CIDR networks)
+        if self._is_ip_allowed(ip):
+            return True
+
+        # In anonymise mode, RFC documentation IPs are our own generated values
+        if self.anonymise and is_rfc_documentation_ip(ip):
+            return True
+
+        # Non-global addresses if requested: RFC1918, ULA, loopback, link-local,
+        # multicast, reserved and unspecified
+        return self.keep_private_ips and not ip.is_global
+
     def _mask_ip_like_tokens(self, text: str) -> str:
         """IP address masking using ipaddress module"""
         def repl(token: str) -> str:
@@ -944,66 +1067,13 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 return token
             original_token = token
 
-            # Extract optional trailing :port for unbracketed tokens
-            # IPv6 must use brackets to carry a port; we only peel :port when the token contains a dot
-            port_suffix = ''
-            if not token.startswith('['):
-                token, port_suffix = self._validate_and_strip_port(token)
-
-            # Handle bracketed IPv6 with optional zone identifier and port: [fe80::1%em0]:51820
-            # This handles: [IPv6], [IPv6%zone], [IPv6]:port, [IPv6%zone]:port
-            if token.startswith('['):
-                # Pattern match for bracketed IPv6 with port
-                if ']:' in token:
-                    # Extract port from bracketed IPv6
-                    bracket_end = token.index(']:')
-                    port_str = token[bracket_end+2:]  # Port without colon
-
-                    # Validate port range for IPv6
-                    try:
-                        port_num = int(port_str)
-                        if 1 <= port_num <= 65535:
-                            # Valid port, strip and normalise
-                            port_suffix = f':{port_num}'
-                            token = token[:bracket_end+1]  # Keep just [IPv6%zone]
-                        else:
-                            # Invalid port, don't strip
-                            port_suffix = ''
-                    except ValueError:
-                        # Not a valid port number, don't strip
-                        port_suffix = ''
+            token, port_suffix = self._strip_ip_token_port(token)
 
             ip, bracketed, zone = self._parse_ip_token(token)
             if ip is None:
                 return original_token
 
-            # Always preserve common netmasks and unspecified addresses for readability
-            # (regardless of --keep-private-ips setting)
-            if str(ip) in self.always_preserve_ips:
-                return original_token
-
-            # Preserve allow-listed IPs (opt-in, including CIDR networks)
-            if self._is_ip_allowed(ip):
-                return original_token
-
-            # In anonymise mode, preserve RFC documentation IPs (they're our generated values)
-            if self.anonymise:
-                if ip.version == 4:
-                    rfc5737_ranges = [
-                        ipaddress.ip_network('192.0.2.0/24'),
-                        ipaddress.ip_network('198.51.100.0/24'),
-                        ipaddress.ip_network('203.0.113.0/24'),
-                    ]
-                    if any(ip in net for net in rfc5737_ranges):
-                        return original_token
-                elif ip.version == 6:
-                    rfc3849 = ipaddress.ip_network('2001:db8::/32')
-                    if ip in rfc3849:
-                        return original_token
-
-            # Keep non-global IPs if requested (simplified test for RFC1918, ULA, loopback,
-            # link-local, multicast, reserved, and unspecified addresses)
-            if self.keep_private_ips and not ip.is_global:
+            if self._should_preserve_ip(ip):
                 return original_token
 
             # Anonymisation mode
@@ -1082,23 +1152,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # In non-anonymise mode, RFC IPs in original configs should still be redacted
         if self.anonymise:
             try:
-                ip = ipaddress.ip_address(host)
-
-                # RFC 5737 IPv4 documentation ranges
-                if ip.version == 4:
-                    rfc5737_ranges = [
-                        ipaddress.ip_network('192.0.2.0/24'),
-                        ipaddress.ip_network('198.51.100.0/24'),
-                        ipaddress.ip_network('203.0.113.0/24'),
-                    ]
-                    if any(ip in net for net in rfc5737_ranges):
-                        return True
-
-                # RFC 3849 IPv6 documentation range
-                elif ip.version == 6:
-                    rfc3849 = ipaddress.ip_network('2001:db8::/32')
-                    if ip in rfc3849:
-                        return True
+                if is_rfc_documentation_ip(ipaddress.ip_address(host)):
+                    return True
             except ValueError:
                 pass  # Not an IP
 
@@ -1120,16 +1175,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # In anonymise mode, RFC documentation IPs are our own generated values
         if self.anonymise:
             try:
-                ip = ipaddress.ip_address(host)
-                if ip.version == 4:
-                    rfc5737_ranges = [
-                        ipaddress.ip_network('192.0.2.0/24'),
-                        ipaddress.ip_network('198.51.100.0/24'),
-                        ipaddress.ip_network('203.0.113.0/24'),
-                    ]
-                    keep_host = any(ip in net for net in rfc5737_ranges)
-                elif ip.version == 6:
-                    keep_host = ip in ipaddress.ip_network('2001:db8::/32')
+                keep_host = is_rfc_documentation_ip(ipaddress.ip_address(host))
             except ValueError:
                 pass  # Not an IP, continue with domain normalisation
 
@@ -1727,14 +1773,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         if not (BASE64ISH_RE.match(compact) or HEXISH_RE.match(compact)):
             return False
 
-        # Require some mix of character classes so that long runs of a single
-        # class (e.g. a numeric ID, or a lowercase-only word) are not flagged.
-        has_digit = any(c.isdigit() for c in compact)
-        has_upper = any(c.isupper() for c in compact)
-        has_lower = any(c.islower() for c in compact)
-        if HEXISH_RE.match(compact):
-            return has_digit and (has_upper or has_lower)
-        return has_digit + has_upper + has_lower >= 2
+        return _has_mixed_character_classes(compact, hex_only=bool(HEXISH_RE.match(compact)))
 
     def _redact_blob_text_element(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Scan opaque free-text containers for inline credentials
@@ -1933,6 +1972,40 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                     element.attrib[attr], redact_ips, redact_domains
                 )
 
+    def _redact_element_text(
+        self, tag: str, tag_base: str, element: ET.Element,
+        redact_ips: bool, redact_domains: bool
+    ) -> bool:
+        """Run the text-content passes. Returns whether the text was handled
+
+        The return value gates the later passes, so a pass that fully rewrote
+        the text stops a subsequent one from processing it again. Order matters:
+        the URL pass runs last and only on text nothing else claimed.
+        """
+        # Opaque free-text containers (custom_options, upsd_users, ...) that
+        # carry credentials inline rather than in dedicated elements
+        handled = self._redact_blob_text_element(tag, tag_base, element)
+
+        # Descriptions/identifiers - opt-in via --redact-descriptions
+        if self._redact_description_element(tag, tag_base, element):
+            handled = True
+
+        # Unrecognised high-entropy leaf values (third-party package fields)
+        if self._redact_unknown_blob_element(tag, element):
+            handled = True
+
+        if self._redact_ip_containing_element(tag, tag_base, element, redact_ips, redact_domains):
+            handled = True
+
+        # Credentials embedded in URLs in elements that are not known URL
+        # carriers (e.g. <updateurl>, <webhook_url>). Previously these were
+        # only touched under --aggressive, so the token survived by default.
+        # Host anonymisation deliberately stays out of the default path here.
+        if element.text and not handled and '://' in element.text:
+            element.text = self._redact_url_secrets_only(element.text)
+
+        return handled
+
     def redact_element(self, element: ET.Element, redact_ips: bool = True, redact_domains: bool = True) -> None:
         """Recursively redact sensitive information from XML element"""
 
@@ -1955,28 +2028,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # Handle cert/key elements (don't return - continue to process children)
         self._redact_cert_key_element(tag, tag_base, element)
 
-        # Opaque free-text containers (custom_options, upsd_users, ...) that
-        # carry credentials inline rather than in dedicated elements
-        text_already_processed = self._redact_blob_text_element(tag, tag_base, element)
-
-        # Descriptions/identifiers - opt-in via --redact-descriptions
-        if self._redact_description_element(tag, tag_base, element):
-            text_already_processed = True
-
-        # Unrecognised high-entropy leaf values (third-party package fields)
-        if self._redact_unknown_blob_element(tag, element):
-            text_already_processed = True
-
-        # Track whether we already processed text to avoid double processing in aggressive mode
-        if self._redact_ip_containing_element(tag, tag_base, element, redact_ips, redact_domains):
-            text_already_processed = True
-
-        # Credentials embedded in URLs in elements that are not known URL
-        # carriers (e.g. <updateurl>, <webhook_url>). Previously these were
-        # only touched under --aggressive, so the token survived by default.
-        # Host anonymisation deliberately stays out of the default path here.
-        if element.text and not text_already_processed and '://' in element.text:
-            element.text = self._redact_url_secrets_only(element.text)
+        text_already_processed = self._redact_element_text(
+            tag, tag_base, element, redact_ips, redact_domains
+        )
 
         # Redact attributes with sensitive names
         self._redact_sensitive_attributes(element)
@@ -2001,6 +2055,39 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # Insert comment as first child of root
         root.insert(0, comment)
 
+    def _check_root_tag(self, root: ET.Element) -> bool:
+        """Warn if this does not look like a pfSense config. False means abort
+
+        Namespace-robust. Only --fail-on-warn turns the warning into an abort.
+        """
+        if root.tag.rsplit('}', 1)[-1].lower() == 'pfsense':
+            return True
+
+        msg = f"[!] Warning: Root tag is '{root.tag}', expected 'pfsense'."
+        if self.fail_on_warn:
+            self.logger.error("%s Exiting.", msg)
+            return False
+
+        self.logger.warning("%s Proceeding anyway...", msg)
+        return True
+
+    def _write_output(
+        self, tree: ET.ElementTree, input_file: str, output_file: str | None,
+        stdout_mode: bool, inplace: bool
+    ) -> None:
+        """Write the redacted tree to stdout, over the input, or to a new file"""
+        if stdout_mode:
+            tree.write(sys.stdout.buffer, encoding='utf-8', xml_declaration=True)
+            return
+
+        if inplace:
+            tree.write(input_file, encoding='utf-8', xml_declaration=True)
+            self.logger.info("[+] Redacted configuration written in-place to: %s", input_file)
+            return
+
+        tree.write(output_file, encoding='utf-8', xml_declaration=True)
+        self.logger.info("[+] Redacted configuration written to: %s", output_file)
+
     def redact_config(
         self,
         input_file: str,
@@ -2017,14 +2104,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             tree = ET.parse(input_file)
             root = tree.getroot()
 
-            # G) Sanity check: ensure this is a pfSense config (namespace-robust)
-            root_tag = root.tag.rsplit('}', 1)[-1].lower()
-            if root_tag != 'pfsense':
-                msg = f"[!] Warning: Root tag is '{root.tag}', expected 'pfsense'."
-                if self.fail_on_warn:
-                    self.logger.error("%s Exiting.", msg)
-                    return False
-                self.logger.warning("%s Proceeding anyway...", msg)
+            if not self._check_root_tag(root):
+                return False
 
             if not dry_run and not stdout_mode:
                 self.logger.info("[+] Parsing XML configuration from: %s", input_file)
@@ -2046,15 +2127,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             # Pretty print (Python 3.9+)
             ET.indent(tree, space="  ")
 
-            # Write redacted configuration
-            if stdout_mode:
-                tree.write(sys.stdout.buffer, encoding='utf-8', xml_declaration=True)
-            elif inplace:
-                tree.write(input_file, encoding='utf-8', xml_declaration=True)
-                self.logger.info("[+] Redacted configuration written in-place to: %s", input_file)
-            else:
-                tree.write(output_file, encoding='utf-8', xml_declaration=True)
-                self.logger.info("[+] Redacted configuration written to: %s", output_file)
+            self._write_output(tree, input_file, output_file, stdout_mode, inplace)
 
             # Print summary (always print, logger routes to correct stream)
             self._print_stats()
@@ -2075,57 +2148,63 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         """Print redaction statistics using logger"""
         self.logger.info("")
         self.logger.info("[+] Redaction summary:")
-        if self.stats['secrets_redacted']:
-            self.logger.info("    - Passwords/keys/secrets: %d", self.stats['secrets_redacted'])
-        if self.stats['certs_redacted']:
-            self.logger.info("    - Certificates: %d", self.stats['certs_redacted'])
-        if self.stats['ips_redacted']:
-            self.logger.info("    - IP addresses: %d", self.stats['ips_redacted'])
-        if self.stats['macs_redacted']:
-            self.logger.info("    - MAC addresses: %d", self.stats['macs_redacted'])
-        if self.stats['domains_redacted']:
-            self.logger.info("    - Domain names: %d", self.stats['domains_redacted'])
-        if self.stats['emails_redacted']:
-            self.logger.info("    - Email addresses: %d", self.stats['emails_redacted'])
-        if self.stats['urls_redacted']:
-            self.logger.info("    - URLs: %d", self.stats['urls_redacted'])
-        if self.stats['url_secrets_redacted']:
-            self.logger.info("    - Secrets in URL paths/queries: %d", self.stats['url_secrets_redacted'])
+        for key, label in STAT_LABELS:
+            if self.stats[key]:
+                self.logger.info("    - %s: %d", label, self.stats[key])
 
-        # Surface values we deliberately did NOT redact so they can be checked
-        # manually - the summary otherwise only reports what was redacted,
-        # which makes retained secrets impossible to audit.
-        if self.stats['high_entropy_retained']:
-            self.logger.warning("")
+        self._print_retained_warning()
+        self._print_anonymisation_stats()
+        self._print_samples()
+
+    def _print_retained_warning(self) -> None:
+        """Report high-entropy values that were deliberately not redacted
+
+        The summary otherwise only reports what was redacted, which makes
+        retained secrets impossible to audit before sharing.
+        """
+        if not self.stats['high_entropy_retained']:
+            return
+
+        self.logger.warning("")
+        self.logger.warning(
+            "[!] %d unrecognised high-entropy value(s) retained. Review before sharing:",
+            self.stats['high_entropy_retained']
+        )
+        for path in self.high_entropy_paths[:self.RETAINED_PATHS_SHOWN]:
+            self.logger.warning("    - %s", path)
+        if len(self.high_entropy_paths) > self.RETAINED_PATHS_SHOWN:
             self.logger.warning(
-                "[!] %d unrecognised high-entropy value(s) retained. Review before sharing:",
-                self.stats['high_entropy_retained']
+                "    - ... and %d more",
+                len(self.high_entropy_paths) - self.RETAINED_PATHS_SHOWN
             )
-            for path in self.high_entropy_paths[:10]:
-                self.logger.warning("    - %s", path)
-            if len(self.high_entropy_paths) > 10:
-                self.logger.warning("    - ... and %d more", len(self.high_entropy_paths) - 10)
-            self.logger.warning("    Re-run with --aggressive to redact these automatically.")
+        self.logger.warning("    Re-run with --aggressive to redact these automatically.")
 
-        if self.anonymise:
-            self.logger.info("")
-            self.logger.info("[+] Anonymisation stats:")
-            self.logger.info("    - Unique IPs anonymised: %d", len(self.ip_aliases))
-            self.logger.info("    - Unique domains anonymised: %d", len(self.domain_aliases))
+    def _print_anonymisation_stats(self) -> None:
+        """Report how many unique identifiers were aliased"""
+        if not self.anonymise:
+            return
 
-        # Print samples if in dry-run-verbose mode
-        if self.dry_run_verbose:
-            self.logger.info("")
-            self.logger.info("[+] Samples of changes (limit N=%d):", self.sample_limit)
-            has_any = any(self.samples.get(cat) for cat in ['IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key'])
-            if has_any:
-                # Print in consistent order
-                for category in ['IP', 'URL', 'FQDN', 'MAC', 'Secret', 'Cert/Key']:
-                    if category in self.samples and self.samples[category]:
-                        for before_masked, after in self.samples[category]:
-                            self.logger.info("    %s: %s -> %s", category, before_masked, after)
-            else:
-                self.logger.info("    (no examples collected)")
+        self.logger.info("")
+        self.logger.info("[+] Anonymisation stats:")
+        self.logger.info("    - Unique IPs anonymised: %d", len(self.ip_aliases))
+        self.logger.info("    - Unique domains anonymised: %d", len(self.domain_aliases))
+
+    def _print_samples(self) -> None:
+        """Print masked before/after examples for --dry-run-verbose"""
+        if not self.dry_run_verbose:
+            return
+
+        self.logger.info("")
+        self.logger.info("[+] Samples of changes (limit N=%d):", self.sample_limit)
+
+        printed = False
+        for category in SAMPLE_CATEGORIES:
+            for before_masked, after in self.samples.get(category) or ():
+                self.logger.info("    %s: %s -> %s", category, before_masked, after)
+                printed = True
+
+        if not printed:
+            self.logger.info("    (no examples collected)")
 
 
 # ==========================================================================
@@ -2147,54 +2226,62 @@ def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> tupl
     Returns:
         tuple: (set of IP strings, list of IP network objects, set of domains)
     """
-    ips = set()
-    networks = []
-    domains = set()
+    ips: set[str] = set()
+    networks: list[IPNetwork] = []
+    domains: set[str] = set()
 
     try:
         with open(filepath, 'r', encoding='utf-8') as file_handle:
-            for _, line in enumerate(file_handle, 1):
-                line = line.strip()
-                # Skip blank lines and comments
-                if not line or line.startswith('#'):
-                    continue
-
-                # Try to parse as IP address first
-                try:
-                    ipaddress.ip_address(line)
-                    ips.add(line)
-                    continue
-                except ValueError:
-                    pass
-
-                # Try to parse as CIDR network
-                try:
-                    network = ipaddress.ip_network(line, strict=False)
-                    networks.append(network)
-                    continue
-                except ValueError:
-                    pass
-
-                # Not an IP or CIDR, treat as domain (case-insensitive)
-                domains.add(line.lower())
+            for raw_line in file_handle:
+                _classify_allowlist_entry(raw_line.strip(), ips, networks, domains)
 
     except FileNotFoundError:
-        if not silent_if_missing:
-            logger = logging.getLogger('pfsense_redactor')
-            logger.error("[!] Error: Allow-list file '%s' not found", filepath)
-            sys.exit(1)
-        # Silent if missing for default files
-        return set(), [], set()
+        if silent_if_missing:
+            # Default allow-list files are optional
+            return set(), [], set()
+        _exit_allowlist_error("[!] Error: Allow-list file '%s' not found", filepath)
     except (IOError, OSError) as e:
-        logger = logging.getLogger('pfsense_redactor')
-        logger.error("[!] Error reading allow-list file: %s", e)
-        sys.exit(1)
+        _exit_allowlist_error("[!] Error reading allow-list file: %s", e)
     except (ValueError, UnicodeDecodeError) as e:
-        logger = logging.getLogger('pfsense_redactor')
-        logger.error("[!] Error parsing allow-list file: %s", e)
-        sys.exit(1)
+        _exit_allowlist_error("[!] Error parsing allow-list file: %s", e)
 
     return ips, networks, domains
+
+
+def _classify_allowlist_entry(
+    line: str, ips: set[str], networks: list[IPNetwork], domains: set[str]
+) -> None:
+    """Sort one stripped allow-list line into IPs, networks or domains
+
+    Blank lines and whole-line comments are ignored. Anything that parses as
+    neither an address nor a network is treated as a domain, which is why a
+    malformed entry silently becomes a domain rather than an error.
+    """
+    if not line or line.startswith('#'):
+        return
+
+    try:
+        ipaddress.ip_address(line)
+        ips.add(line)
+        return
+    except ValueError:
+        pass
+
+    try:
+        # strict=False so 10.1.2.3/8 is accepted and normalised
+        networks.append(ipaddress.ip_network(line, strict=False))
+        return
+    except ValueError:
+        pass
+
+    # Domain matching is case-insensitive
+    domains.add(line.lower())
+
+
+def _exit_allowlist_error(message: str, detail: object) -> NoReturn:
+    """Report an allow-list failure and exit non-zero"""
+    logging.getLogger('pfsense_redactor').error(message, detail)
+    sys.exit(1)
 
 
 def find_default_allowlist_files() -> list[Path]:
@@ -2268,6 +2355,81 @@ def _get_sensitive_directories() -> frozenset[str]:
     return frozenset(normalised)
 
 
+# System files that must never be written to, compared against the resolved
+# lower-cased path. Checked in addition to the sensitive-directory scan.
+DANGEROUS_OUTPUT_FILES: frozenset[str] = frozenset({
+    '/etc/passwd', '/etc/shadow', '/etc/group', '/etc/sudoers',
+    '/etc/hosts', '/etc/fstab', '/etc/crontab',
+    'c:\\windows\\system32\\config\\sam',
+    'c:\\windows\\system32\\config\\system',
+})
+
+
+def _resolve_for_validation(file_path: str, path: Path) -> tuple[Path, bool]:
+    """Resolve a path to absolute form. Returns (resolved, was_absolute)
+
+    Windows drive-letter paths are detected explicitly because Path.is_absolute
+    returns False for them on POSIX, which would otherwise let 'C:\\...' be
+    treated as relative and resolved against the working directory.
+    """
+    is_windows_absolute = (
+        len(file_path) >= 3 and
+        file_path[1:3] in (':\\', ':/')  # C:\ or C:/
+    )
+    is_absolute_form = path.is_absolute() or is_windows_absolute
+
+    # Follows symlinks; relative paths resolve against the working directory
+    resolved = path.resolve() if is_absolute_form else (Path.cwd() / path).resolve()
+    return resolved, is_absolute_form
+
+
+def _is_in_sensitive_directory(resolved_str: str, sensitive_dirs: frozenset[str]) -> bool:
+    """Check whether a resolved output path falls inside a protected directory"""
+    for sensitive_dir in sensitive_dirs:
+        try:
+            if resolved_str.startswith(sensitive_dir):
+                return True
+        except (ValueError, AttributeError):
+            pass
+    return False
+
+
+def _is_safe_absolute_location(resolved_str: str) -> bool:
+    """Check whether an absolute path points somewhere writing is acceptable
+
+    Safe means the current working directory, the user's home, or a system
+    temp directory. Called only when --allow-absolute-paths was not given, and
+    only after the sensitive-directory check has already run.
+    """
+    # Normalise to forward slashes so Windows and POSIX compare alike
+    resolved_normalised = resolved_str.replace('\\', '/')
+
+    safe_prefixes = [
+        str(Path.home()).lower(),
+        str(Path.cwd()).lower(),
+        str(Path(os.environ.get('TMPDIR', '/tmp'))).lower(),
+        str(Path(os.environ.get('TEMP', '/tmp'))).lower(),
+        str(Path(os.environ.get('TMP', '/tmp'))).lower(),
+        '/tmp',  # Standard Unix temp directory
+        '/private/tmp',  # macOS /tmp (canonical path)
+        '/var/folders',  # macOS temp
+        '/private/var/folders',  # macOS temp (canonical)
+    ]
+
+    # The cwd itself is safe, as well as anything beneath it
+    cwd_normalised = str(Path.cwd()).lower().replace('\\', '/')
+    if not cwd_normalised.endswith('/'):
+        cwd_normalised += '/'
+    if resolved_normalised.startswith(cwd_normalised) or resolved_normalised == cwd_normalised.rstrip('/'):
+        return True
+
+    # Require the separator so /tmpfoo does not match the /tmp prefix
+    return any(
+        resolved_normalised.startswith(prefix if prefix.endswith('/') else prefix + '/')
+        for prefix in (p.replace('\\', '/') for p in safe_prefixes)
+    )
+
+
 def validate_file_path(
     file_path: str,
     allow_absolute: bool = False,
@@ -2308,89 +2470,17 @@ def validate_file_path(
         if '..' in path.parts:
             return False, "Path contains directory traversal components (..)", None
 
-        # Check if this looks like a Windows absolute path (e.g., C:\, D:\)
-        # On Unix systems, Path.is_absolute() returns False for Windows paths
-        is_windows_absolute = (
-            len(file_path) >= 3 and
-            file_path[1:3] in (':\\', ':/')  # C:\ or C:/
+        resolved, is_absolute_form = _resolve_for_validation(file_path, path)
+
+        # ORDER IS SECURITY-CRITICAL and is asserted by _resolved_path_error:
+        # the sensitive-directory check must run before the absolute-path check,
+        # so --allow-absolute-paths cannot be used to write into a protected
+        # directory.
+        error = _resolved_path_error(
+            file_path, resolved, is_absolute_form, allow_absolute, is_output, sensitive_dirs
         )
-
-        # Resolve the path to its absolute form (follows symlinks)
-        # Use Path.cwd() as base for relative paths
-        if path.is_absolute() or is_windows_absolute:
-            resolved = path.resolve()
-        else:
-            # For relative paths, resolve against current working directory
-            resolved = (Path.cwd() / path).resolve()
-
-        resolved_str = str(resolved).lower()
-
-        # Check if resolved path is in a sensitive directory FIRST
-        # This is the critical security check - do it before the absolute path check
-        # so that even with --allow-absolute-paths, we still block sensitive dirs
-        if is_output:
-            for sensitive_dir in sensitive_dirs:
-                # Check if resolved path is within or equal to sensitive directory
-                try:
-                    # Use is_relative_to for Python 3.9+
-                    if resolved_str.startswith(sensitive_dir):
-                        return False, f"Cannot write to sensitive system directory: {resolved}", None
-                except (ValueError, AttributeError):
-                    pass
-
-        # Check if absolute path is allowed (after sensitive dir check)
-        # Allow absolute paths to safe locations (like temp dirs, home, cwd)
-        if (path.is_absolute() or is_windows_absolute) and not allow_absolute:
-            # Normalise resolved path for comparison (convert backslashes to forward slashes)
-            resolved_normalised = resolved_str.replace('\\', '/')
-
-            # Check if this is a "safe" absolute path (temp dir, home, or under cwd)
-            # Normalise all safe prefixes to use forward slashes for consistent comparison
-            safe_prefixes_raw = [
-                str(Path.home()).lower(),
-                str(Path.cwd()).lower(),
-                str(Path(os.environ.get('TMPDIR', '/tmp'))).lower(),
-                str(Path(os.environ.get('TEMP', '/tmp'))).lower(),
-                str(Path(os.environ.get('TMP', '/tmp'))).lower(),
-                '/tmp',  # Standard Unix temp directory
-                '/private/tmp',  # macOS /tmp (canonical path)
-                '/var/folders',  # macOS temp
-                '/private/var/folders',  # macOS temp (canonical)
-            ]
-
-            # Normalise all safe prefixes to use forward slashes
-            safe_prefixes_normalised = [prefix.replace('\\', '/') for prefix in safe_prefixes_raw]
-
-            # Check if path is under CWD
-            cwd_normalised = str(Path.cwd()).lower().replace('\\', '/')
-
-            # Ensure CWD ends with separator for proper prefix matching
-            if not cwd_normalised.endswith('/'):
-                cwd_normalised += '/'
-
-            is_under_cwd = resolved_normalised.startswith(cwd_normalised) or resolved_normalised == cwd_normalised.rstrip('/')
-
-            # Check other safe prefixes (also normalised)
-            is_under_safe_prefix = any(
-                resolved_normalised.startswith(prefix if prefix.endswith('/') else prefix + '/')
-                for prefix in safe_prefixes_normalised
-            )
-
-            is_safe = is_under_cwd or is_under_safe_prefix
-
-            if not is_safe:
-                return False, f"Absolute paths not allowed (use --allow-absolute-paths): {file_path}", None
-
-        # Additional check: ensure we're not trying to write to system config files
-        if is_output:
-            dangerous_files = {
-                '/etc/passwd', '/etc/shadow', '/etc/group', '/etc/sudoers',
-                '/etc/hosts', '/etc/fstab', '/etc/crontab',
-                'c:\\windows\\system32\\config\\sam',
-                'c:\\windows\\system32\\config\\system',
-            }
-            if resolved_str in {f.lower() for f in dangerous_files}:
-                return False, f"Cannot write to system configuration file: {resolved}", None
+        if error:
+            return False, error, None
 
         return True, "", resolved
 
@@ -2398,17 +2488,43 @@ def validate_file_path(
         return False, f"Error validating path: {e}", None
 
 
+def _resolved_path_error(
+    file_path: str, resolved: Path, is_absolute_form: bool, allow_absolute: bool,
+    is_output: bool, sensitive_dirs: frozenset[str]
+) -> str | None:
+    """Return the first failure among the resolved-path checks, else None
+
+    Checks run in this order deliberately:
+    1. sensitive directory - must precede the absolute check so that
+       --allow-absolute-paths still cannot reach a protected directory
+    2. absolute path outside the safe locations
+    3. specific system configuration files
+    """
+    resolved_str = str(resolved).lower()
+
+    if is_output and _is_in_sensitive_directory(resolved_str, sensitive_dirs):
+        return f"Cannot write to sensitive system directory: {resolved}"
+
+    if is_absolute_form and not allow_absolute and not _is_safe_absolute_location(resolved_str):
+        return f"Absolute paths not allowed (use --allow-absolute-paths): {file_path}"
+
+    if is_output and resolved_str in DANGEROUS_OUTPUT_FILES:
+        return f"Cannot write to system configuration file: {resolved}"
+
+    return None
+
+
 
 
 # ==========================================================================
 # 7. CLI
 # ==========================================================================
-def main() -> None:  # pylint: disable=too-many-locals,too-many-branches,too-many-statements
-    """Main entry point for the pfSense redactor CLI"""
-    # Version for the --version flag. Resolved rather than imported directly so
-    # that running redactor.py as a script still reports the real version.
-    __version__ = resolve_version()
+def _build_arg_parser(version: str) -> argparse.ArgumentParser:
+    """Construct the CLI parser
 
+    Split into groups by _add_*_arguments helpers: 25 add_argument calls in
+    one function exceeded the 50-line method limit Codacy enforces.
+    """
     parser = argparse.ArgumentParser(
         description='Redact sensitive information from pfSense XML configuration files',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -2439,13 +2555,25 @@ CDATA sections are not preserved.
         """
     )
 
-    parser.add_argument('--version', action='version', version=f'%(prog)s {__version__}',
+    parser.add_argument('--version', action='version', version=f'%(prog)s {version}',
                         help='Show program version and exit')
     parser.add_argument('--check-version', action='store_true',
                         help='Check for updates from PyPI')
 
+    _add_io_arguments(parser)
+    _add_redaction_arguments(parser)
+    _add_output_arguments(parser)
+    _add_allowlist_arguments(parser)
+    return parser
+
+
+def _add_io_arguments(parser: argparse.ArgumentParser) -> None:
+    """Positional input/output paths"""
     parser.add_argument('input', nargs='?', help='Input pfSense config.xml file (required unless --check-version is used)')
     parser.add_argument('output', nargs='?', help='Output redacted config.xml file')
+
+def _add_redaction_arguments(parser: argparse.ArgumentParser) -> None:
+    """Flags controlling what gets redacted and how"""
     parser.add_argument('--no-redact-ips', action='store_true',
                         help='Do not redact IP addresses')
     parser.add_argument('--no-redact-domains', action='store_true',
@@ -2456,6 +2584,9 @@ CDATA sections are not preserved.
                         help='When used with --anonymise, do NOT keep private IPs visible.')
     parser.add_argument('--anonymise', action='store_true',
                         help='Use consistent aliases (IP_1, domain1.example) to preserve topology. Implies --keep-private-ips unless --no-keep-private-ips is specified')
+
+def _add_output_arguments(parser: argparse.ArgumentParser) -> None:
+    """Flags controlling where output goes and how noisy the run is"""
     parser.add_argument('--dry-run', action='store_true',
                         help='Show what would be redacted without writing output')
     parser.add_argument('--stdout', action='store_true',
@@ -2472,6 +2603,9 @@ CDATA sections are not preserved.
                         help='Show detailed debug information')
     parser.add_argument('--fail-on-warn', action='store_true',
                         help='Exit with non-zero code if root tag is not pfsense (useful in CI)')
+
+def _add_allowlist_arguments(parser: argparse.ArgumentParser) -> None:
+    """Allow-list sources and the remaining opt-in redaction flags"""
     parser.add_argument('--allowlist-ip', action='append', dest='allowlist_ips', metavar='IP_OR_CIDR',
                         help='IP or CIDR to never redact (repeatable). Applies to both raw text and URLs.')
     parser.add_argument('--allowlist-domain', action='append', dest='allowlist_domains', metavar='DOMAIN',
@@ -2489,56 +2623,15 @@ CDATA sections are not preserved.
     parser.add_argument('--allow-absolute-paths', action='store_true',
                         help='Allow absolute file paths (e.g., /etc/passwd, C:\\config.xml). By default, only relative paths are permitted for security. Use with caution.')
 
-    args = parser.parse_args()
 
-    # Validate required arguments for normal operation
-    if not args.check_version and not args.input:
-        parser.error("the following arguments are required: input")
 
-    # Handle --check-version flag
-    if args.check_version:
-        # Import version checker
-        from .version_checker import print_version_check
+def _resolve_input_path(
+    args: argparse.Namespace, sensitive_dirs: frozenset[str], logger: logging.Logger
+) -> None:
+    """Validate the input path and its file. Exits non-zero on any failure
 
-        # Setup basic logging for version check
-        setup_logging(logging.INFO, use_stderr=False)
-
-        # Run version check and exit
-        success = print_version_check(verbose=False)
-        sys.exit(0 if success else 1)
-
-    # Validate mutually exclusive flags
-    if args.quiet and args.verbose:
-        parser.error("--quiet and --verbose are mutually exclusive")
-
-    # Determine log level
-    if args.verbose:
-        log_level = logging.DEBUG
-    elif args.quiet:
-        log_level = logging.WARNING
-    else:
-        log_level = logging.INFO
-
-    # Setup logging (route to stderr when using --stdout)
-    use_stderr = args.stdout
-    setup_logging(log_level, use_stderr)
-
-    # Handle --dry-run-verbose
-    if args.dry_run_verbose:
-        args.dry_run = True
-
-    # Default output filename if not specified
-    if not args.stdout and not args.inplace and not args.dry_run and not args.output:
-        # Auto-generate output filename: input-redacted.xml
-        input_path = Path(args.input)
-        args.output = str(input_path.parent / f"{input_path.stem}-redacted{input_path.suffix}")
-
-    # Get logger for error messages
-    logger = logging.getLogger('pfsense_redactor')
-
-    # Compute sensitive directories once for efficiency
-    sensitive_dirs = _get_sensitive_directories()
-
+    Sets args.input to the resolved path, as the inline version did.
+    """
     # Validate input file path
     input_valid, input_error, input_resolved = validate_file_path(
         args.input,
@@ -2577,48 +2670,55 @@ CDATA sections are not preserved.
         logger.error("[!] Error: Input file is empty")
         sys.exit(1)
 
-    # Validate output file path (if applicable)
-    # Skip validation in dry-run mode since we won't actually write
-    if args.output and not args.stdout and not args.dry_run:
-        output_valid, output_error, output_resolved = validate_file_path(
-            args.output,
-            allow_absolute=args.allow_absolute_paths,
-            is_output=True,
-            sensitive_dirs=sensitive_dirs
-        )
-        if not output_valid:
-            logger.error("[!] Error: Invalid output path: %s", output_error)
-            sys.exit(1)
 
-        # Check if output file exists (unless force)
-        if not args.force and output_resolved.exists():
+def _resolve_output_path(
+    args: argparse.Namespace, sensitive_dirs: frozenset[str], logger: logging.Logger
+) -> None:
+    """Validate the output path, including the extra --inplace checks"""
+    # Validated whenever the path will be used. The only skipped case is
+    # --stdout without --dry-run, where args.output is never written.
+    if args.output and (args.dry_run or not args.stdout):
+        resolved = _validate_as_output_target(
+            args.output, args, sensitive_dirs, logger,
+            "[!] Error: Invalid output path: %s"
+        )
+
+        # Overwrite protection applies only when a write will actually happen
+        if not args.dry_run and not args.stdout and not args.force and resolved.exists():
             logger.error("[!] Error: Output file '%s' already exists. Use --force to overwrite.", args.output)
             sys.exit(1)
-    elif args.dry_run and args.output:
-        # In dry-run mode, still validate the output path for security
-        output_valid, output_error, _ = validate_file_path(
-            args.output,
-            allow_absolute=args.allow_absolute_paths,
-            is_output=True,
-            sensitive_dirs=sensitive_dirs
-        )
-        if not output_valid:
-            logger.error("[!] Error: Invalid output path: %s", output_error)
-            sys.exit(1)
 
-    # Validate inplace mode - extra security check
+    # --inplace rewrites the input, so re-validate it under output rules
     if args.inplace:
-        # Re-validate input path with output restrictions
-        inplace_valid, inplace_error, _ = validate_file_path(
-            args.input,
-            allow_absolute=args.allow_absolute_paths,
-            is_output=True,  # Treat as output for stricter checks
-            sensitive_dirs=sensitive_dirs
+        _validate_as_output_target(
+            args.input, args, sensitive_dirs, logger,
+            "[!] Error: Cannot use --inplace with this file: %s"
         )
-        if not inplace_valid:
-            logger.error("[!] Error: Cannot use --inplace with this file: %s", inplace_error)
-            sys.exit(1)
 
+
+def _validate_as_output_target(
+    candidate: str, args: argparse.Namespace, sensitive_dirs: frozenset[str],
+    logger: logging.Logger, error_template: str
+) -> Path:
+    """Validate a path under output rules, exiting on failure. Returns resolved"""
+    valid, error, resolved = validate_file_path(
+        candidate,
+        allow_absolute=args.allow_absolute_paths,
+        is_output=True,
+        sensitive_dirs=sensitive_dirs
+    )
+    if not valid:
+        logger.error(error_template, error)
+        sys.exit(1)
+    return resolved
+
+
+def _resolve_keep_private_ips(args: argparse.Namespace) -> bool:
+    """Decide whether non-global IPs are preserved
+
+    --anonymise implies keeping them for better context unless the user was
+    explicit either way.
+    """
     # Default keep_private_ips to True when anonymise is used (better AI context)
     # unless explicitly disabled with --no-keep-private-ips
     if args.anonymise and args.keep_private_ips is None:
@@ -2630,7 +2730,13 @@ CDATA sections are not preserved.
     else:
         # Explicit flag was used
         keep_private_ips = args.keep_private_ips
+    return keep_private_ips
 
+
+def _collect_allowlists(
+    args: argparse.Namespace, logger: logging.Logger
+) -> tuple[set[str], list[IPNetwork], set[str]]:
+    """Merge allow-list entries from default files, --allowlist-file and CLI flags"""
     # Build allow-lists from multiple sources (merge all)
     allowlist_ips = set()
     allowlist_networks = []
@@ -2655,32 +2761,112 @@ CDATA sections are not preserved.
         allowlist_domains.update(file_domains)
 
     # 3. Add IPs/CIDRs from CLI
-    if args.allowlist_ips:
-        for entry in args.allowlist_ips:
-            # Try as single IP first
-            try:
-                ipaddress.ip_address(entry)
-                allowlist_ips.add(entry)
-                continue
-            except ValueError:
-                pass
-
-            # Try as CIDR network
-            try:
-                network = ipaddress.ip_network(entry, strict=False)
-                allowlist_networks.append(network)
-                continue
-            except ValueError:
-                pass
-
-            # Invalid entry
-            logger.error("[!] Error: Invalid IP or CIDR in --allowlist-ip: %s", entry)
-            sys.exit(1)
+    for entry in args.allowlist_ips or ():
+        _add_cli_allowlist_ip(entry, allowlist_ips, allowlist_networks, logger)
 
     # 4. Add domains from CLI (case-insensitive)
-    if args.allowlist_domains:
-        for domain in args.allowlist_domains:
-            allowlist_domains.add(domain.lower())
+    for domain in args.allowlist_domains or ():
+        allowlist_domains.add(domain.lower())
+
+    return allowlist_ips, allowlist_networks, allowlist_domains
+
+
+def _add_cli_allowlist_ip(
+    entry: str, ips: set[str], networks: list[IPNetwork], logger: logging.Logger
+) -> None:
+    """Add one --allowlist-ip entry, exiting if it is neither an IP nor a CIDR
+
+    Unlike allow-list *files*, where an unparseable line is treated as a
+    domain, an explicit --allowlist-ip that does not parse is a user error and
+    is fatal.
+    """
+    try:
+        ipaddress.ip_address(entry)
+        ips.add(entry)
+        return
+    except ValueError:
+        pass
+
+    try:
+        networks.append(ipaddress.ip_network(entry, strict=False))
+        return
+    except ValueError:
+        pass
+
+    logger.error("[!] Error: Invalid IP or CIDR in --allowlist-ip: %s", entry)
+    sys.exit(1)
+
+
+def _handle_early_exit_flags(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    """Handle argument combinations that exit before any redaction happens"""
+    if not args.check_version and not args.input:
+        parser.error("the following arguments are required: input")
+
+    if args.check_version:
+        from .version_checker import print_version_check  # pylint: disable=import-outside-toplevel
+
+        setup_logging(logging.INFO, use_stderr=False)
+        success = print_version_check(verbose=False)
+        sys.exit(0 if success else 1)
+
+    if args.quiet and args.verbose:
+        parser.error("--quiet and --verbose are mutually exclusive")
+
+
+def _configure_logging_from_args(args: argparse.Namespace) -> None:
+    """Set up logging at the verbosity the flags ask for
+
+    --stdout routes everything to stderr so the redacted XML on stdout stays
+    machine-readable.
+    """
+    if args.verbose:
+        log_level = logging.DEBUG
+    elif args.quiet:
+        log_level = logging.WARNING
+    else:
+        log_level = logging.INFO
+
+    setup_logging(log_level, use_stderr=args.stdout)
+
+
+def _apply_argument_defaults(args: argparse.Namespace) -> None:
+    """Fill in values implied by other flags, before any validation"""
+    # --dry-run-verbose is a louder --dry-run
+    if args.dry_run_verbose:
+        args.dry_run = True
+
+    # Auto-generate output filename when one is needed but not given
+    if not args.stdout and not args.inplace and not args.dry_run and not args.output:
+        input_path = Path(args.input)
+        args.output = str(input_path.parent / f"{input_path.stem}-redacted{input_path.suffix}")
+
+
+def main() -> None:
+    """Main entry point for the pfSense redactor CLI"""
+    # Version for the --version flag. Resolved rather than imported directly so
+    # that running redactor.py as a script still reports the real version.
+    __version__ = resolve_version()
+
+    parser = _build_arg_parser(__version__)
+
+    args = parser.parse_args()
+
+    _handle_early_exit_flags(args, parser)
+    _configure_logging_from_args(args)
+    _apply_argument_defaults(args)
+
+    # Get logger for error messages
+    logger = logging.getLogger('pfsense_redactor')
+
+    # Compute sensitive directories once for efficiency
+    sensitive_dirs = _get_sensitive_directories()
+
+    _resolve_input_path(args, sensitive_dirs, logger)
+    _resolve_output_path(args, sensitive_dirs, logger)
+
+    keep_private_ips = _resolve_keep_private_ips(args)
+
+    allowlist_ips, allowlist_networks, allowlist_domains = _collect_allowlists(args, logger)
 
     # Create redactor and process file
     redactor = PfSenseRedactor(
