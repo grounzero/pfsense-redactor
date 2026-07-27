@@ -5,11 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.1][] - 2026-07-27
+## [1.1.1][] - 2026-07-28
 
-Follow-up to 1.1.0, from a second canary-corpus report. 1.1.0 caught 41/46
-where 1.0.10 caught 15/46; these are the remaining gaps plus one
-over-redaction bug found while confirming them.
+Follow-up to 1.1.0, in two parts. The first came from a second canary-corpus
+report — 1.1.0 caught 41 of 46 planted secrets where 1.0.10 caught 15, and this
+closes the remaining URL path gaps plus an over-redaction bug found while
+confirming them. The second is two long-standing defects surfaced while
+reviewing that work, both older than 1.1.0.
 
 ### Security
 - **FIX**: Three credential formats bypassed URL path-segment detection:
@@ -40,10 +42,8 @@ over-redaction bug found while confirming them.
   context. Context is required because extension alone cannot decide it: `.sh`,
   `.pl`, `.io` and `.zip` are all real TLDs, so `haproxy.sh` is preserved
   inside a path but still redacted in prose.
-
-### Fixed (long-standing bugs, found during review)
-- **FIX**: IPv6 anonymisation produced invalid addresses once the RFC 3849 pool
-  was exhausted. The RFC 4193 overflow mapping used
+- **FIX** (predates 1.1.0): IPv6 anonymisation produced invalid addresses once
+  the RFC 3849 pool was exhausted. The RFC 4193 overflow mapping used
   `((overflow - 1) % 0x10000) + 1`, which ranges `1..0x10000` — one past what a
   hextet can hold — so every 65536th counter emitted a five-digit group such as
   `fd00::0:10000`, which is not parseable. It now rolls into the upper hextet
@@ -53,15 +53,16 @@ over-redaction bug found while confirming them.
   Two existing tests asserted the malformed value, complete with comments
   working through the arithmetic that produced it, which is why the defect
   survived. Both are corrected.
-- **FIX**: The sensitive-directory check used a plain string prefix, so paths
-  that merely *begin* with a protected directory's name were rejected:
-  `/rootkit`, `/roots`, `/var/logs-archive`, `/bootstrap`, `/usr/binaries`,
-  `/libraries` and `/runner` were all refused as output locations. Matching is
-  now component-aware. This over-blocked rather than under-blocked, so it was a
-  usability failure rather than a security one, and every protected directory
-  remains blocked.
+- **FIX** (predates 1.1.0): The sensitive-directory check used a plain string
+  prefix, so paths that merely *begin* with a protected directory's name were
+  rejected: `/rootkit`, `/roots`, `/var/logs-archive`, `/bootstrap`,
+  `/usr/binaries`, `/libraries` and `/runner` were all refused as output
+  locations. Matching is now component-aware, and no longer depends on whether
+  an entry was written with a trailing separator. This over-blocked rather than
+  under-blocked, so it was a usability failure rather than a security one, and
+  every protected directory remains blocked.
 
-### Known limitation
+### Known limitations
 - A path segment of 21-23 characters containing no digit is not detected.
   `Open_VM_Tools_package` (a route name that must be preserved) and a
   hypothetical 21-character alphabetic token are the same length and shape, so
