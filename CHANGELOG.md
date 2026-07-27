@@ -41,6 +41,26 @@ over-redaction bug found while confirming them.
   `.pl`, `.io` and `.zip` are all real TLDs, so `haproxy.sh` is preserved
   inside a path but still redacted in prose.
 
+### Fixed (long-standing bugs, found during review)
+- **FIX**: IPv6 anonymisation produced invalid addresses once the RFC 3849 pool
+  was exhausted. The RFC 4193 overflow mapping used
+  `((overflow - 1) % 0x10000) + 1`, which ranges `1..0x10000` — one past what a
+  hextet can hold — so every 65536th counter emitted a five-digit group such as
+  `fd00::0:10000`, which is not parseable. It now rolls into the upper hextet
+  (`fd00::1:0`), which is what the implementation comment always described.
+  Reachable only with 131,071 or more unique IPv6 addresses in one config.
+
+  Two existing tests asserted the malformed value, complete with comments
+  working through the arithmetic that produced it, which is why the defect
+  survived. Both are corrected.
+- **FIX**: The sensitive-directory check used a plain string prefix, so paths
+  that merely *begin* with a protected directory's name were rejected:
+  `/rootkit`, `/roots`, `/var/logs-archive`, `/bootstrap`, `/usr/binaries`,
+  `/libraries` and `/runner` were all refused as output locations. Matching is
+  now component-aware. This over-blocked rather than under-blocked, so it was a
+  usability failure rather than a security one, and every protected directory
+  remains blocked.
+
 ### Known limitation
 - A path segment of 21-23 characters containing no digit is not detected.
   `Open_VM_Tools_package` (a route name that must be preserved) and a

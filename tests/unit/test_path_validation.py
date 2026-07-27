@@ -316,3 +316,50 @@ class TestPathValidationEdgeCases:
 
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])
+
+
+class TestSensitiveDirectoryComponentMatching:
+    """Sensitive-directory matching must compare whole path components
+
+    A bare startswith rejected legitimate paths whose names merely begin with a
+    protected directory's name: /rootkit was blocked by /root, and
+    /var/logs-archive by /var/log.
+    """
+
+    @pytest.mark.parametrize('path', [
+        '/root/config.xml',
+        '/etc/passwd',
+        '/etc/nginx/nginx.conf',
+        '/var/log/redacted.xml',
+        '/usr/bin/out.xml',
+        '/boot/out.xml',
+        '/sys/out.xml',
+        '/proc/out.xml',
+    ])
+    def test_protected_directories_still_blocked(self, path):
+        """The security behaviour must not regress"""
+        is_valid, error, _ = validate_file_path(path, allow_absolute=True, is_output=True)
+
+        assert is_valid is False, f"{path} must not be writable"
+        assert 'sensitive system directory' in error or 'system configuration file' in error
+
+    @pytest.mark.parametrize('path', [
+        '/rootkit/out.xml',
+        '/roots/out.xml',
+        '/var/logs-archive/out.xml',
+        '/bootstrap/out.xml',
+        '/usr/binaries/out.xml',
+        '/libraries/out.xml',
+        '/runner/out.xml',
+    ])
+    def test_similarly_named_directories_allowed(self, path):
+        """Names that merely share a prefix are not protected directories"""
+        is_valid, error, _ = validate_file_path(path, allow_absolute=True, is_output=True)
+
+        assert is_valid is True, f"{path} was wrongly blocked: {error}"
+
+    def test_exact_directory_itself_blocked(self, path=None):
+        """The protected directory itself, with no trailing component"""
+        is_valid, _, _ = validate_file_path('/root', allow_absolute=True, is_output=True)
+
+        assert is_valid is False

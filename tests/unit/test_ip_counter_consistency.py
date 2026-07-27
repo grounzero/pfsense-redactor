@@ -99,12 +99,17 @@ class TestIPv6HextetOverflow:
         """Test counters that overflow to RFC 4193 ULA range after 65535"""
         redactor = PfSenseRedactor(anonymise=True)
 
+        # 131071 previously expected "fd00::0:10000". A hextet holds four hex
+        # digits, so 0x10000 cannot appear in a valid address; the old formula
+        # ((overflow - 1) % 0x10000) + 1 ranged 1..0x10000 and overflowed every
+        # 65536th counter. It now rolls into hextet2 as the implementation
+        # comment always described.
         test_cases = [
             (65536, "fd00::0:1"),        # First overflow address
             (65537, "fd00::0:2"),        # Second overflow address
-            (131070, "fd00::0:ffff"),    # Near boundary (offset 65534, hextet3 = 65535)
-            (131071, "fd00::0:10000"),   # At boundary (offset 65535, hextet3 = 65536)
-            (131072, "fd00::1:1"),       # After boundary (offset 65536, wraps to hextet2=1, hextet3=1)
+            (131070, "fd00::0:ffff"),    # Last value that fits in hextet3
+            (131071, "fd00::1:0"),       # Rolls over into hextet2
+            (131072, "fd00::1:1"),       # Continues from the rollover
         ]
 
         for counter, expected in test_cases:
