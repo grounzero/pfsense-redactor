@@ -5,6 +5,31 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2][] - 2026-07-28
+
+### Security
+- **FIX**: Webhook tokens survived in default mode unless the element happened
+  to be named for a secret. 1.1.0 fixed `<webhook_url>` by matching the element
+  *name*, so a Slack URL in `<slack_url>`, `<notifyurl>` or a plain `<url>` kept
+  its token — and the token is the whole authorisation, since anyone holding the
+  URL can post as that integration.
+
+  Path-segment redaction stays gated behind `--aggressive` in general, because
+  pfBlockerNG feed URLs legitimately carry long path components that redaction
+  would destroy. The gate is now lifted for endpoints where the path token is
+  unambiguously a credential: `hooks.slack.com/services/`,
+  `discord.com/api/webhooks/` (and the `discordapp.com`, `ptb.` and `canary.`
+  variants), and `api.telegram.org/bot`.
+
+  Hosts are matched exactly, never by suffix, so `hooks.slack.com.example.net`
+  does not inherit the rule. A non-webhook path on a webhook host — a
+  `discord.com/channels/…` link — is unaffected, as are feed URLs on any other
+  host.
+
+  Found by scanning redacted output with gitleaks: of six realistic secrets in a
+  test config it flagged exactly one, and this was it. Running an independent
+  scanner over the output catches what a name-driven redactor cannot.
+
 ## [1.1.1][] - 2026-07-28
 
 Follow-up to 1.1.0, in two parts. The first came from a second canary-corpus
@@ -442,6 +467,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.1.2]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.2
 [1.1.1]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.1
 [1.1.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.0
 [1.0.10]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.0.10
