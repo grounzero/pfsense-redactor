@@ -202,6 +202,63 @@ Redacted output is for **analysis only**, because:
 
 Always keep the **original secure copy**.
 
+## Output safety
+
+Where the output goes, and how it gets there. Separate from path safety below,
+which asks whether a path is *allowed*; this asks what writing to it would do to
+files that already exist.
+
+### Verify, then write
+
+Output is produced in this order:
+
+```text
+parse -> transform in memory -> serialise candidate
+      -> verify candidate -> decide -> write
+```
+
+Nothing reaches a file or stdout before the verdict. Until 1.5.0 the write
+happened first and the verdict was returned afterwards, so `--fail-on-warn`
+exited non-zero *after* `_write_output` had already produced the file — the gate
+reported the problem and did not prevent the artefact. A CI job that failed the
+build still left the file in the workspace, and in any `upload-artifact` step
+that ran regardless.
+
+A failed gate now produces nothing: no output file, no XML on stdout, and no
+temporary file. Use `--dry-run` to see the same retained paths and verification
+findings without producing anything, which is what it was always for.
+
+### Atomic writes
+
+Output is written to a temporary file in the **destination directory**, at mode
+`0600` before any bytes are written, then flushed, `fsync`ed, closed, and moved
+onto the destination with `os.replace`. The directory is `fsync`ed afterwards
+where the platform supports it.
+
+The destination therefore holds either its previous content or the complete new
+content. It is never a truncated mixture. `tree.write()` opened the target for
+writing — truncating it — and only then began serialising, so any failure after
+that point left a partial file. Under `--inplace` that file was the operator's
+configuration: measured at 7,889 bytes reduced to 36.
+
+Temporary files are removed on every failure path, including `KeyboardInterrupt`.
+
+`0600` is a POSIX guarantee. On Windows, permissions are ACLs and `os.chmod`
+only controls the read-only bit, so the restrictive mode is not claimed there.
+
+### Destinations that are refused
+
+| Destination | Why |
+| --- | --- |
+| The input file | Redacting a file over itself destroys the only copy of the secrets. Compared on device and inode, so `config.xml`, `./config.xml`, a symlink and a hard link are all caught |
+| A symbolic link | The write would follow it to a file you did not name, and the replacement would then remove the link |
+| A file with more than one name | Atomic replacement creates a new inode, so the other name would keep the previous — unredacted — content |
+
+`--inplace` is the deliberate exception to the first, and requires `--force`. It
+is refused on a hard-linked file for the third reason: before 1.5.0 the write
+went through the link and every name saw the redacted content; it now cannot,
+and a silently stale copy of an unredacted config is worse than a refusal.
+
 ## Path safety
 
 The tool includes built-in protections against malicious file path operations:
