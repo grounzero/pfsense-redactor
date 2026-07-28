@@ -373,7 +373,7 @@ pfsense-redactor /etc/hosts --inplace --force --allow-absolute-paths
 `/tmp` is **not** in that list and never has been: it is one of the *safe*
 locations an absolute output path is allowed to use without
 `--allow-absolute-paths`, alongside the home and working directories. This
-page listed it among the protected directories until 1.7.0, which was simply
+page listed it among the protected directories until 1.4.1, which was simply
 wrong.
 - Windows: `C:\Windows`, `C:\Windows\System32`, `C:\Program Files`, `C:\ProgramData`
 - Critical files: `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, etc.

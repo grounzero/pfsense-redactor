@@ -49,7 +49,7 @@ offered or implied.
 This table said `1.0.x` while the project shipped 1.2.0, which meant it named a
 line that received nothing.
 
-Older versions are not patched. The work in 1.3.0 through 1.7.0 changed
+Older versions are not patched. The work in 1.3.0 through 1.4.1 changed
 detection, output handling and failure behaviour substantially, and backporting
 it to a 1.0 line would amount to shipping it again.
 
