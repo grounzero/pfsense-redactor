@@ -4718,6 +4718,19 @@ def _resolve_keep_private_ips(args: argparse.Namespace) -> bool:
 Allowlists = tuple[set[str], list[IPNetwork], set[str]]
 
 
+def _record_allowlist_source(args: argparse.Namespace, source) -> None:
+    """Remember an allow-list source so --report-json can name it
+
+    Every source that weakened redaction has to be recoverable from the report,
+    not only from stderr. Created on demand for the same reason the reads above
+    use getattr: this path is exercised directly by tests with a hand-built
+    Namespace.
+    """
+    if not hasattr(args, 'allowlist_sources'):
+        args.allowlist_sources = []
+    args.allowlist_sources.append(str(source))
+
+
 def _merge_allowlist(target: Allowlists, parsed: Allowlists) -> None:
     """Fold one parsed (ips, networks, domains) triple into the accumulators
 
@@ -4744,7 +4757,7 @@ def _load_default_allowlists(
     for default_file in _implicit_allowlist_files(args, logger):
         _merge_allowlist(target, parse_allowlist_file(default_file, silent_if_missing=True))
         logger.warning("[+] Loaded default allow-list: %s", default_file)
-        args.allowlist_sources.append(str(default_file))
+        _record_allowlist_source(args, default_file)
 
 
 def _collect_allowlists(
@@ -4762,7 +4775,7 @@ def _collect_allowlists(
     if args.allowlist_file:
         _merge_allowlist(collected, parse_allowlist_file(args.allowlist_file, silent_if_missing=False))
         logger.warning("[+] Loaded allow-list: %s", args.allowlist_file)
-        args.allowlist_sources.append(str(args.allowlist_file))
+        _record_allowlist_source(args, args.allowlist_file)
 
     allowlist_ips, allowlist_networks, allowlist_domains = collected
 
@@ -4792,7 +4805,10 @@ def _implicit_allowlist_files(
 
     found = find_default_allowlist_files()
 
-    if not args.strict:
+    # getattr, matching how no_default_allowlist is read above: this function
+    # is called directly by tests with a hand-built Namespace, not only from
+    # main() where argparse guarantees every attribute.
+    if not getattr(args, 'strict', False):
         return found
 
     for ignored in found:
