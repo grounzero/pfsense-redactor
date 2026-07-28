@@ -424,6 +424,21 @@ _PROLOG_SKIPPABLE: tuple[tuple[bytes, bytes], ...] = (
 )
 
 
+def _skip_one_prolog_construct(data: bytes, pos: int) -> int | None:
+    """Advance past a single comment or processing instruction at pos
+
+    Returns the offset just after it, `pos` unchanged when no construct starts
+    here, or None if the construct is unterminated within `data`.
+    """
+    for opener, closer in _PROLOG_SKIPPABLE:
+        if not data.startswith(opener, pos):
+            continue
+        end = data.find(closer, pos + len(opener))
+        return None if end == -1 else end + len(closer)
+
+    return pos
+
+
 def _skip_prolog_noise(data: bytes, pos: int) -> int | None:
     """Advance past whitespace, comments and processing instructions
 
@@ -435,17 +450,25 @@ def _skip_prolog_noise(data: bytes, pos: int) -> int | None:
             pos += 1
             continue
 
-        for opener, closer in _PROLOG_SKIPPABLE:
-            if data.startswith(opener, pos):
-                end = data.find(closer, pos + len(opener))
-                if end == -1:
-                    return None
-                pos = end + len(closer)
-                break
-        else:
-            return pos
+        after = _skip_one_prolog_construct(data, pos)
+        if after is None or after == pos:
+            # None: unterminated, so undecidable. Unchanged: nothing skippable
+            # starts here, so this is where the prolog ends.
+            return after
+        pos = after
 
     return pos
+
+
+def _prolog_scan_is_conclusive(data: bytes, pos: int, at_eof: bool) -> bool:
+    """Whether enough input is present for the comparison at pos to be final
+
+    The subtle case this guards: a declaration straddling a read boundary. With
+    only part of it buffered the comparison would say "no DOCTYPE" and be
+    believed, so the scan must wait for either the full length or the end of
+    the file.
+    """
+    return at_eof or len(data) - pos >= len(_DOCTYPE_DECL)
 
 
 def _declares_doctype(input_file: str) -> bool:
@@ -467,18 +490,17 @@ def _declares_doctype(input_file: str) -> bool:
             chunk = handle.read(_PROLOG_CHUNK)
             data += chunk
 
+            at_eof = not chunk
             start = len(_UTF8_BOM) if data.startswith(_UTF8_BOM) else 0
             pos = _skip_prolog_noise(data, start)
 
-            # Decide only once the answer cannot change: either enough bytes
-            # remain to compare against the declaration, or the file ran out.
-            if pos is not None and (len(data) - pos >= len(_DOCTYPE_DECL) or not chunk):
+            if pos is not None and _prolog_scan_is_conclusive(data, pos, at_eof):
                 # Compared case-insensitively even though XML requires the
                 # upper-case spelling, so that '<!doctype' is refused here
                 # rather than relying on the parser to reject it.
                 return data[pos:pos + len(_DOCTYPE_DECL)].upper() == _DOCTYPE_DECL
 
-            if not chunk:
+            if at_eof:
                 # Unterminated comment or PI. The file is malformed, and
                 # ET.parse reports that more precisely than this guard could.
                 return False
@@ -2165,6 +2187,13 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             )
             return None
 
+        # nosemgrep: python.lang.security.use-defusedxml.use-defusedxml
+        # Scanners flag any stdlib xml use as XXE-prone. It does not apply:
+        # ElementTree does not resolve external entities (a SYSTEM entity
+        # raises ParseError, so no file disclosure and no SSRF), and the
+        # DOCTYPE refusal above is stricter still, blocking internal entity
+        # expansion too. defusedxml would add a runtime dependency, which
+        # tests/integration/test_standalone_script.py exists to prevent.
         tree = ET.parse(input_file)
         if not self._check_root_tag(tree.getroot()):
             return None
