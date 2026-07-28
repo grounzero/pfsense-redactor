@@ -10,7 +10,7 @@ receives it. Everything below follows from that: where a judgement call exists,
 this tool over-redacts rather than under-redacts, and surfaces what it chose to
 keep so you can audit it.
 
-Verify before sharing — see [verifying output](verifying-output.md) — and see
+Verify before sharing: see [verifying output](verifying-output.md), and see
 [the benchmark](benchmark.md) for measured coverage and known gaps.
 
 ## What gets redacted
@@ -18,8 +18,8 @@ Verify before sharing — see [verifying output](verifying-output.md) — and se
 Secrets are found by **element name**, not by value shape, because a real SNMP
 community (`public`) or WPA passphrase looks like ordinary text. Matching is
 substring-based, since the spellings that leak are the concatenated ones
-pfSense and its packages actually emit — `rocommunity`, `radiussecret`,
-`passwordagain` — with a deny-list for the false positives that creates
+pfSense and its packages actually emit: `rocommunity`, `radiussecret`,
+`passwordagain`. A deny-list handles the false positives that creates
 (`keylen`, `certref`, `password_type`).
 
 Credentials embedded in URLs are handled separately:
@@ -32,8 +32,8 @@ Credentials embedded in URLs are handled separately:
 | Path segment on any other host | kept | redacted |
 
 Path segments are kept by default because pfBlockerNG feed URLs legitimately
-carry long path components that redaction would destroy — a corrupted config is
-its own kind of failure.
+carry long path components that redaction would destroy, and a corrupted config
+is its own kind of failure.
 
 The exception is endpoints where the path token *is* the credential, since
 anyone holding the URL can post as that integration. For those the token is
@@ -44,11 +44,18 @@ redacted in every mode:
 | Slack | `hooks.slack.com` + `/services/` |
 | Discord | `discord.com`, `discordapp.com`, `ptb.`/`canary.` variants + `/api/webhooks/` |
 | Telegram | `api.telegram.org` + `/bot` |
+| Teams | `outlook.office.com`/`outlook.office365.com` + `/webhook/` |
+| Teams (per-tenant) | any `*.webhook.office.com` + `/webhookb2/` |
 
-Hosts are matched **exactly, never by suffix**, so `hooks.slack.com.example.net`
-does not inherit the rule; and the path prefix must match too, so an ordinary
-`discord.com/channels/…` link is untouched. Everything else still needs
-`--aggressive`.
+Hosts are matched **exactly** apart from Teams, which puts the tenant in a
+subdomain and so is matched on the suffix `.webhook.office.com`. The leading
+dot is what stops `notwebhook.office.com` qualifying. Either way the path
+prefix must match too, so an ordinary `discord.com/channels/…` link is
+untouched. Everything else still needs `--aggressive`.
+
+Self-hosted tools such as Mattermost are deliberately absent: their webhooks
+sit at `/hooks/<token>` on whatever host the operator chose, so there is no
+host to match on.
 
 Recognised credential formats in path segments include AWS access key IDs
 (exactly 20 characters), Telegram bot tokens (`bot<id>:<secret>`, where the
@@ -65,8 +72,8 @@ Input declaring a `<!DOCTYPE>` is **refused**. pfSense never emits one, so its
 presence means the file did not come from pfSense untouched.
 
 This is deliberately not described as an XXE fix. Python's
-`xml.etree.ElementTree` does not resolve external entities — a `SYSTEM` entity
-raises `ParseError` — so there is no file disclosure and no SSRF. What it does
+`xml.etree.ElementTree` does not resolve external entities. A `SYSTEM` entity
+raises `ParseError`, so there is no file disclosure and no SSRF. What it does
 do is expand *internal* entities, where a few hundred bytes of nested
 definitions expand to gigabytes. The whole XML prolog is scanned rather than a
 fixed-size prefix, so a declaration cannot hide behind a large comment, and a

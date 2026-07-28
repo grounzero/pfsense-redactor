@@ -135,6 +135,28 @@ class TestAggressiveScore:
         assert EXPECTED_SURVIVORS[marker].strip()
 
 
+class TestDescriptionsRaiseTheScore:
+    """--redact-descriptions closes the one survivor that is a real gap
+
+    The other three are a deliberate choice and two corpus artefacts, so this
+    is as far as the corpus can be taken without redacting things that are not
+    secrets.
+    """
+
+    def test_score_is_43_of_46(self):
+        """The number docs/benchmark.md publishes for this mode"""
+        left = survivors(redact_corpus('--aggressive', '--redact-descriptions'))
+
+        assert TOTAL_CANARIES - len(left) == 43
+
+    def test_it_is_the_attribute_marker_that_moves(self):
+        """Specifically the free-text attribute, not something else"""
+        left = survivors(redact_corpus('--aggressive', '--redact-descriptions'))
+
+        assert 'CANARY_ATTR_PLAIN' not in left
+        assert left == set(EXPECTED_SURVIVORS) - {'CANARY_ATTR_PLAIN'}
+
+
 class TestDefaultModeIsNotWorse:
     """Default mode catches less than --aggressive, but must not leak more
 

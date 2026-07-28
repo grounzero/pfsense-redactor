@@ -240,6 +240,19 @@ DESCRIPTION_ELEMENTS: frozenset[str] = frozenset({
     'descr', 'detail', 'hostname', 'ssid',
 })
 
+# Attribute names holding free prose rather than structure. Redacted under
+# --redact-descriptions, the same flag and for the same reason as the elements
+# above: an operator's note is where a PIN, a circuit reference or a personal
+# name ends up, and no pattern reliably picks those out of a sentence.
+#
+# SENSITIVE_ATTR_PATTERN already catches attributes *named* for a secret. This
+# covers the ones whose name says nothing, which is why the value has to go
+# wholesale rather than be scanned.
+DESCRIPTION_ATTRIBUTES: frozenset[str] = frozenset({
+    'descr', 'description', 'note', 'notes', 'detail', 'details',
+    'comment', 'comments', 'label', 'title',
+})
+
 # key<sep>value scanner for BLOB_TEXT_ELEMENTS. Matches anywhere in a line, not
 # just at its start, so '[admin] password=secret' (NUT upsd_users format) is
 # caught as well as a bare 'password=secret'.
@@ -373,14 +386,47 @@ WEBHOOK_URL_PREFIXES: tuple[tuple[str, str], ...] = (
     ('canary.discord.com', '/api/webhooks/'),
     # Telegram puts 'bot<id>:<token>' in the first path segment.
     ('api.telegram.org', '/bot'),
+    # Microsoft Teams, connector-style (the pre-Workflows endpoint).
+    ('outlook.office.com', '/webhook/'),
+    ('outlook.office365.com', '/webhook/'),
 )
+
+# Providers that put the tenant in a subdomain, so the host cannot be matched
+# exactly. Matched as a suffix *including the leading dot*, which is what stops
+# 'eviloutlook.office.com' or 'notwebhook.office.com' from qualifying.
+#
+# Kept apart from WEBHOOK_URL_PREFIXES on purpose. Suffix matching is the looser
+# rule and the easier one to get wrong, so it applies only to domains listed
+# here rather than to the whole set.
+WEBHOOK_URL_SUFFIXES: tuple[tuple[str, str], ...] = (
+    ('.webhook.office.com', '/webhookb2/'),
+)
+
+# Deliberately absent: Mattermost, Rocket.Chat and other self-hosted tools put
+# their webhooks at '/hooks/<token>' on whatever host the operator chose. There
+# is no host to match, and treating any '/hooks/' path as a credential would
+# redact ordinary paths on unrelated servers. Those need --aggressive.
 
 
 def _is_webhook_url(host: str, path: str) -> bool:
-    """Whether a URL is a known webhook endpoint carrying its token in the path"""
+    """Whether a URL is a known webhook endpoint carrying its token in the path
+
+    The path is compared case-insensitively even though RFC 3986 makes paths
+    case-sensitive. Every prefix here is lowercase, so folding case can only
+    add matches, never remove one, and the additions are all still webhook
+    URLs: '/Services/' on hooks.slack.com is not something else. Comparing
+    exactly meant a config written with '/Services/' kept its token, which is
+    the failure this whole rule exists to prevent.
+    """
     host_lower = host.lower()
-    return any(host_lower == known and path.startswith(prefix)
-               for known, prefix in WEBHOOK_URL_PREFIXES)
+    path_lower = path.lower()
+
+    if any(host_lower == known and path_lower.startswith(prefix)
+           for known, prefix in WEBHOOK_URL_PREFIXES):
+        return True
+
+    return any(host_lower.endswith(suffix) and path_lower.startswith(prefix)
+               for suffix, prefix in WEBHOOK_URL_SUFFIXES)
 
 
 # URL path segment credential detection.
@@ -2230,10 +2276,23 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 return True
         return False
 
+    def _should_redact_attribute(self, attr: str) -> bool:
+        """Whether an attribute's value should be removed on the strength of its name
+
+        Two reasons: the name denotes a secret, or the name denotes free prose
+        and --redact-descriptions was asked for. The second is opt-in because
+        notes and labels are often the most useful part of a config to a reader.
+        """
+        if SENSITIVE_ATTR_PATTERN.search(attr):
+            return True
+        if not self.redact_descriptions:
+            return False
+        return attr.lower() in DESCRIPTION_ATTRIBUTES
+
     def _redact_sensitive_attributes(self, element: ET.Element) -> None:
-        """Redact attributes with sensitive names using anchored regex patterns"""
+        """Redact attributes whose name says the value should not be shared"""
         for attr in list(element.attrib.keys()):
-            if SENSITIVE_ATTR_PATTERN.search(attr):
+            if self._should_redact_attribute(attr):
                 original = element.attrib[attr]
                 element.attrib[attr] = '[REDACTED]'
                 self.stats['secrets_redacted'] += 1
@@ -2447,7 +2506,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             if dry_run:
                 self.logger.info("[+] Dry run - no files modified")
                 self._print_stats()
-                return True
+                return self._retained_values_are_acceptable()
 
             # Add redaction comment to the root element
             self._add_redaction_comment(root)
@@ -2460,7 +2519,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             # Print summary (always print, logger routes to correct stream)
             self._print_stats()
 
-            return True
+            return self._retained_values_are_acceptable()
 
         except ET.ParseError as e:
             self.logger.error("[!] Error parsing XML: %s", e)
@@ -2471,6 +2530,29 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         except (ValueError, TypeError) as e:
             self.logger.error("[!] Error processing configuration: %s", e)
             return False
+
+    def _retained_values_are_acceptable(self) -> bool:
+        """Whether the run should be treated as successful
+
+        False only under --fail-on-warn, and only when high-entropy values were
+        left in place. The warning naming them has already been printed.
+
+        Without this the flag covered the root-tag check alone, so a CI job
+        could pass on a file the tool had just told the operator to review
+        before sharing. A gate that cannot fail is not a gate.
+        """
+        if not self.fail_on_warn:
+            return True
+        if not self.stats['high_entropy_retained']:
+            return True
+
+        self.logger.error(
+            "[!] Failing because --fail-on-warn is set and %d high-entropy "
+            "value(s) were retained. Re-run with --aggressive to redact them, "
+            "or review the paths listed above.",
+            self.stats['high_entropy_retained']
+        )
+        return False
 
     def _print_stats(self) -> None:
         """Print redaction statistics using logger"""

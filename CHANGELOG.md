@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **FIX**: Webhook tokens survived in default mode unless the element happened
   to be named for a secret. 1.1.0 fixed `<webhook_url>` by matching the element
   *name*, so a Slack URL in `<slack_url>`, `<notifyurl>` or a plain `<url>` kept
-  its token — and the token is the whole authorisation, since anyone holding the
+  its token. The token is the whole authorisation, since anyone holding the
   URL can post as that integration.
 
   Path-segment redaction stays gated behind `--aggressive` in general, because
@@ -22,18 +22,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   variants), and `api.telegram.org/bot`.
 
   Hosts are matched exactly, never by suffix, so `hooks.slack.com.example.net`
-  does not inherit the rule. A non-webhook path on a webhook host — a
-  `discord.com/channels/…` link — is unaffected, as are feed URLs on any other
+  does not inherit the rule. A non-webhook path on a webhook host, such as a
+  `discord.com/channels/…` link, is unaffected, as are feed URLs on any other
   host.
 
   Found by scanning redacted output with gitleaks: of six realistic secrets in a
   test config it flagged exactly one, and this was it. Running an independent
   scanner over the output catches what a name-driven redactor cannot.
+- **FIX**: `--fail-on-warn` covered the root-tag check and nothing else, so a
+  config carrying a value the tool declined to redact printed "Review before
+  sharing" and still exited 0. An automated check passed on a file its own
+  output said to look at, and `docs/use-cases.md` recommends the flag for
+  exactly that job.
+
+  It now also fails when high-entropy values are retained, under `--dry-run`
+  as well, since checking without writing is the natural shape for CI and it was
+  the one mode that could not report a problem. The message names the count
+  and points at `--aggressive`. Redacted output is still written when the gate
+  fails, since the retained values were reported rather than leaked and the
+  operator needs the file to review them.
+- **ADD**: Microsoft Teams webhook endpoints are recognised, so their path
+  tokens are redacted in every mode alongside Slack, Discord and Telegram.
+  Teams puts the tenant in a subdomain, so `*.webhook.office.com` is matched as
+  a suffix, including the leading dot, which is what stops
+  `notwebhook.office.com` qualifying. Suffix matching is the looser rule, so it
+  applies only to domains listed for it rather than to the whole set. The
+  legacy `outlook.office.com` connector stays an exact match.
+
+  Self-hosted tools such as Mattermost are deliberately absent: their webhooks
+  sit at `/hooks/<token>` on whatever host the operator chose, so there is no
+  host to match, and treating every `/hooks/` path as a credential would redact
+  ordinary paths on unrelated servers. Those still need `--aggressive`.
+
+### Added
+- `--redact-descriptions` now covers free-text **attributes** as well as
+  elements: `note`, `comment`, `label`, `title` and similar. Attributes named
+  for a secret were already redacted; these are the ones whose name says
+  nothing about the contents, where a PIN or a circuit reference ends up inside
+  a sentence and no pattern reliably finds it.
+
+  This closes the last genuine miss in the canary corpus, taking it from 42/46
+  to **43/46**. The remaining three are two corpus artefacts and one deliberate
+  choice. Structural attributes are untouched: redacting `version` or
+  `interface` would break the reader's ability to follow the config.
 
 ## [1.1.1][] - 2026-07-28
 
 Follow-up to 1.1.0, in two parts. The first came from a second canary-corpus
-report — 1.1.0 caught 41 of 46 planted secrets where 1.0.10 caught 15, and this
+report. 1.1.0 caught 41 of 46 planted secrets where 1.0.10 caught 15, and this
 closes the remaining URL path gaps plus an over-redaction bug found while
 confirming them. The second is two long-standing defects surfaced while
 reviewing that work, both older than 1.1.0.
@@ -57,7 +93,7 @@ reviewing that work, both older than 1.1.0.
   untouched.
 
   This is deliberately *not* described as an XXE fix. `xml.etree.ElementTree`
-  does not resolve external entities — a `SYSTEM` entity raises `ParseError`,
+  does not resolve external entities. A `SYSTEM` entity raises `ParseError`,
   so there is no file disclosure and no SSRF. What it does do is expand
   *internal* entities, where a few hundred bytes of nested definitions expand
   to gigabytes. Severity is low: the input is a file the user supplies, and the
@@ -83,8 +119,8 @@ reviewing that work, both older than 1.1.0.
   inside a path but still redacted in prose.
 - **FIX** (predates 1.1.0): IPv6 anonymisation produced invalid addresses once
   the RFC 3849 pool was exhausted. The RFC 4193 overflow mapping used
-  `((overflow - 1) % 0x10000) + 1`, which ranges `1..0x10000` — one past what a
-  hextet can hold — so every 65536th counter emitted a five-digit group such as
+  `((overflow - 1) % 0x10000) + 1`, which ranges `1..0x10000`, one past what a
+  hextet can hold, so every 65536th counter emitted a five-digit group such as
   `fd00::0:10000`, which is not parseable. It now rolls into the upper hextet
   (`fd00::1:0`), which is what the implementation comment always described.
   Reachable only with 131,071 or more unique IPv6 addresses in one config.
@@ -103,7 +139,7 @@ reviewing that work, both older than 1.1.0.
 
 - **FIX** (predates 1.1.0): Windows system directories were hardcoded to `C:`,
   so a machine with Windows installed on any other drive had no write
-  protection for its system directories at all — `D:\\Windows\\System32` was
+  protection for its system directories at all. `D:\\Windows\\System32` was
   freely writable. The real locations are now read from `SystemRoot`, `windir`,
   `ProgramFiles`, `ProgramFiles(x86)`, `ProgramW6432` and `ProgramData`, the
   same way temp directories are already read from `TMPDIR`/`TEMP`. The `C:`
@@ -151,7 +187,8 @@ reviewing that work, both older than 1.1.0.
   content in any other element passed through untouched.
 - **FIX**: URL credentials (`user:password@host`) were preserved in elements that are not known
   URL carriers, so a URL could be emitted with its query secret shown as `[REDACTED]` while the
-  HTTP-basic password beside it survived in full — output that reads as sanitised when it is not.
+  HTTP-basic password beside it survived in full, producing output that reads
+  as sanitised when it is not.
   Userinfo redaction now follows the same policy on every URL path, and a URL carrying credentials
   is rewritten even when nothing else in it changes.
 - **FIX**: Free-text blob elements received *less* URL scanning than unrecognised elements, because
@@ -159,7 +196,8 @@ reviewing that work, both older than 1.1.0.
   `key=value` credentials, and the key=value scanner no longer mistakes a URL scheme for a key.
 - **FIX**: `--dry-run-verbose` printed URL credentials to the console. The sample display masked the
   host and the userinfo password but passed the path and query through verbatim, so a preview of
-  `https://api.example.com/v1?token=...` showed the token in full — in the terminal, and from there
+  `https://api.example.com/v1?token=...` showed the token in full: in the
+  terminal, and from there
   in CI logs or a pasted ticket. This is the flag users run precisely to check what will happen
   before sharing, so it now redacts path and query secrets too.
 

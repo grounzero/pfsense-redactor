@@ -71,9 +71,82 @@ class TestIsWebhookUrl:
         """Hostnames are case-insensitive, and configs are written by hand"""
         assert _is_webhook_url('Hooks.Slack.COM', '/services/a/b/c')
 
+    @pytest.mark.parametrize('path', [
+        '/Services/T024BE7LD/B024BE7LH/tok',
+        '/SERVICES/T024BE7LD/B024BE7LH/tok',
+    ])
+    def test_path_comparison_is_case_insensitive(self, path):
+        """RFC 3986 makes paths case-sensitive, but matching exactly leaked
+
+        Every prefix here is lowercase, so folding case can only add matches,
+        and '/Services/' on hooks.slack.com is still a webhook.
+        """
+        assert _is_webhook_url('hooks.slack.com', path)
+
+    def test_mixed_case_path_token_is_redacted(self, basic_redactor):
+        """End to end: the case that survived before"""
+        url = 'https://hooks.slack.com/Services/T024BE7LD/B024BE7LH/' + SLACK_TOKEN
+
+        assert SLACK_TOKEN not in basic_redactor._redact_url_secrets_only(url)
+
+    def test_case_folding_does_not_widen_the_host_rule(self):
+        """Only the path is folded; the host rules are unchanged
+
+        A lookalike must not become a match just because the path now
+        compares loosely.
+        """
+        assert not _is_webhook_url('hooks.slack.com.evil.example', '/Services/a/b/c')
+        assert not _is_webhook_url('notwebhook.office.com', '/WebhookB2/x')
+
     def test_empty_inputs_are_safe(self):
         """A URL with no host must not raise"""
         assert not _is_webhook_url('', '')
+
+
+TEAMS_TOKEN = 'EXAMPLEnotarealteamswebhooktokenEXAMPLE'
+TEAMS = ('https://acme.webhook.office.com/webhookb2/abc-def@ghi-jkl/'
+         'IncomingWebhook/' + TEAMS_TOKEN + '/mno-pqr')
+
+
+class TestTenantSubdomainEndpoints:
+    """Teams puts the tenant in the subdomain, so the host cannot be exact
+
+    Suffix matching is the looser rule and the easier one to get wrong, so it
+    applies only to the domains listed for it - these tests pin both halves.
+    """
+
+    def test_teams_tenant_subdomain_matches(self):
+        """Any tenant under webhook.office.com is a webhook host"""
+        assert _is_webhook_url('acme.webhook.office.com', '/webhookb2/x')
+        assert _is_webhook_url('contoso.webhook.office.com', '/webhookb2/x')
+
+    def test_leading_dot_stops_a_lookalike(self):
+        """'notwebhook.office.com' ends with the string but is a different domain
+
+        The suffix carries a leading dot precisely so this cannot match.
+        """
+        assert not _is_webhook_url('notwebhook.office.com', '/webhookb2/x')
+
+    def test_suffix_still_requires_the_path_prefix(self):
+        """A tenant host serving something else is not a webhook URL"""
+        assert not _is_webhook_url('acme.webhook.office.com', '/some/other/path')
+
+    def test_legacy_connector_host_is_exact(self):
+        """outlook.office.com has no tenant subdomain, so it stays an exact match"""
+        assert _is_webhook_url('outlook.office.com', '/webhook/x')
+        assert not _is_webhook_url('eviloutlook.office.com', '/webhook/x')
+
+    def test_teams_token_redacted_by_default(self, basic_redactor):
+        """End to end, without --aggressive"""
+        assert TEAMS_TOKEN not in basic_redactor._redact_url_secrets_only(TEAMS)
+
+    def test_self_hosted_webhooks_are_not_guessed(self):
+        """Mattermost-style '/hooks/<token>' on an arbitrary host stays out
+
+        There is no host to match on, and treating every '/hooks/' path as a
+        credential would redact ordinary paths on unrelated servers.
+        """
+        assert not _is_webhook_url('chat.example.net', '/hooks/sometoken')
 
 
 class TestDefaultModeRedactsWebhookTokens:
