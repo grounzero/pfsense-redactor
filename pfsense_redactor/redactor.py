@@ -2275,7 +2275,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         the references this keeps still resolve in the output.
         """
         return frozenset(
-            el.text.strip() for el in root.iter('refid') if el.text and el.text.strip()
+            refid for el in root.iter('refid') if (refid := (el.text or '').strip())
         )
 
     def _looks_like_cert_material(self, text: str | None) -> bool:
@@ -2296,8 +2296,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         than inferring from length. HAProxy's ha_certificates can carry several,
         so every token has to resolve: a partial match means the value is not
         purely a reference list, and the whole of it is then suspect.
+
+        Expects text already stripped by the caller.
         """
-        tokens = [t for t in re.split(r'[,\s]+', text.strip()) if t]
+        tokens = [t for t in re.split(r'[,\s]+', text) if t]
         if not tokens:
             return False
         return all(token in self.known_refids for token in tokens)
@@ -2315,9 +2317,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             return False
         return bool(CERT_TAG_PATTERN.search(tag) or CERT_TAG_PATTERN.search(tag_base))
 
-    def _holds_unresolvable_cert_reference(
-        self, tag: str, tag_base: str, element: ET.Element
-    ) -> bool:
+    def _holds_unresolvable_cert_reference(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Whether a cert-named element holds a short value the config cannot account for"""
         if not self._names_a_cert_store(tag, tag_base):
             return False
@@ -2325,6 +2325,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # Containers such as <ha_certificates><item>... have only the newline
         # before their first child as text; treating that as a value would
         # redact the wrapper and swallow the children's indentation.
+        #
+        # len() rather than a truthiness test on purpose: ElementTree elements
+        # with no children are falsy, so 'if element' asks a different question
+        # and gets the wrong answer.
         if len(element) > 0:
             return False
 

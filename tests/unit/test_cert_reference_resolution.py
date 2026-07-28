@@ -177,6 +177,44 @@ class TestWhatMustNotChange:
         assert REFID in out
         assert '[REDACTED]' not in out
 
+    def test_a_cert_store_that_is_itself_a_container(self):
+        """The case the container guard actually exists for
+
+        <cert> exits earlier because it holds material, so it never reaches the
+        guard. HAProxy's <ha_certificates> wrapping <item> children does, and
+        its text is only the newline before the first child.
+        """
+        out = redact(
+            '<pfsense><a><ha_certificates>\n  <item>first</item>\n'
+            '</ha_certificates></a></pfsense>'
+        )
+
+        assert '<item>first</item>' in out
+        assert '[REDACTED]' not in out
+
+    @pytest.mark.parametrize('text', ['', '   ', '\n  '])
+    def test_empty_cert_elements_are_left_alone(self, text):
+        """Nothing to resolve and nothing to leak"""
+        out = redact(f'<pfsense><a><ha_certificates>{text}</ha_certificates></a></pfsense>')
+
+        assert '[REDACTED]' not in out
+
+    def test_separators_with_no_tokens_are_redacted(self):
+        """A value that is punctuation only resolves to nothing
+
+        It cannot be a reference list, so it takes the unresolved path rather
+        than being waved through as empty.
+        """
+        out = redact('<pfsense><a><ha_certificates>,,</ha_certificates></a></pfsense>')
+
+        assert '[REDACTED]' in out
+
+    def test_numbered_material_elements_are_excluded_too(self):
+        """Exclusion is by tag base, so <crt2> is still a material element"""
+        out = redact('<pfsense><a><crt2>short</crt2></a></pfsense>')
+
+        assert 'short' in out
+
     @pytest.mark.parametrize('placeholder', ['[REDACTED]', '[REDACTED_CERT_OR_KEY]'])
     def test_our_own_placeholders_are_left_alone(self, placeholder):
         """Redacting an already-redacted file must be a no-op
