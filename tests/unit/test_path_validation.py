@@ -171,7 +171,7 @@ class TestPathValidation:  # pylint: disable=too-many-public-methods
         assert error == ""
         assert resolved is not None
 
-    def test_home_directory_allowed(self):
+    def test_home_directory_allowed(self, require_writable_home):
         """Paths in home directory should be allowed"""
         home_path = str(Path.home() / "config.xml")
         valid, error, resolved = validate_file_path(

@@ -410,6 +410,80 @@ def _idna_encode(domain: str) -> str:
         return domain
 
 
+# Prologs are a few bytes in any real config, but a hostile file can pad one
+# with a large comment, so the scan below grows on demand rather than peeking
+# at a fixed-size prefix.
+_PROLOG_CHUNK: int = 65536
+_UTF8_BOM: bytes = b'\xef\xbb\xbf'
+_DOCTYPE_DECL: bytes = b'<!DOCTYPE'
+
+# Constructs that may legally precede the root element, as (opener, closer).
+_PROLOG_SKIPPABLE: tuple[tuple[bytes, bytes], ...] = (
+    (b'<!--', b'-->'),  # comment
+    (b'<?', b'?>'),     # XML declaration or processing instruction
+)
+
+
+def _skip_prolog_noise(data: bytes, pos: int) -> int | None:
+    """Advance past whitespace, comments and processing instructions
+
+    Returns the offset of the first byte that is none of those, or None if
+    `data` ends inside a comment or PI, meaning more input is needed to tell.
+    """
+    while pos < len(data):
+        if data[pos:pos + 1].isspace():
+            pos += 1
+            continue
+
+        for opener, closer in _PROLOG_SKIPPABLE:
+            if data.startswith(opener, pos):
+                end = data.find(closer, pos + len(opener))
+                if end == -1:
+                    return None
+                pos = end + len(closer)
+                break
+        else:
+            return pos
+
+    return pos
+
+
+def _declares_doctype(input_file: str) -> bool:
+    """Report whether a DOCTYPE declaration precedes the root element
+
+    pfSense never emits one, so its presence means the file did not come from
+    pfSense untouched. That is worth refusing rather than parsing: ElementTree
+    does not resolve external entities - a SYSTEM entity raises ParseError, so
+    there is no XXE here - but it does expand internal ones, and a few hundred
+    bytes of nested definitions expand to gigabytes.
+
+    Scanning the whole prolog rather than a fixed-size prefix is the point. A
+    DOCTYPE preceded by a comment longer than the window sails straight past a
+    prefix check, which would leave the guard passing while doing nothing.
+    """
+    with open(input_file, 'rb') as handle:
+        data = b''
+        while True:
+            chunk = handle.read(_PROLOG_CHUNK)
+            data += chunk
+
+            start = len(_UTF8_BOM) if data.startswith(_UTF8_BOM) else 0
+            pos = _skip_prolog_noise(data, start)
+
+            # Decide only once the answer cannot change: either enough bytes
+            # remain to compare against the declaration, or the file ran out.
+            if pos is not None and (len(data) - pos >= len(_DOCTYPE_DECL) or not chunk):
+                # Compared case-insensitively even though XML requires the
+                # upper-case spelling, so that '<!doctype' is refused here
+                # rather than relying on the parser to reject it.
+                return data[pos:pos + len(_DOCTYPE_DECL)].upper() == _DOCTYPE_DECL
+
+            if not chunk:
+                # Unterminated comment or PI. The file is malformed, and
+                # ET.parse reports that more precisely than this guard could.
+                return False
+
+
 # ==========================================================================
 # 4. REDACTOR
 # ==========================================================================
@@ -2076,6 +2150,27 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self.logger.warning("%s Proceeding anyway...", msg)
         return True
 
+    def _load_config_tree(self, input_file: str) -> ET.ElementTree | None:
+        """Parse the configuration, refusing input pfSense would not produce
+
+        None means abort; the reason has already been logged. Both checks live
+        here so that redact_config has one failure branch rather than three.
+        """
+        if _declares_doctype(input_file):
+            self.logger.error(
+                "[!] Input declares a DOCTYPE, which pfSense never emits. "
+                "Refusing to parse: internal entity expansion can turn a "
+                "small file into gigabytes of memory. Remove the DOCTYPE "
+                "if you trust the file."
+            )
+            return None
+
+        tree = ET.parse(input_file)
+        if not self._check_root_tag(tree.getroot()):
+            return None
+
+        return tree
+
     def _write_output(
         self, tree: ET.ElementTree, input_file: str, output_file: str | None,
         stdout_mode: bool, inplace: bool
@@ -2105,12 +2200,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     ) -> bool:
         """Redact pfSense configuration file"""
         try:
-            # Parse XML
-            tree = ET.parse(input_file)
-            root = tree.getroot()
-
-            if not self._check_root_tag(root):
+            tree = self._load_config_tree(input_file)
+            if tree is None:
                 return False
+            root = tree.getroot()
 
             if not dry_run and not stdout_mode:
                 self.logger.info("[+] Parsing XML configuration from: %s", input_file)

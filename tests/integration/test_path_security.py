@@ -210,7 +210,7 @@ class TestPathSecurityCLI:
         assert result.returncode != 0
         assert "sensitive" in result.stderr.lower() or "system" in result.stderr.lower()
 
-    def test_safe_absolute_path_in_home(self):
+    def test_safe_absolute_path_in_home(self, require_writable_home):
         """Absolute paths in home directory should work with flag"""
         # Create a temp file in home directory
         home_output = Path.home() / f"test-output-{os.getpid()}.xml"
