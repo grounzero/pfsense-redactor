@@ -849,6 +849,36 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         host_parts = host.split(':')
         return f"[{host_parts[0]}:{host_parts[1]}:*:****::{host_parts[-1]}]" if len(host_parts) >= 3 else f"[{host}]"
 
+    @staticmethod
+    def _build_sample_netloc(parts: SplitResult, masked_host: str) -> str:
+        """Assemble the netloc for a sample display
+
+        The password becomes *** rather than disappearing, so the preview still
+        shows that one was there.
+        """
+        userinfo = ''
+        if parts.username:
+            userinfo = f"{parts.username}:***@" if parts.password else f"{parts.username}@"
+        netloc = f"{userinfo}{masked_host}"
+        if parts.port:
+            netloc += f":{parts.port}"
+        return netloc
+
+    @staticmethod
+    def _join_bracketed_url(parts: SplitResult, netloc: str,
+                            path: str, query: str) -> str:
+        """Reassemble a sample URL whose masked host is a bracketed IPv6 literal
+
+        Kept as hand assembly rather than urlunsplit, which is how this branch
+        has always built the bracketed form.
+        """
+        result = f"{parts.scheme}://{netloc}{path}"
+        if query:
+            result += f"?{query}"
+        if parts.fragment:
+            result += f"#{parts.fragment}"
+        return result
+
     def _mask_url_sample(self, value: str) -> str:
         """Mask URL for sample display
 
@@ -865,25 +895,14 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 return value
 
             masked_host = self._mask_sample_host(host)
-
-            userinfo = ''
-            if parts.username:
-                userinfo = f"{parts.username}:***@" if parts.password else f"{parts.username}@"
-            netloc = f"{userinfo}{masked_host}"
-            if parts.port:
-                netloc += f":{parts.port}"
+            netloc = self._build_sample_netloc(parts, masked_host)
 
             # Credentials also live in the path and query, not just userinfo
             safe_path, _ = self._build_redacted_path(parts.path)
             safe_query, _ = self._build_redacted_query(parts.query)
 
             if '[' in masked_host:
-                result = f"{parts.scheme}://{netloc}{safe_path}"
-                if safe_query:
-                    result += f"?{safe_query}"
-                if parts.fragment:
-                    result += f"#{parts.fragment}"
-                return result
+                return self._join_bracketed_url(parts, netloc, safe_path, safe_query)
             return urlunsplit((parts.scheme, netloc, safe_path, safe_query, parts.fragment))
         except (ValueError, AttributeError):
             pass
@@ -2361,12 +2380,12 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 return False
             root = tree.getroot()
 
+            # Both lines are progress reporting under the same condition, and
+            # nothing runs between them, so they share one guard.
             if not dry_run and not stdout_mode:
                 self.logger.info("[+] Parsing XML configuration from: %s", input_file)
-
-            # Redact the configuration
-            if not dry_run and not stdout_mode:
                 self.logger.info("[+] Redacting sensitive information...")
+
             self.redact_element(root, redact_ips, redact_domains)
 
             # Dry run mode: just print stats
