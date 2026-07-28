@@ -3331,7 +3331,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                   -> verify candidate -> decide -> write
 
         Nothing is written to a file or to stdout before the verdict. Before
-        1.5.0 the write happened first and the verdict was returned afterwards,
+        1.3.0 the write happened first and the verdict was returned afterwards,
         so `--fail-on-warn` reported the problem and still left the artefact on
         disk for someone to share.
         """

@@ -90,7 +90,7 @@ class TestRedactConfigReturnValue:
     def test_retained_value_returns_false_and_writes_nothing(self, tmp_path):
         """A failed gate produces no output at all
 
-        This asserted the opposite until 1.5.0: that the file was still
+        This asserted the opposite until 1.3.0: that the file was still
         written, so the operator could review the retained paths in it. That
         reasoning does not survive the case the gate exists for. The candidate
         can contain a private key in an element the tool did not recognise, and

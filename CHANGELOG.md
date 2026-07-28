@@ -5,6 +5,86 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0][] - 2026-08-05
+
+Verify, then write. Until now the write happened first and the verdict was
+returned afterwards, so a failing gate reported the problem and still produced
+the artefact.
+
+**This release contains breaking changes.** See *Changed* below.
+
+### Security
+
+- **Candidate output is verified before it becomes externally visible.**
+  Processing is now: parse, transform in memory, serialise the candidate, verify
+  it, decide, and only then write. A failed `--fail-on-warn` run produces no
+  output file, no XML on stdout, and no temporary file. Before this, the gate
+  exited non-zero *after* the file had been written, so a CI job that failed the
+  build still left it in the workspace and in any artifact-upload step that ran
+  regardless. (FINDING-22)
+
+- **`--fail-on-warn` now also fails on independent verification findings**, and
+  fails when the verifier could not be imported at all. "Nothing checked" is not
+  "nothing found", and a gate that passes because its check did not run is not a
+  gate.
+
+- **Output is written atomically.** A temporary file in the destination
+  directory, `0600` before any bytes are written, flushed, `fsync`ed, closed,
+  then `os.replace`d onto the destination, with the directory `fsync`ed
+  afterwards. The destination holds either its previous content or the complete
+  new content, never a truncated mixture. `tree.write()` truncated the target
+  before serialising, so any failure after that point destroyed it: an
+  interrupted `--inplace` was measured reducing a 7,889-byte configuration to
+  36 bytes. Temporary files are removed on every failure path, including
+  `KeyboardInterrupt`. (FINDING-19)
+
+- **Output files are created with mode `0600`** rather than the process umask,
+  which typically produced `0644`. Redacted output can still hold retained
+  high-entropy values by design, plus hostnames, topology and descriptions. This
+  is a POSIX guarantee; on Windows permissions are ACLs and the mode is not
+  claimed. (FINDING-18)
+
+- **An output path that reaches the input is refused.** Compared on device and
+  inode via `os.path.samestat`, so `config.xml config.xml`, `config.xml
+  ./config.xml`, a symlink and a hard link are all caught. Previously this was
+  `--inplace` by accident: without `--inplace`'s symlink guard, without its
+  consent, and with no warning that the only copy of the secrets was being
+  consumed. (FINDING-15)
+
+- **An output path that is a symbolic link is refused.** The write would follow
+  it to a file the operator did not name. (FINDING-16)
+
+### Changed
+
+- **`--inplace` now requires `--force`.** The help epilogue has shown them
+  together since the flag existed and `docs/security.md` described them
+  together, but nothing enforced it. A single mistyped flag rewrote the only
+  unredacted copy of the configuration with no confirmation. **Scripts using
+  bare `--inplace` must add `--force`.** (FINDING-17)
+
+- **An output path with more than one name (a hard link) is refused**, and so is
+  `--inplace` on a hard-linked file. Atomic replacement creates a new inode, so
+  the other name would keep the previous — unredacted — content while the
+  operator, having watched the run report success, has no reason to look at it.
+  Before this release the write went through the link and every name saw the
+  redacted content. Write to a new path instead.
+
+- **A failed `--fail-on-warn` run produces no output.** Previously the redacted
+  file was still written so that the retained paths could be reviewed in it.
+  That reasoning does not survive the case the gate exists for: the candidate
+  can contain a private key in an element the tool did not recognise, and an
+  artefact that exists is one that gets uploaded or attached. `--dry-run`
+  reports the same retained paths and the same verification findings, and never
+  wrote a file in the first place.
+
+- Independent verification now runs under `--dry-run` as well, so what a dry run
+  reports is what the real run would produce.
+
+**Action required:** add `--force` to any script using `--inplace`; change any
+script using `--inplace` on a hard-linked path to write to a new file; and if a
+pipeline reads the output of a failed `--fail-on-warn` run, switch it to
+`--dry-run`.
+
 ## [1.2.2][] - 2026-08-04
 
 An independent verifier. Until now the only check on a redacted file was the
@@ -768,6 +848,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.3.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.3.0
 [1.2.2]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.2.2
 [1.2.1]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.2.1
 [1.2.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.2.0
