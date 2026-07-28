@@ -95,6 +95,32 @@ class TestInputPreservation:
         ET.fromstring(canary_copy.read_text())
 
 
+def explode_on_path_write(monkeypatch):
+    """Make tree.write() fail the way a real interrupted write fails
+
+    Emulates a crash *after* the target has been opened for writing, which is
+    what ElementTree.write does before it can fail: the file is truncated, some
+    bytes land, and then the error arrives.
+
+    Writes to a *stream* are passed through to the real implementation. The
+    redactor serialises the candidate to a string before writing it, and
+    ET.tostring goes through this same method with a stream target - so a fake
+    that raised unconditionally would abort during serialisation and the test
+    would never reach the write it is named after.
+    """
+    real_write = ET.ElementTree.write
+
+    def explode(self, file_or_filename, *args, **kwargs):
+        if hasattr(file_or_filename, "write"):
+            return real_write(self, file_or_filename, *args, **kwargs)
+
+        with open(file_or_filename, "wb") as handle:
+            handle.write(b'<?xml version="1.0"?>\n<pfsense><syst')
+        raise OSError("simulated I/O failure mid-write")
+
+    monkeypatch.setattr(ET.ElementTree, "write", explode)
+
+
 class TestWriteSafety:
     """How the output is written, not where"""
 
@@ -122,16 +148,7 @@ class TestWriteSafety:
     def test_interrupted_inplace_write_preserves_the_original(self, canary_copy, monkeypatch):
         """A crash mid-write must not leave the operator with nothing"""
         before = canary_copy.read_bytes()
-
-        def explode(self, file_or_filename, **kwargs):  # pylint: disable=unused-argument
-            # Emulate a crash after the target has been opened for writing,
-            # which is what tree.write() does before it can fail.
-            if not hasattr(file_or_filename, "write"):
-                with open(file_or_filename, "wb") as handle:
-                    handle.write(b'<?xml version="1.0"?>\n<pfsense><syst')
-            raise OSError("simulated I/O failure mid-write")
-
-        monkeypatch.setattr(ET.ElementTree, "write", explode)
+        explode_on_path_write(monkeypatch)
 
         redactor = PfSenseRedactor()
         assert redactor.redact_config(str(canary_copy), str(canary_copy), inplace=True) is False
@@ -148,14 +165,7 @@ class TestWriteSafety:
     def test_interrupted_write_leaves_no_partial_output(self, canary_copy, tmp_path, monkeypatch):
         """A truncated file that looks like output is worse than none"""
         out = tmp_path / "out.xml"
-
-        def explode(self, file_or_filename, **kwargs):  # pylint: disable=unused-argument
-            if not hasattr(file_or_filename, "write"):
-                with open(file_or_filename, "wb") as handle:
-                    handle.write(b'<?xml version="1.0"?>\n<pfsense><syst')
-            raise OSError("simulated I/O failure mid-write")
-
-        monkeypatch.setattr(ET.ElementTree, "write", explode)
+        explode_on_path_write(monkeypatch)
 
         PfSenseRedactor().redact_config(str(canary_copy), str(out))
 
