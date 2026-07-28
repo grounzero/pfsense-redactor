@@ -7,15 +7,18 @@ an automated check passed on a file its own output said to look at.
 
 docs/use-cases.md recommends this flag for CI, so the gap was between what it
 was documented to do and what it did.
+
+Two layers here on purpose. The predicate and redact_config are exercised
+in-process, which is precise and needs no coverage hook; the exit codes are
+exercised through the CLI, because a return value that never reaches a shell is
+not a gate. CLI runs go through the cli_runner fixture rather than a bare
+subprocess.run so the child inherits COVERAGE_PROCESS_START.
 """
-import re
-import subprocess
-import sys
-from pathlib import Path
+import xml.etree.ElementTree as ET
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).parent.parent.parent
+from pfsense_redactor.redactor import PfSenseRedactor
 
 # A high-entropy value in an element the tool does not recognise: retained by
 # default, reported for review, and redacted under --aggressive.
@@ -26,116 +29,161 @@ UNKNOWN_BLOB = (
 )
 
 CLEAN_CONFIG = '<?xml version="1.0"?><pfsense><version>23.09</version></pfsense>'
+WRONG_ROOT = '<?xml version="1.0"?><notpfsense><a>1</a></notpfsense>'
 
 
-def run(tmp_path, xml, *flags):
-    """Redact a config to stdout and return the CompletedProcess"""
+def redact(tmp_path, xml, **kwargs):
+    """Redact in-process. Returns (redactor, success)"""
     source = tmp_path / 'config.xml'
     source.write_text(xml, encoding='utf-8')
-    return subprocess.run(
-        [sys.executable, '-m', 'pfsense_redactor', str(source), '--stdout', *flags],
-        capture_output=True, text=True, cwd=str(PROJECT_ROOT), check=False
+    redactor = PfSenseRedactor(**kwargs)
+    ok = redactor.redact_config(str(source), str(tmp_path / 'out.xml'))
+    return redactor, ok
+
+
+def run_cli(cli_runner, tmp_path, xml, *flags):
+    """Redact through the CLI. Returns (exit_code, stdout, stderr)"""
+    source = tmp_path / 'config.xml'
+    source.write_text(xml, encoding='utf-8')
+    return cli_runner.run(
+        str(source), flags=['--stdout', *flags], expect_success=False
     )
 
 
-class TestRetainedValuesFailTheBuild:
-    """The behaviour change"""
+class TestTheGatePredicate:
+    """_retained_values_are_acceptable, on its own"""
 
-    def test_retained_value_warns_but_passes_without_the_flag(self, tmp_path):
-        """Default behaviour is unchanged - the warning is advisory"""
-        result = run(tmp_path, UNKNOWN_BLOB)
+    def test_passes_when_the_flag_is_not_set(self):
+        """Retained values are advisory by default"""
+        redactor = PfSenseRedactor(fail_on_warn=False)
+        redactor.stats['high_entropy_retained'] = 3
 
-        assert result.returncode == 0
-        assert 'high-entropy' in result.stderr
+        assert redactor._retained_values_are_acceptable() is True
 
-    def test_retained_value_fails_with_the_flag(self, tmp_path):
-        """The gate now closes on exactly the case the warning describes"""
-        result = run(tmp_path, UNKNOWN_BLOB, '--fail-on-warn')
+    def test_passes_when_nothing_was_retained(self):
+        """The flag alone is not a failure"""
+        redactor = PfSenseRedactor(fail_on_warn=True)
 
-        assert result.returncode != 0
-        assert 'high-entropy' in result.stderr
+        assert redactor._retained_values_are_acceptable() is True
 
-    def test_failure_message_says_how_to_resolve_it(self, tmp_path):
+    def test_fails_when_both_are_true(self):
+        """The one combination that should stop a build"""
+        redactor = PfSenseRedactor(fail_on_warn=True)
+        redactor.stats['high_entropy_retained'] = 1
+
+        assert redactor._retained_values_are_acceptable() is False
+
+    def test_failure_is_logged_with_the_count_and_a_remedy(self, caplog):
         """A CI failure is only useful if it says what to do next"""
-        result = run(tmp_path, UNKNOWN_BLOB, '--fail-on-warn')
+        redactor = PfSenseRedactor(fail_on_warn=True)
+        redactor.stats['high_entropy_retained'] = 2
 
-        assert '--aggressive' in result.stderr
+        redactor._retained_values_are_acceptable()
+
+        assert '2' in caplog.text
+        assert '--aggressive' in caplog.text
+
+
+class TestRedactConfigReturnValue:
+    """The predicate reaching redact_config's return, in-process"""
+
+    def test_retained_value_returns_false_with_the_flag(self, tmp_path):
+        """The write still happens; only the reported success changes"""
+        redactor, ok = redact(tmp_path, UNKNOWN_BLOB, fail_on_warn=True)
+
+        assert redactor.stats['high_entropy_retained'] == 1
+        assert ok is False
+        assert (tmp_path / 'out.xml').exists(), 'output should still be written'
+
+    def test_retained_value_returns_true_without_the_flag(self, tmp_path):
+        """Default behaviour is unchanged"""
+        _, ok = redact(tmp_path, UNKNOWN_BLOB)
+
+        assert ok is True
 
     def test_aggressive_redacts_them_so_the_gate_passes(self, tmp_path):
-        """The documented remedy actually works
+        """The documented remedy works: nothing retained, nothing to fail on"""
+        redactor, ok = redact(tmp_path, UNKNOWN_BLOB, fail_on_warn=True, aggressive=True)
 
-        --aggressive redacts these values, so nothing is retained and there is
-        nothing left to fail on.
-        """
-        result = run(tmp_path, UNKNOWN_BLOB, '--aggressive', '--fail-on-warn')
-
-        assert result.returncode == 0
-        assert 'high-entropy' not in result.stderr
+        assert redactor.stats['high_entropy_retained'] == 0
+        assert ok is True
 
     def test_clean_config_passes(self, tmp_path):
         """No retained values means no failure, flag or not"""
-        assert run(tmp_path, CLEAN_CONFIG, '--fail-on-warn').returncode == 0
+        _, ok = redact(tmp_path, CLEAN_CONFIG, fail_on_warn=True)
 
+        assert ok is True
 
-class TestDryRunIsGatedToo:
-    """--dry-run is the natural CI shape: check without writing anything"""
-
-    def test_dry_run_fails_on_retained_values(self, tmp_path):
+    def test_dry_run_is_gated_too(self, tmp_path):
         """Checking without writing must still be able to fail
 
         Otherwise the least destructive way to run this in CI is also the one
         that cannot report a problem.
         """
-        result = run(tmp_path, UNKNOWN_BLOB, '--dry-run', '--fail-on-warn')
+        source = tmp_path / 'config.xml'
+        source.write_text(UNKNOWN_BLOB, encoding='utf-8')
+        redactor = PfSenseRedactor(fail_on_warn=True)
 
-        assert result.returncode != 0
+        ok = redactor.redact_config(str(source), None, dry_run=True)
+
+        assert ok is False
 
     def test_dry_run_without_the_flag_still_passes(self, tmp_path):
         """--dry-run alone stays advisory"""
-        assert run(tmp_path, UNKNOWN_BLOB, '--dry-run').returncode == 0
+        source = tmp_path / 'config.xml'
+        source.write_text(UNKNOWN_BLOB, encoding='utf-8')
 
-
-class TestRootTagCheckStillWorks:
-    """The behaviour the flag already had must not be lost"""
+        assert PfSenseRedactor().redact_config(str(source), None, dry_run=True) is True
 
     def test_wrong_root_tag_still_fails(self, tmp_path):
-        """This was the flag's original and only job"""
-        result = run(tmp_path, '<?xml version="1.0"?><notpfsense><a>1</a></notpfsense>',
-                     '--fail-on-warn')
+        """The flag's original job must not be lost"""
+        _, ok = redact(tmp_path, WRONG_ROOT, fail_on_warn=True)
 
-        assert result.returncode != 0
-        assert 'root tag' in result.stderr.lower()
+        assert ok is False
 
-    def test_wrong_root_tag_warns_without_the_flag(self, tmp_path):
+    def test_wrong_root_tag_only_warns_without_the_flag(self, tmp_path):
         """Still a warning rather than an error by default"""
-        result = run(tmp_path, '<?xml version="1.0"?><notpfsense><a>1</a></notpfsense>')
+        _, ok = redact(tmp_path, WRONG_ROOT)
 
-        assert result.returncode == 0
-        assert 'root tag' in result.stderr.lower()
+        assert ok is True
 
 
-class TestExitCodeIsUsableInCI:
-    """What a pipeline actually consumes"""
+class TestExitCodeReachesTheShell:
+    """A return value a pipeline never sees is not a gate"""
 
-    @pytest.mark.parametrize('flags,expected_zero', [
+    @pytest.mark.parametrize('flags,expect_zero', [
         ((), True),
         (('--fail-on-warn',), False),
         (('--aggressive', '--fail-on-warn'), True),
         (('--dry-run', '--fail-on-warn'), False),
     ])
-    def test_exit_codes(self, tmp_path, flags, expected_zero):
+    def test_exit_codes(self, cli_runner, tmp_path, flags, expect_zero):
         """The full matrix, so a change to any one path is visible"""
-        result = run(tmp_path, UNKNOWN_BLOB, *flags)
+        exit_code, _, _ = run_cli(cli_runner, tmp_path, UNKNOWN_BLOB, *flags)
 
-        assert (result.returncode == 0) is expected_zero
+        assert (exit_code == 0) is expect_zero
 
-    def test_output_is_still_written_when_the_gate_fails(self, tmp_path):
+    def test_failure_message_reaches_stderr(self, cli_runner, tmp_path):
+        """The operator needs to see why, not just a non-zero code"""
+        _, _, stderr = run_cli(cli_runner, tmp_path, UNKNOWN_BLOB, '--fail-on-warn')
+
+        assert 'high-entropy' in stderr
+        assert '--aggressive' in stderr
+
+    def test_output_is_still_written_when_the_gate_fails(self, cli_runner, tmp_path):
         """Failing the build must not mean losing the redacted file
 
-        The retained values were reported, not leaked - the operator still
+        The retained values were reported, not leaked, so the operator still
         wants the output in order to review those paths.
         """
-        result = run(tmp_path, UNKNOWN_BLOB, '--fail-on-warn')
+        exit_code, stdout, _ = run_cli(cli_runner, tmp_path, UNKNOWN_BLOB, '--fail-on-warn')
 
-        assert result.returncode != 0
-        assert re.search(r'<pfsense>', result.stdout), 'redacted output should still be produced'
+        assert exit_code != 0
+        assert ET.fromstring(stdout).tag == 'pfsense'
+
+    def test_wrong_root_tag_exit_code(self, cli_runner, tmp_path):
+        """The pre-existing behaviour, through the shell"""
+        exit_code, _, stderr = run_cli(cli_runner, tmp_path, WRONG_ROOT, '--fail-on-warn')
+
+        assert exit_code != 0
+        assert 'root tag' in stderr.lower()
