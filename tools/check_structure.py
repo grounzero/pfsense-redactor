@@ -20,11 +20,23 @@ in silence.
 Relationship to CodeScene
 -------------------------
 This gate approximates CodeScene's Bumpy Road rule, and the two agreed only
-after `blocks()` was taught about if/elif chains and `try` bodies. Where they
-still differ, they differ in both directions: mccabe scores `redact_text` and
-`redact_config` at 8 and CodeScene calls neither complex, while CodeScene
-scores `_is_secretish_path_segment` at 9 where mccabe says 6. There is no
-single number to chase, so the rules here encode shape, which both agree on.
+after `blocks()` was taught about if/elif chains and `try` bodies. On
+complexity they still differ in both directions: mccabe scores `redact_text`
+and `redact_config` at 8 and CodeScene calls neither complex, while it scored
+`_is_secretish_path_segment` at 9 where mccabe said 6. There is no single
+number to chase, so the rules here encode shape, which both agree on.
+
+The three functions CodeScene called Complex Method were split rather than
+argued with, each into a named predicate or step with the original reasoning
+carried across intact:
+
+- `_is_secretish_token` holds the boundary comments that justify the >= 20
+  floor and the conditional digit rule; the colon split that catches Telegram
+  tokens stays with the segment-level function that does the splitting.
+- `_ip_replacement` and `_restore_token_shape` separate choosing a mask from
+  putting back the zone id, brackets and port the token arrived with.
+- `_merge_allowlist` and `_load_default_allowlists` separate folding one parsed
+  triple into the accumulators from deciding which files to read.
 
 Findings deliberately not acted on, so they are not re-opened each time the
 dashboard is read:
@@ -35,13 +47,6 @@ dashboard is read:
   the file has to run when copied alone to a firewall or jump host. For a tool
   trusted with secrets that guarantee is worth more than a tidier module tree,
   and splitting the file to satisfy a metric would trade it away.
-
-- **Complex Method** on `_mask_one_ip_token`, `_is_secretish_path_segment` and
-  `_collect_allowlists`. The second one's guard chain encodes three separate
-  credential-format fixes, each justified in its docstring, and the first is
-  already shaped the way it is because an earlier analyser folded closures into
-  their parent. Splitting them risks the reasoning for a number this repository
-  does not otherwise track.
 
 - **Excess Number of Function Arguments** on `PfSenseRedactor.__init__`. Each
   argument is an independent user-facing policy toggle mapped 1:1 to a CLI

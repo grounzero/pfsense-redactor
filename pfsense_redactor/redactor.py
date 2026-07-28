@@ -310,6 +310,15 @@ FILE_EXTENSIONS: frozenset[str] = frozenset({
 # content, so a placeholder can only ever be one this module wrote.
 URL_PLACEHOLDER_RE = re.compile(r'\x00URL(\d+)\x00')
 
+# What a redacted address looks like in the output. Named because they are
+# also matched on the way back *in*: a token already carrying one of these has
+# been redacted before, and must not be counted or rewritten a second time.
+MASKED_IPV4 = 'XXX.XXX.XXX.XXX'
+MASKED_IPV6 = 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX'
+MASKED_IP_TOKENS: frozenset[str] = frozenset({
+    MASKED_IPV4, MASKED_IPV6, f'[{MASKED_IPV6}]',
+})
+
 # Summary lines, in print order. Labels are parsed by the StatsParser fixture in
 # tests/conftest.py, so the text must not change.
 STAT_LABELS: tuple[tuple[str, str], ...] = (
@@ -1398,7 +1407,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         unit.
         """
         # Skip already-masked tokens
-        if token in ('XXX.XXX.XXX.XXX', 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX', '[XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX]'):
+        if token in MASKED_IP_TOKENS:
             return token
         original_token = token
 
@@ -1411,20 +1420,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         if self._should_preserve_ip(ip):
             return original_token
 
-        # Anonymisation mode
-        if self.anonymise:
-            rep = self._anonymise_ip(str(ip))
-        else:
-            # Standard redaction
-            rep = 'XXX.XXX.XXX.XXX' if ip.version == 4 else 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX'
-
-        # Preserve zone identifier if present
-        if zone:
-            rep = f"{rep}%{zone}"
-        if bracketed:
-            rep = f"[{rep}]"
-
-        result = rep + port_suffix
+        rep = self._ip_replacement(ip)
+        result = self._restore_token_shape(rep, zone, bracketed) + port_suffix
 
         # Only count if actually changed
         if result != original_token:
@@ -1433,6 +1430,26 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             self._add_sample('IP', str(ip), rep)
 
         return result
+
+    def _ip_replacement(self, ip: IPAddress) -> str:
+        """The masked form of one address, honouring --anonymise"""
+        if self.anonymise:
+            return self._anonymise_ip(str(ip))
+        return MASKED_IPV4 if ip.version == 4 else MASKED_IPV6
+
+    @staticmethod
+    def _restore_token_shape(rep: str, zone: str | None, bracketed: bool) -> str:
+        """Put back the zone identifier and brackets the token arrived with
+
+        Both are structure rather than address, so they survive redaction: a
+        zone id names a local interface and brackets are what make an IPv6
+        literal parseable inside a netloc.
+        """
+        if zone:
+            rep = f"{rep}%{zone}"
+        if bracketed:
+            rep = f"[{rep}]"
+        return rep
 
     def _mask_ip_like_tokens(self, text: str) -> str:
         """IP address masking using ipaddress module"""
@@ -1677,39 +1694,42 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         return redacted
 
     @staticmethod
-    def _is_secretish_path_segment(segment: str) -> bool:
-        """Check whether a URL path segment looks like an embedded credential
+    def _is_secretish_token(part: str) -> bool:
+        """Whether one colon-separated piece of a path segment is a credential
 
         Uses a lower length floor than _is_high_entropy_value: webhook tokens
         sit around 20-24 chars, below the threshold used for key material.
 
-        Boundaries here are load-bearing, so each is justified:
+        Every boundary here is load-bearing, so each is justified:
 
         - >= 20, not > 20. AWS access key IDs (AKIA...) are exactly 20
           characters, so a > 20 test excluded the entire format.
-        - Colon-separated segments are split first. Telegram bot tokens are
-          'bot<id>:<secret>', and the colon fails BASE64ISH_RE, which let a
-          47-character credential through as an ordinary path segment.
         - A digit is required only below DIGITLESS_TOKEN_LENGTH. The digit rule
           exists to protect underscore-joined route names such as
           'Open_VM_Tools_package' (21 chars); beyond that length an all-letter
           segment is far more likely to be a token than a route. Requiring a
           digit unconditionally silently missed alphabetic Slack tokens.
         """
-        for part in segment.split(':'):
-            if len(part) < SECRETISH_SEGMENT_MIN_LENGTH:
-                continue
-            if not BASE64ISH_RE.match(part):
-                continue
+        if len(part) < SECRETISH_SEGMENT_MIN_LENGTH:
+            return False
+        if not BASE64ISH_RE.match(part):
+            return False
+        if not any(c.isalpha() for c in part):
+            return False
 
-            has_letter = any(c.isalpha() for c in part)
-            has_digit = any(c.isdigit() for c in part)
-            if not has_letter:
-                continue
-            if has_digit or len(part) >= DIGITLESS_TOKEN_LENGTH:
-                return True
+        if any(c.isdigit() for c in part):
+            return True
+        return len(part) >= DIGITLESS_TOKEN_LENGTH
 
-        return False
+    @classmethod
+    def _is_secretish_path_segment(cls, segment: str) -> bool:
+        """Check whether a URL path segment looks like an embedded credential
+
+        Split on colons before testing. Telegram bot tokens are
+        'bot<id>:<secret>', and the colon fails BASE64ISH_RE, which let a
+        47-character credential through as an ordinary path segment.
+        """
+        return any(cls._is_secretish_token(part) for part in segment.split(':'))
 
     @classmethod
     def _build_redacted_path(cls, path: str) -> tuple[str, bool]:
@@ -3415,38 +3435,56 @@ def _resolve_keep_private_ips(args: argparse.Namespace) -> bool:
     return keep_private_ips
 
 
+Allowlists = tuple[set[str], list[IPNetwork], set[str]]
+
+
+def _merge_allowlist(target: Allowlists, parsed: Allowlists) -> None:
+    """Fold one parsed (ips, networks, domains) triple into the accumulators
+
+    Networks extend rather than update: they are a list because overlapping
+    CIDRs are checked in order, not deduplicated.
+    """
+    ips, networks, domains = target
+    parsed_ips, parsed_networks, parsed_domains = parsed
+    ips.update(parsed_ips)
+    networks.extend(parsed_networks)
+    domains.update(parsed_domains)
+
+
+def _load_default_allowlists(
+    args: argparse.Namespace, logger: logging.Logger, target: Allowlists
+) -> None:
+    """Merge every default allow-list file found on disk, unless disabled"""
+    if getattr(args, 'no_default_allowlist', False):
+        return
+
+    for default_file in find_default_allowlist_files():
+        _merge_allowlist(target, parse_allowlist_file(default_file, silent_if_missing=True))
+        if not args.dry_run and not args.stdout:
+            logger.info("[+] Loaded default allow-list: %s", default_file)
+
+
 def _collect_allowlists(
     args: argparse.Namespace, logger: logging.Logger
-) -> tuple[set[str], list[IPNetwork], set[str]]:
-    """Merge allow-list entries from default files, --allowlist-file and CLI flags"""
-    # Build allow-lists from multiple sources (merge all)
-    allowlist_ips = set()
-    allowlist_networks = []
-    allowlist_domains = set()
+) -> Allowlists:
+    """Merge allow-list entries from default files, --allowlist-file and CLI flags
 
-    # 1. Load default allow-list files (unless disabled)
-    if not getattr(args, 'no_default_allowlist', False):
-        default_files = find_default_allowlist_files()
-        for default_file in default_files:
-            file_ips, file_networks, file_domains = parse_allowlist_file(default_file, silent_if_missing=True)
-            allowlist_ips.update(file_ips)
-            allowlist_networks.extend(file_networks)
-            allowlist_domains.update(file_domains)
-            if not args.dry_run and not args.stdout:
-                logger.info("[+] Loaded default allow-list: %s", default_file)
+    Sources are applied in order and all of them merge; a later source adds to
+    the earlier ones rather than replacing them.
+    """
+    collected: Allowlists = (set(), [], set())
 
-    # 2. Load explicit allow-list file if provided
+    _load_default_allowlists(args, logger, collected)
+
     if args.allowlist_file:
-        file_ips, file_networks, file_domains = parse_allowlist_file(args.allowlist_file, silent_if_missing=False)
-        allowlist_ips.update(file_ips)
-        allowlist_networks.extend(file_networks)
-        allowlist_domains.update(file_domains)
+        _merge_allowlist(collected, parse_allowlist_file(args.allowlist_file, silent_if_missing=False))
 
-    # 3. Add IPs/CIDRs from CLI
+    allowlist_ips, allowlist_networks, allowlist_domains = collected
+
     for entry in args.allowlist_ips or ():
         _add_cli_allowlist_ip(entry, allowlist_ips, allowlist_networks, logger)
 
-    # 4. Add domains from CLI (case-insensitive)
+    # Domains are compared case-insensitively
     for domain in args.allowlist_domains or ():
         allowlist_domains.add(domain.lower())
 
