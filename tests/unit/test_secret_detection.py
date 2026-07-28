@@ -84,11 +84,28 @@ class TestSecretElementPatternMatching:
         assert '>C<' not in output
 
     def test_short_cert_reference_is_preserved(self, basic_redactor):
-        """Cert-ish tags holding short reference IDs stay readable"""
+        """Cert-ish tags holding a reference the config defines stay readable
+
+        The reference has to resolve. known_refids is what redact_config builds
+        from the <refid> elements in the file before the traversal starts; set
+        here directly because this drives redact_element on its own.
+        """
+        basic_redactor.known_refids = frozenset({'5f3a1c9b'})
         root = ET.fromstring('<pfsense><a><ssl_ca_cert>5f3a1c9b</ssl_ca_cert></a></pfsense>')
         basic_redactor.redact_element(root)
 
         assert '5f3a1c9b' in ET.tostring(root, encoding='unicode')
+
+    def test_short_cert_value_that_resolves_to_nothing_is_redacted(self, basic_redactor):
+        """A short value is only kept because it is a reference, so it must be one
+
+        Nothing declares '5f3a1c9b' here, so it is a secret sitting in a
+        cert-named element rather than a pointer to a certificate.
+        """
+        root = ET.fromstring('<pfsense><a><ssl_ca_cert>5f3a1c9b</ssl_ca_cert></a></pfsense>')
+        basic_redactor.redact_element(root)
+
+        assert '5f3a1c9b' not in ET.tostring(root, encoding='unicode')
 
     def test_cert_element_with_pem_is_redacted(self, basic_redactor):
         """The same tag holding actual PEM material is redacted"""

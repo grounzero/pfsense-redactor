@@ -194,6 +194,14 @@ SECRET_TAG_PATTERN = re.compile(
 # are useful for understanding config structure) survive intact.
 CERT_TAG_PATTERN = re.compile(r'cert(?:ificate)?s?$|ssloffload', re.IGNORECASE)
 
+# The placeholders this module writes. Recognised on the way back in so that
+# redacting an already-redacted file is a no-op: without this, the short value
+# '[REDACTED_CERT_OR_KEY]' fails to resolve as a certificate reference on a
+# second pass and degrades to the less informative '[REDACTED]'.
+REDACTION_PLACEHOLDERS: frozenset[str] = frozenset({
+    '[REDACTED]', '[REDACTED_CERT_OR_KEY]',
+})
+
 # Tags that match SECRET_TAG_PATTERN but are not secrets.
 #
 # IMPORTANT: this deny-list gates SECRET_TAG_PATTERN/CERT_TAG_PATTERN only. It
@@ -736,6 +744,14 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # can be surfaced in the summary for manual review
         self.high_entropy_paths: list[str] = []
         self._path_stack: list[str] = []
+
+        # Every <refid> defined in the config being processed, so a short value
+        # in a certificate-named element can be resolved rather than guessed at.
+        # Populated by _collect_refids before the traversal starts; empty here
+        # so redact_element stays callable on a bare element, which is how most
+        # of the unit tests drive it. An empty set resolves nothing, so those
+        # values are treated as secrets - the safe direction.
+        self.known_refids: frozenset[str] = frozenset()
 
         # Get logger instance
         self.logger = logging.getLogger('pfsense_redactor')
@@ -2245,16 +2261,85 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return True
 
-    def _looks_like_cert_material(self, text: str | None) -> bool:
-        """Whether an element's text is a certificate or key rather than a reference
+    @staticmethod
+    def _collect_refids(root: ET.Element) -> frozenset[str]:
+        """Every refid defined anywhere in the config
 
-        Short values in cert-named elements are references (a certref, a key
-        id), not the material itself, so length is what separates them absent a
-        PEM header.
+        Collected from the whole tree rather than from <cert>/<ca>/<crl> alone:
+        package certificate stores do not reliably sit where the base system
+        puts them, and a superset only ever preserves more references.
+
+        Safe to build before redaction and use after it, because <refid> is
+        matched by neither SECRET_TAG_PATTERN nor CERT_TAG_PATTERN and its
+        13-character values are under BLOB_MIN_SCAN_LENGTH. The ids survive, so
+        the references this keeps still resolve in the output.
+        """
+        return frozenset(
+            refid for el in root.iter('refid') if (refid := (el.text or '').strip())
+        )
+
+    def _looks_like_cert_material(self, text: str | None) -> bool:
+        """Whether an element's text is certificate or key material
+
+        Length is the test only once a PEM header has been ruled out: anything
+        longer than a reference id, in an element named for a certificate, is
+        the material itself.
         """
         if not text:
             return False
         return bool(self.PEM_MARKER.search(text)) or len(text.strip()) > self.CERT_MIN_LENGTH
+
+    def _is_known_cert_reference(self, text: str) -> bool:
+        """Whether a short value in a cert-named element is a reference we can resolve
+
+        The config states which references exist, so resolve against it rather
+        than inferring from length. HAProxy's ha_certificates can carry several,
+        so every token has to resolve: a partial match means the value is not
+        purely a reference list, and the whole of it is then suspect.
+
+        Expects text already stripped by the caller.
+        """
+        tokens = [t for t in re.split(r'[,\s]+', text) if t]
+        if not tokens:
+            return False
+        return all(token in self.known_refids for token in tokens)
+
+    def _names_a_cert_store(self, tag: str, tag_base: str) -> bool:
+        """Whether the tag names a certificate reference or store
+
+        CERT_KEY_ELEMENTS (<crt>, <cert>, <public-key>) carry the material
+        itself, so a short value in one of those is a truncated key or one of
+        our own placeholders - never a refid, and not something to resolve.
+        """
+        if tag in self.cert_key_elements:
+            return False
+        if tag_base in self.cert_key_elements:
+            return False
+        return bool(CERT_TAG_PATTERN.search(tag) or CERT_TAG_PATTERN.search(tag_base))
+
+    def _holds_unresolvable_cert_reference(self, tag: str, tag_base: str, element: ET.Element) -> bool:
+        """Whether a cert-named element holds a short value the config cannot account for"""
+        if not self._names_a_cert_store(tag, tag_base):
+            return False
+
+        # Containers such as <ha_certificates><item>... have only the newline
+        # before their first child as text; treating that as a value would
+        # redact the wrapper and swallow the children's indentation.
+        #
+        # len() rather than a truthiness test on purpose: ElementTree elements
+        # with no children are falsy, so 'if element' asks a different question
+        # and gets the wrong answer.
+        if len(element) > 0:
+            return False
+
+        text = (element.text or '').strip()
+        if not text:
+            return False
+
+        if text in REDACTION_PLACEHOLDERS:
+            return False
+
+        return not self._is_known_cert_reference(text)
 
     def _redact_cert_key_element(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Redact certificate/key elements. Returns True if this is a cert/key element."""
@@ -2263,6 +2348,14 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         if self._looks_like_cert_material(element.text):
             self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
+            return True
+
+        # Short, no PEM header: either a reference the config defines, or a
+        # secret sitting in a cert-named element. Redacted as a secret rather
+        # than as cert material, because by this point it demonstrably is not
+        # cert material.
+        if self._holds_unresolvable_cert_reference(tag, tag_base, element):
+            self._redact_text_and_track(element, 'Secret')
 
         return True
 
@@ -2289,14 +2382,55 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             return False
         return attr.lower() in DESCRIPTION_ATTRIBUTES
 
-    def _redact_sensitive_attributes(self, element: ET.Element) -> None:
-        """Redact attributes whose name says the value should not be shared"""
+    def _replace_attribute(self, element: ET.Element, attr: str, category: str = 'Secret',
+                           placeholder: str = '[REDACTED]') -> None:
+        """Swap an attribute's value for a placeholder and count it"""
+        original = element.attrib[attr]
+        element.attrib[attr] = placeholder
+
+        if category == 'Cert/Key':
+            self.stats['certs_redacted'] += 1
+        else:
+            self.stats['secrets_redacted'] += 1
+
+        self._add_sample(category, original, placeholder)
+
+    def _account_for_attribute_blob(self, element: ET.Element, tag: str, attr: str) -> None:
+        """Redact or report key material in an attribute whose name says nothing
+
+        Reported rather than redacted by default. No pfSense config examined in
+        testing uses XML attributes at all, so this guards against third-party
+        packages rather than an observed leak, and rewriting values on that
+        basis would over-redact for everyone. Reporting costs nothing and is
+        what the element path has always done.
+        """
+        if not self._is_high_entropy_value(element.attrib[attr]):
+            return
+
+        if self.aggressive:
+            self._replace_attribute(element, attr, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
+            return
+
+        self.stats['high_entropy_retained'] += 1
+        path = f"{'/'.join([*self._path_stack, tag])}[@{attr}]"
+        if path not in self.high_entropy_paths:
+            self.high_entropy_paths.append(path)
+
+    def _redact_sensitive_attributes(self, element: ET.Element, tag: str) -> None:
+        """Handle attribute values: redact by name, and account for blobs in the rest
+
+        SENSITIVE_ATTR_PATTERN only ever sees an attribute's *name*. A value
+        that is plainly key material, sitting in an attribute named something
+        unremarkable, used to be invisible to the redactor and to --fail-on-warn
+        alike - so a CI gate passed on a file whose own output never mentioned
+        it. Elements have been handled this way since _redact_unknown_blob_element;
+        this gives attributes the same treatment.
+        """
         for attr in list(element.attrib.keys()):
             if self._should_redact_attribute(attr):
-                original = element.attrib[attr]
-                element.attrib[attr] = '[REDACTED]'
-                self.stats['secrets_redacted'] += 1
-                self._add_sample('Secret', original, '[REDACTED]')
+                self._replace_attribute(element, attr)
+                continue
+            self._account_for_attribute_blob(element, tag, attr)
 
     def _redact_text_aggressive(
         self, element: ET.Element, text_already_processed: bool, redact_ips: bool, redact_domains: bool
@@ -2390,8 +2524,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             tag, tag_base, element, redact_ips, redact_domains
         )
 
-        # Redact attributes with sensitive names
-        self._redact_sensitive_attributes(element)
+        # Redact attributes with sensitive names, and account for high-entropy
+        # values in the rest. Runs before the aggressive text pass below, which
+        # would otherwise rewrite the values this needs to see.
+        self._redact_sensitive_attributes(element, tag)
 
         # Recursively process child elements
         self._path_stack.append(tag)
@@ -2499,6 +2635,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             if not dry_run and not stdout_mode:
                 self.logger.info("[+] Parsing XML configuration from: %s", input_file)
                 self.logger.info("[+] Redacting sensitive information...")
+
+            # Before the traversal, so certificate references can be resolved
+            # against what the config actually defines
+            self.known_refids = self._collect_refids(root)
 
             self.redact_element(root, redact_ips, redact_domains)
 

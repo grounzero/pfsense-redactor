@@ -1,0 +1,44 @@
+<?xml version="1.0"?>
+<!--
+  Supplementary canary corpus: markers added after the benchmark was published.
+
+  tests/corpus/canary-corpus.xml is frozen at 46 markers. It is the file
+  ForesightCyber and netgate-xlsx were scored against, and that comparison is
+  only valid for as long as it does not move, so new markers go here instead.
+  This file is scored on its own and never folded into the published table.
+
+  Same rules as the frozen corpus: every value is synthetic, domains use the
+  reserved .example TLD (RFC 2606), addresses are RFC 1918 or RFC 5737
+  documentation ranges. Nothing here is or ever was real.
+
+  Contributions are welcome here, particularly ones this project would not have
+  thought of. Of the frozen 46, none came from outside, and docs/benchmark.md
+  says so plainly because it is the honest limit of the benchmark. A marker that
+  survives is worth more to this project than one that does not.
+
+  Marker origins are recorded in docs/benchmark.md.
+
+  Note for editors: XML forbids a double hyphen inside a comment, so flag names
+  are written without their leading dashes here.
+-->
+<pfsense>
+  <version>23.09</version>
+
+  <!--
+    CANARY_ATTR_BLOB: key material in an attribute whose name says nothing.
+
+    SENSITIVE_ATTR_PATTERN matches attribute names, so this is invisible to it.
+    Since 1.2.0 the value is entropy-checked instead: reported for review by
+    default, and redacted under 'aggressive'.
+
+    The marker is padded out to be base64-shaped, 32+ characters and free of
+    spaces, because that is what the heuristic requires. Prose in an attribute
+    is a different problem, covered by the 'redact-descriptions' flag, and the
+    frozen corpus already carries a marker for it.
+  -->
+  <installedpackages>
+    <mycustompkg><config>
+      <telemetry endpoint_id="CANARY_ATTR_BLOBaG7kQ2xZpR9vN4tY8wL3mB6dF1sJ0c">enabled</telemetry>
+    </config></mycustompkg>
+  </installedpackages>
+</pfsense>
