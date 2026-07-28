@@ -3946,16 +3946,29 @@ def write_bytes_atomically(target: str, payload: bytes) -> None:
     _fsync_directory(directory)
 
 
-def _write_and_sync(handle: int, temp_path: str, payload: bytes) -> None:
-    """Fill the temporary file, set its mode, and get it onto the device
+def _restrict_mode(stream, temp_path: str) -> None:
+    """Set the temporary file to OUTPUT_FILE_MODE, by descriptor where possible
 
-    mkstemp already creates at 0600 on POSIX. The explicit chmod is for
-    platforms where it does not, and is a no-op where it does. On Windows it
-    only clears the read-only bit, because permissions there are ACLs; the
-    restrictive-permissions guarantee is POSIX-only and documented as such.
+    fchmod acts on the descriptor already held open, so nothing can substitute
+    a different file at that path between creating it and setting its mode.
+    chmod-by-path is the same operation with a window in the middle, and there
+    is no reason to keep the window when the descriptor is right there.
+
+    mkstemp already creates at 0600 on POSIX, so this is belt and braces there.
+    Windows has no fchmod, and its chmod only clears the read-only bit because
+    permissions are ACLs - the restrictive-permissions guarantee is POSIX-only
+    and documented as such.
     """
+    if hasattr(os, 'fchmod'):
+        os.fchmod(stream.fileno(), OUTPUT_FILE_MODE)
+        return
+    os.chmod(temp_path, OUTPUT_FILE_MODE)  # pragma: no cover - Windows only
+
+
+def _write_and_sync(handle: int, temp_path: str, payload: bytes) -> None:
+    """Fill the temporary file, set its mode, and get it onto the device"""
     with os.fdopen(handle, 'wb') as stream:
-        os.chmod(temp_path, OUTPUT_FILE_MODE)
+        _restrict_mode(stream, temp_path)
         stream.write(payload)
         stream.flush()
         os.fsync(stream.fileno())

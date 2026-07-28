@@ -78,7 +78,7 @@ class TestInputPreservation:
 def fail_at(monkeypatch, name):
     """Make one step of the atomic write fail, the way a real one can
 
-    The write is: temp file in the destination directory, chmod, write, flush,
+    The write is: temp file in the destination directory, fchmod, write, flush,
     fsync, close, os.replace, fsync the directory. A crash can land at any of
     them - disk full at the write, SIGINT before the rename, power loss after
     it - and the guarantee is the same in every case: the destination holds

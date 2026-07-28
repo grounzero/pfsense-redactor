@@ -26,6 +26,13 @@ from pfsense_redactor.redactor import (
 PAYLOAD = b"<?xml version='1.0' encoding='utf-8'?>\n<pfsense><a>b</a></pfsense>"
 POSIX_ONLY = pytest.mark.skipif(os.name == "nt", reason="POSIX semantics")
 
+# The call the writer actually makes to restrict the mode: fchmod on the open
+# descriptor where the platform has it, chmod on the path otherwise. The
+# failure-injection tests below parametrise over this rather than hardcoding
+# "chmod", because patching a call the production path no longer makes would
+# leave them green while exercising nothing.
+MODE_CALL = "fchmod" if hasattr(os, "fchmod") else "chmod"
+
 
 @pytest.fixture
 def source(tmp_path):
@@ -187,7 +194,7 @@ class TestAtomicWrite:
 
         assert {p.name for p in tmp_path.iterdir()} == {"out.xml"}
 
-    @pytest.mark.parametrize("step", ["fsync", "replace", "chmod"])
+    @pytest.mark.parametrize("step", ["fsync", "replace", MODE_CALL])
     def test_a_failure_leaves_the_destination_untouched(self, tmp_path, monkeypatch, step):
         """Every step that can fail, and the same guarantee for each"""
         target = tmp_path / "out.xml"
@@ -204,7 +211,7 @@ class TestAtomicWrite:
 
         assert target.read_bytes() == before
 
-    @pytest.mark.parametrize("step", ["fsync", "replace", "chmod"])
+    @pytest.mark.parametrize("step", ["fsync", "replace", MODE_CALL])
     def test_a_failure_leaves_no_temporary_file(self, tmp_path, monkeypatch, step):
         """Cleanup runs on the failure path, not only the happy one"""
         target = tmp_path / "out.xml"
@@ -255,6 +262,26 @@ class TestAtomicWrite:
         write_bytes_atomically(str(target), PAYLOAD)
 
         assert seen['dir'] == str(target.parent)
+
+    @POSIX_ONLY
+    def test_the_mode_is_set_on_the_descriptor_not_the_path(self, tmp_path, monkeypatch):
+        """No window between creating the file and restricting it
+
+        chmod-by-path can be pointed at a different file between mkstemp and
+        the chmod. fchmod acts on the descriptor already held, so it cannot.
+        """
+        calls = []
+        real_fchmod = os.fchmod
+        monkeypatch.setattr(
+            "os.fchmod", lambda fd, mode: (calls.append(mode), real_fchmod(fd, mode))[1]
+        )
+        monkeypatch.setattr(
+            "os.chmod", lambda *a, **k: pytest.fail("chmod-by-path used on POSIX")
+        )
+
+        write_bytes_atomically(str(tmp_path / "out.xml"), PAYLOAD)
+
+        assert calls == [OUTPUT_FILE_MODE]
 
     @POSIX_ONLY
     def test_the_temporary_file_is_never_world_readable(self, tmp_path, monkeypatch):
