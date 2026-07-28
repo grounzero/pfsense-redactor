@@ -5,6 +5,78 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0][] - 2026-07-28
+
+Secret detection hardening. Five classes of credential that previously survived
+redaction while the run reported success are now removed or reported.
+
+### Security
+
+- **Private-key PEM material is now redacted in every mode, whatever holds it.**
+  A private key stored in an element or attribute whose name the tool did not
+  recognise was previously *reported* as a retained high-entropy value and left
+  in the output, and the run exited 0. A PEM private-key header is unambiguous
+  evidence of key material and carries no over-redaction risk, so the
+  report-only policy no longer applies to it. Recognised headers: `PRIVATE KEY`,
+  `RSA`/`EC`/`DSA`/`ED25519 PRIVATE KEY`, `ENCRYPTED PRIVATE KEY`, `OPENSSH
+  PRIVATE KEY`, `SSH2 ENCRYPTED PRIVATE KEY`, `PGP PRIVATE KEY BLOCK` and
+  OpenVPN's `STATIC KEY`. Public keys and certificates are unaffected.
+  (FINDING-01, FINDING-02)
+
+- **Base64 and Base64URL values are inspected for key material.** Packages that
+  store credentials encoded — ACME account keys, several backup agents — hid the
+  PEM header from every check the tool made. Values are now decoded to a bounded
+  depth of 3 and re-examined, so single- and double-wrapped key material is
+  found. Decoding is bounded in source length, decoded size, depth and total
+  operations per value, and decoded content is never logged, sampled or placed
+  in an error message. (FINDING-03)
+
+- **JWTs are detected and redacted in every mode.** A compact token's `.`
+  separators defeated the shape test, so a JWT was neither redacted nor
+  reported. Recognised by the `eyJ` prefix or by the first segment decoding to a
+  JOSE header; ordinary dotted strings — hostnames, versions, IPv4 addresses,
+  filenames, reversed package names — are not affected. (FINDING-05)
+
+- **Long single-character-class values are no longer invisible.** The opaque
+  value test required two of {digit, upper, lower}, so an all-lowercase token,
+  an all-uppercase token and a digest spelled only in `a-f` were neither
+  redacted nor **reported** — `--fail-on-warn` could not see them and the
+  summary never mentioned them. Hex values of 32 characters or more, and
+  Base64-shaped values of 36 or more, are now judged on length and Shannon
+  entropy instead. UUIDs, all-zero fields and padding are excluded by shape.
+  (FINDING-04)
+
+- **Element names and attribute names are classified by one shared predicate.**
+  The two patterns disagreed: `bearer`, `cookie` and `signature` were secrets
+  only as attributes; `credentials`, `privkey`, `licensekey`, `psk`,
+  `passphrase` and `community` only as elements. The deny-list now applies to
+  attribute names as it always has to element names. (FINDING-10)
+
+- **13 further credential-bearing element names are recognised**: `pwd`,
+  `bearer`, `salt`, `seed`, `otpseed`, `digest`, `hash`, `nonce`, `keydata`,
+  `keystore`, `authorization`, `sessionid` and `totp`. (FINDING-09)
+
+### Changed
+
+- Values in these positions may now be redacted where they were previously kept
+  and listed among the retained high-entropy paths. Nothing that was redacted
+  before is kept now. If you relied on reading a retained value out of the
+  output, it will be `[REDACTED_CERT_OR_KEY]` or `[REDACTED]` instead.
+
+- `<digest>` and `<hash>` are decided by their value rather than their name, so
+  `<digest>SHA384</digest>` — IPsec selecting an algorithm — is preserved while
+  anything outside a closed list of algorithm names in those elements is
+  redacted. Algorithm-selector names (`hash-algorithm`, `hashalgo`,
+  `digestalgo`, `saltlen` and similar) and the OpenVPN `auth-retry*` directives
+  are on the deny-list.
+
+- The retained-value warning is correspondingly shorter, and the count that
+  `--fail-on-warn` reads no longer includes private keys or JWTs, because those
+  are no longer retained.
+
+No action is required. No CLI option, default or exit code changes in this
+release, and output remains valid pfSense XML.
+
 ## [1.2.0][] - 2026-07-28
 
 Three changes to how coverage is decided and measured. Two close gaps the canary
@@ -600,6 +672,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.3.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.3.0
 [1.2.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.2.0
 [1.1.2]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.2
 [1.1.1]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.1
