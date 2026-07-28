@@ -71,6 +71,33 @@ class TestIsWebhookUrl:
         """Hostnames are case-insensitive, and configs are written by hand"""
         assert _is_webhook_url('Hooks.Slack.COM', '/services/a/b/c')
 
+    @pytest.mark.parametrize('path', [
+        '/Services/T024BE7LD/B024BE7LH/tok',
+        '/SERVICES/T024BE7LD/B024BE7LH/tok',
+    ])
+    def test_path_comparison_is_case_insensitive(self, path):
+        """RFC 3986 makes paths case-sensitive, but matching exactly leaked
+
+        Every prefix here is lowercase, so folding case can only add matches,
+        and '/Services/' on hooks.slack.com is still a webhook.
+        """
+        assert _is_webhook_url('hooks.slack.com', path)
+
+    def test_mixed_case_path_token_is_redacted(self, basic_redactor):
+        """End to end: the case that survived before"""
+        url = 'https://hooks.slack.com/Services/T024BE7LD/B024BE7LH/' + SLACK_TOKEN
+
+        assert SLACK_TOKEN not in basic_redactor._redact_url_secrets_only(url)
+
+    def test_case_folding_does_not_widen_the_host_rule(self):
+        """Only the path is folded; the host rules are unchanged
+
+        A lookalike must not become a match just because the path now
+        compares loosely.
+        """
+        assert not _is_webhook_url('hooks.slack.com.evil.example', '/Services/a/b/c')
+        assert not _is_webhook_url('notwebhook.office.com', '/WebhookB2/x')
+
     def test_empty_inputs_are_safe(self):
         """A URL with no host must not raise"""
         assert not _is_webhook_url('', '')

@@ -187,7 +187,8 @@ reviewing that work, both older than 1.1.0.
   content in any other element passed through untouched.
 - **FIX**: URL credentials (`user:password@host`) were preserved in elements that are not known
   URL carriers, so a URL could be emitted with its query secret shown as `[REDACTED]` while the
-  HTTP-basic password beside it survived in full, producing output that reads as sanitised when it is not.
+  HTTP-basic password beside it survived in full, producing output that reads
+  as sanitised when it is not.
   Userinfo redaction now follows the same policy on every URL path, and a URL carrying credentials
   is rewritten even when nothing else in it changes.
 - **FIX**: Free-text blob elements received *less* URL scanning than unrecognised elements, because
@@ -195,7 +196,8 @@ reviewing that work, both older than 1.1.0.
   `key=value` credentials, and the key=value scanner no longer mistakes a URL scheme for a key.
 - **FIX**: `--dry-run-verbose` printed URL credentials to the console. The sample display masked the
   host and the userinfo password but passed the path and query through verbatim, so a preview of
-  `https://api.example.com/v1?token=...` showed the token in full: in the terminal, and from there
+  `https://api.example.com/v1?token=...` showed the token in full: in the
+  terminal, and from there
   in CI logs or a pasted ticket. This is the flag users run precisely to check what will happen
   before sharing, so it now redacts path and query secrets too.
 

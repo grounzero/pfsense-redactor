@@ -409,14 +409,23 @@ WEBHOOK_URL_SUFFIXES: tuple[tuple[str, str], ...] = (
 
 
 def _is_webhook_url(host: str, path: str) -> bool:
-    """Whether a URL is a known webhook endpoint carrying its token in the path"""
-    host_lower = host.lower()
+    """Whether a URL is a known webhook endpoint carrying its token in the path
 
-    if any(host_lower == known and path.startswith(prefix)
+    The path is compared case-insensitively even though RFC 3986 makes paths
+    case-sensitive. Every prefix here is lowercase, so folding case can only
+    add matches, never remove one, and the additions are all still webhook
+    URLs: '/Services/' on hooks.slack.com is not something else. Comparing
+    exactly meant a config written with '/Services/' kept its token, which is
+    the failure this whole rule exists to prevent.
+    """
+    host_lower = host.lower()
+    path_lower = path.lower()
+
+    if any(host_lower == known and path_lower.startswith(prefix)
            for known, prefix in WEBHOOK_URL_PREFIXES):
         return True
 
-    return any(host_lower.endswith(suffix) and path.startswith(prefix)
+    return any(host_lower.endswith(suffix) and path_lower.startswith(prefix)
                for suffix, prefix in WEBHOOK_URL_SUFFIXES)
 
 
