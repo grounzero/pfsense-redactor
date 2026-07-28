@@ -71,6 +71,15 @@ class ColouredFormatter(logging.Formatter):
         super().__init__(fmt, datefmt, style)
         self.stream = stream
 
+    @staticmethod
+    def _stream_is_tty(stream) -> bool:
+        """Whether the stream is a terminal that can render colour
+
+        Streams reaching here are not always file objects - the tests pass
+        stand-ins - so isatty is checked for rather than assumed.
+        """
+        return bool(stream) and hasattr(stream, 'isatty') and stream.isatty()
+
     def format(self, record):
         """Format log record with colours if outputting to a TTY
 
@@ -81,7 +90,7 @@ class ColouredFormatter(logging.Formatter):
         formatted = super().format(record)
 
         # Only add colours if outputting to a TTY
-        if self.stream and hasattr(self.stream, 'isatty') and self.stream.isatty():
+        if self._stream_is_tty(self.stream):
             levelname = record.levelname
             if levelname in self.COLOURS:
                 colour = self.COLOURS[levelname]
@@ -204,6 +213,18 @@ SECRET_TAG_DENYLIST: frozenset[str] = frozenset({
     'source_hash_key',       # HAProxy load-balancing algorithm selector
 })
 
+
+def _is_secret_query_param(name_lower: str, value: str) -> bool:
+    """Whether a URL query parameter carries a credential
+
+    The deny-list is consulted before the pattern, so a name that merely looks
+    secret-ish ('keylen', 'certref') is not redacted on the strength of a
+    substring match.
+    """
+    return (bool(value)
+            and name_lower not in SECRET_TAG_DENYLIST
+            and bool(SECRET_TAG_PATTERN.search(name_lower)))
+
 # Opaque free-text containers that routinely carry credentials inline.
 # custom_options is the standard place for OpenVPN/Unbound/Squid directives and
 # frequently holds askpass, auth-user-pass and inline keys.
@@ -293,6 +314,15 @@ RFC_DOC_NETWORKS_V4: tuple[IPNetwork, ...] = (
     ipaddress.ip_network('203.0.113.0/24'),
 )
 RFC_DOC_NETWORK_V6: IPNetwork = ipaddress.ip_network('2001:db8::/32')
+
+
+def _disqualified_as_blob(compact: str) -> bool:
+    """Whether a candidate is ruled out as encoded key material on shape alone
+
+    Too short to be a key, or containing whitespace - which encoded blobs do
+    not, once line wrapping has been removed, but ordinary prose does.
+    """
+    return len(compact) < BLOB_MIN_SCAN_LENGTH or ' ' in compact or '\t' in compact
 
 
 def _has_mixed_character_classes(compact: str, hex_only: bool) -> bool:
@@ -1374,6 +1404,15 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         masked = self._anonymise_domain(host) if self.anonymise else 'example.com'
         return masked, True, False
 
+    @staticmethod
+    def _needs_ipv6_brackets(host: str, is_ipv6: bool) -> bool:
+        """Whether a host must be bracketed to be a valid URL netloc
+
+        A colon in an unbracketed host means IPv6 even when the caller did not
+        already know it, which is why the flag alone is not enough.
+        """
+        return is_ipv6 or (':' in host and not host.startswith('['))
+
     def _build_netloc(self, parts: SplitResult, host: str, is_ipv6: bool) -> str:
         """Build netloc with userinfo, host, and port"""
         userinfo = ''
@@ -1387,7 +1426,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             userinfo += '@'
 
         # Wrap IPv6 in brackets
-        if is_ipv6 or (':' in host and not host.startswith('[')):
+        if self._needs_ipv6_brackets(host, is_ipv6):
             host = f"[{host}]"
 
         netloc = f"{userinfo}{host}"
@@ -1431,7 +1470,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         out = []
         for name, value in pairs:
             name_l = name.lower()
-            if value and name_l not in SECRET_TAG_DENYLIST and SECRET_TAG_PATTERN.search(name_l):
+            if _is_secret_query_param(name_l, value):
                 out.append((name, '[REDACTED]'))
                 changed = True
             else:
@@ -1912,7 +1951,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # ordinary prose ("This is a fairly long note") into an unbroken
         # alphanumeric run that looks exactly like base64.
         compact = text.replace('\n', '').replace('\r', '')
-        if len(compact) < BLOB_MIN_SCAN_LENGTH or ' ' in compact or '\t' in compact:
+        if _disqualified_as_blob(compact):
             return False
 
         if not (BASE64ISH_RE.match(compact) or HEXISH_RE.match(compact)):
@@ -2063,14 +2102,23 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return True
 
+    def _looks_like_cert_material(self, text: str | None) -> bool:
+        """Whether an element's text is a certificate or key rather than a reference
+
+        Short values in cert-named elements are references (a certref, a key
+        id), not the material itself, so length is what separates them absent a
+        PEM header.
+        """
+        if not text:
+            return False
+        return bool(self.PEM_MARKER.search(text)) or len(text.strip()) > self.CERT_MIN_LENGTH
+
     def _redact_cert_key_element(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Redact certificate/key elements. Returns True if this is a cert/key element."""
         if not self._is_cert_tag(tag, tag_base):
             return False
 
-        # Use class constant for minimum certificate length
-        if element.text and (self.PEM_MARKER.search(element.text) or
-                            len(element.text.strip()) > self.CERT_MIN_LENGTH):
+        if self._looks_like_cert_material(element.text):
             self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
 
         return True
@@ -2117,6 +2165,15 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                     element.attrib[attr], redact_ips, redact_domains
                 )
 
+    @staticmethod
+    def _carries_unhandled_url(text: str | None, handled: bool) -> bool:
+        """Whether text still needs the URL-credential pass
+
+        'handled' means an earlier, more specific pass already rewrote this
+        element, so running the URL pass over it again would double-process it.
+        """
+        return bool(text) and not handled and '://' in text
+
     def _redact_element_text(
         self, tag: str, tag_base: str, element: ET.Element,
         redact_ips: bool, redact_domains: bool
@@ -2146,7 +2203,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # carriers (e.g. <updateurl>, <webhook_url>). Previously these were
         # only touched under --aggressive, so the token survived by default.
         # Host anonymisation deliberately stays out of the default path here.
-        if element.text and not handled and '://' in element.text:
+        if self._carries_unhandled_url(element.text, handled):
             element.text = self._redact_url_secrets_only(element.text)
 
         return handled
@@ -2724,6 +2781,19 @@ def validate_file_path(
         return False, f"Error validating path: {e}", None
 
 
+def _is_disallowed_absolute(is_absolute_form: bool, allow_absolute: bool,
+                            resolved_str: str) -> bool:
+    """Whether an absolute path is refused for being absolute
+
+    Only the reason is named here, not the ordering: this check must still run
+    *after* the sensitive-directory check in _resolved_path_error, so that
+    --allow-absolute-paths cannot reach a protected directory.
+    """
+    return (is_absolute_form
+            and not allow_absolute
+            and not _is_safe_absolute_location(resolved_str))
+
+
 def _resolved_path_error(
     file_path: str, resolved: Path, is_absolute_form: bool, allow_absolute: bool,
     is_output: bool, sensitive_dirs: frozenset[str]
@@ -2741,7 +2811,7 @@ def _resolved_path_error(
     if is_output and _is_in_sensitive_directory(resolved_str, sensitive_dirs):
         return f"Cannot write to sensitive system directory: {resolved}"
 
-    if is_absolute_form and not allow_absolute and not _is_safe_absolute_location(resolved_str):
+    if _is_disallowed_absolute(is_absolute_form, allow_absolute, resolved_str):
         return f"Absolute paths not allowed (use --allow-absolute-paths): {file_path}"
 
     if is_output and resolved_str in DANGEROUS_OUTPUT_FILES:
@@ -2907,20 +2977,42 @@ def _resolve_input_path(
         sys.exit(1)
 
 
+def _output_path_will_be_used(args: argparse.Namespace) -> bool:
+    """Whether args.output is worth validating
+
+    The only skipped case is --stdout without --dry-run, where args.output is
+    never written.
+    """
+    return bool(args.output) and (args.dry_run or not args.stdout)
+
+
+def _would_overwrite_without_force(args: argparse.Namespace, resolved: Path) -> bool:
+    """Whether writing would destroy an existing file the user did not consent to
+
+    Overwrite protection applies only when a write will actually happen, so the
+    modes that write nothing are excluded first, then explicit consent.
+    """
+    if args.dry_run or args.stdout:
+        return False
+    if args.force:
+        return False
+    return resolved.exists()
+
+
 def _resolve_output_path(
     args: argparse.Namespace, sensitive_dirs: frozenset[str], logger: logging.Logger
 ) -> None:
     """Validate the output path, including the extra --inplace checks"""
     # Validated whenever the path will be used. The only skipped case is
     # --stdout without --dry-run, where args.output is never written.
-    if args.output and (args.dry_run or not args.stdout):
+    if _output_path_will_be_used(args):
         resolved = _validate_as_output_target(
             args.output, args, sensitive_dirs, logger,
             "[!] Error: Invalid output path: %s"
         )
 
         # Overwrite protection applies only when a write will actually happen
-        if not args.dry_run and not args.stdout and not args.force and resolved.exists():
+        if _would_overwrite_without_force(args, resolved):
             logger.error("[!] Error: Output file '%s' already exists. Use --force to overwrite.", args.output)
             sys.exit(1)
 
@@ -3065,6 +3157,19 @@ def _configure_logging_from_args(args: argparse.Namespace) -> None:
     setup_logging(log_level, use_stderr=args.stdout)
 
 
+def _needs_generated_output_name(args: argparse.Namespace) -> bool:
+    """Whether a destination has to be invented because none was given
+
+    Every mode that writes somewhere else - stdout, in place, or nowhere at all
+    under --dry-run - supplies its own destination.
+    """
+    if args.stdout or args.inplace:
+        return False
+    if args.dry_run:
+        return False
+    return not args.output
+
+
 def _apply_argument_defaults(args: argparse.Namespace) -> None:
     """Fill in values implied by other flags, before any validation"""
     # --dry-run-verbose is a louder --dry-run
@@ -3072,7 +3177,7 @@ def _apply_argument_defaults(args: argparse.Namespace) -> None:
         args.dry_run = True
 
     # Auto-generate output filename when one is needed but not given
-    if not args.stdout and not args.inplace and not args.dry_run and not args.output:
+    if _needs_generated_output_name(args):
         input_path = Path(args.input)
         args.output = str(input_path.parent / f"{input_path.stem}-redacted{input_path.suffix}")
 

@@ -65,7 +65,7 @@ class TestRFCIPIdempotency:
         assert redactor2.stats['ips_redacted'] == 0, "IPs were re-redacted on second pass"
 
         # Verify RFC IPs were generated
-        assert '192.0.2.' in url1 or '198.51.100.' in url1 or '203.0.113.' in url1
+        assert any(net in url1 for net in ('192.0.2.', '198.51.100.', '203.0.113.'))
 
         # Clean up
         os.unlink(input_file)

@@ -37,7 +37,7 @@ class TestIPv6ZoneIdentifiers:
         for input_text, expected in test_cases:
             result = redactor._mask_ip_like_tokens(input_text)
             # Zone should be preserved even if IP is redacted
-            assert '%eth0.100' in result or '%ens18.200' in result or '%bond0.50' in result, \
+            assert any(z in result for z in ('%eth0.100', '%ens18.200', '%bond0.50')), \
                 f"Zone identifier lost for {input_text}, got: {result}"
 
     def test_zone_with_dash_interface(self):
@@ -52,7 +52,7 @@ class TestIPv6ZoneIdentifiers:
 
         for input_text, expected in test_cases:
             result = redactor._mask_ip_like_tokens(input_text)
-            assert '%wlan0-1' in result or '%br-lan' in result or '%eth-mgmt' in result, \
+            assert any(z in result for z in ('%wlan0-1', '%br-lan', '%eth-mgmt')), \
                 f"Zone identifier with dash lost for {input_text}, got: {result}"
 
     def test_zone_with_colon_interface(self):
@@ -84,7 +84,7 @@ class TestIPv6ZoneIdentifiers:
         for input_text, expected in test_cases:
             result = redactor._mask_ip_like_tokens(input_text)
             # Check that the zone is preserved (even if IP is redacted)
-            assert '%eth0.100-vlan' in result or '%br-lan.10' in result or '%bond0.50:1' in result, \
+            assert any(z in result for z in ('%eth0.100-vlan', '%br-lan.10', '%bond0.50:1')), \
                 f"Complex zone identifier lost for {input_text}, got: {result}"
 
     def test_bracketed_ipv6_with_zone(self):
@@ -100,7 +100,7 @@ class TestIPv6ZoneIdentifiers:
         for input_text, expected in test_cases:
             result = redactor._mask_ip_like_tokens(input_text)
             # Zone should be preserved in bracketed form
-            assert '%eth0.100]' in result or '%wlan0-1]' in result or '%eth0:1]' in result, \
+            assert any(z in result for z in ('%eth0.100]', '%wlan0-1]', '%eth0:1]')), \
                 f"Zone identifier lost in bracketed form for {input_text}, got: {result}"
 
     def test_bracketed_ipv6_with_zone_and_port(self):
@@ -116,9 +116,9 @@ class TestIPv6ZoneIdentifiers:
         for input_text, expected in test_cases:
             result = redactor._mask_ip_like_tokens(input_text)
             # Zone and port should both be preserved
-            assert ('%eth0.100]:' in result or '%wlan0-1]:' in result or '%br-lan.10]:' in result), \
+            assert any(z in result for z in ('%eth0.100]:', '%wlan0-1]:', '%br-lan.10]:')), \
                 f"Zone identifier or port lost for {input_text}, got: {result}"
-            assert (':51820' in result or ':8080' in result or ':443' in result), \
+            assert any(p in result for p in (':51820', ':8080', ':443')), \
                 f"Port lost for {input_text}, got: {result}"
 
     def test_zone_parsing_in_parse_ip_token(self):

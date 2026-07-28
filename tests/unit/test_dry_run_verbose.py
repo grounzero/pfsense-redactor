@@ -33,7 +33,7 @@ def test_dry_run_verbose_shows_samples(cli_runner, create_xml_file):
     assert "limit N=" in stdout
 
     # Should show sample categories
-    assert "IP:" in stdout or "Secret:" in stdout or "FQDN:" in stdout
+    assert any(label in stdout for label in ("IP:", "Secret:", "FQDN:"))
 
 
 def test_dry_run_verbose_masks_ip_samples_safely(cli_runner, create_xml_file):
