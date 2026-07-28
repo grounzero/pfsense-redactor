@@ -27,12 +27,6 @@ class TestRecursionBounds:
         root = ET.fromstring(nested_config(200))
         PfSenseRedactor().redact_element(root)
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-13: redact_element has no depth bound, so nesting past "
-               "the interpreter recursion limit raises RecursionError, which "
-               "redact_config does not catch",
-    )
     def test_deep_nesting_is_refused_not_crashed(self):
         """Nesting past the recursion limit must be handled, not fatal"""
         root = ET.fromstring(nested_config(2000))
@@ -42,11 +36,6 @@ class TestRecursionBounds:
         except RecursionError:
             pytest.fail("RecursionError escaped redact_element")
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-13: the RecursionError reaches the shell as an "
-               "unhandled traceback rather than a diagnosed refusal",
-    )
     def test_deep_nesting_reports_cleanly_through_the_cli(self, tmp_path, run_redactor):
         """And must reach the shell as a diagnosis"""
         deep = tmp_path / "deep.xml"
@@ -72,13 +61,15 @@ class TestTextSizeBounds:
         assert time.monotonic() - started < 30
         assert len(result) <= redactor.MAX_TEXT_CHUNK
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-14: text over MAX_TEXT_CHUNK is truncated, so the "
-               "output silently loses config data while the run reports success",
-    )
     def test_oversized_text_is_not_silently_truncated(self, tmp_path, run_redactor):
-        """Discarding config data is not a successful run"""
+        """Discarding config data is not a successful run
+
+        The return code is checked before the output is parsed, because the
+        correct outcome is now that there is no output to parse. The invariant
+        is unchanged: either the whole value survives, or the run fails. What
+        is no longer permitted is the third option it used to take - discard
+        151,424 characters of the operator's configuration and exit 0.
+        """
         oversized = "A" * 1_200_000
         config = tmp_path / "big.xml"
         config.write_text(
@@ -86,13 +77,25 @@ class TestTextSizeBounds:
         )
 
         result = run_redactor(config, "--stdout")
+
+        if result.returncode != 0:
+            assert result.stdout.strip() == "", "refused, but emitted a document anyway"
+            return
+
         root = ET.fromstring(result.stdout)
         kept = root.find("system/hostname").text or ""
-
-        assert len(kept) == len(oversized) or result.returncode != 0, (
+        assert len(kept) == len(oversized), (
             f"{len(oversized) - len(kept)} characters discarded, exit code "
             f"{result.returncode}"
         )
+
+    def test_oversized_text_is_replaced_rather_than_trimmed(self):
+        """What is left in place of an oversized value says what happened"""
+        redactor = PfSenseRedactor()
+        result = redactor.redact_text("A" * (redactor.MAX_TEXT_CHUNK + 200_000))
+
+        assert result == "[REDACTED_OVERSIZED]"
+        assert redactor.stats["oversized_text"] == 1
 
 
 class TestPathologicalPatterns:

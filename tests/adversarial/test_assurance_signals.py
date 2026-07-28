@@ -16,19 +16,41 @@ from .decode_scan import find_key_material
 class TestFailClosed:
     """Unsafe output must not be distributable"""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-21: retained high-entropy values warn but do not fail, "
-               "so a run that left a private key in the output exits 0",
-    )
-    def test_retained_key_material_fails_the_run(self, adversarial_canary, run_redactor):
-        """Output holding a private key must not exit 0"""
+    def test_key_material_no_longer_survives_at_all(self, adversarial_canary, run_redactor):
+        """The premise of the finding is gone, which is the better outcome
+
+        This asserted that the fixture still leaked a private key and that the
+        run nevertheless exited 0 - the leak being certified by the success.
+        Both halves are now false: nothing survives to certify. The stronger
+        statement is asserted directly here, and the exit-code half of the
+        original is asserted by test_a_verifier_finding_alone_blocks_output,
+        which uses material that does still survive.
+        """
         result = run_redactor(adversarial_canary, "--stdout")
 
-        assert find_key_material(result.stdout), "fixture no longer leaks - update the test"
-        assert result.returncode != 0, (
-            "exit 0 on output containing a private key certifies the leak"
+        assert not find_key_material(result.stdout)
+        assert result.returncode == 0, (
+            "nothing was retained that should fail the run"
         )
+
+    def test_output_holding_key_material_could_not_exit_zero(self, tmp_path, run_redactor):
+        """The invariant the finding was about, on a run that can reach it
+
+        Independent verification is what makes this assertable at all: the
+        value below is not in a secret-named element and is not shaped like key
+        material, so the transformer has nothing to report about it.
+        """
+        config = tmp_path / "in.xml"
+        config.write_text(
+            "<pfsense><installedpackages><vendor><config>"
+            "<mqtt_login_string>CANARYUNKNOWNFIELDSECRET42</mqtt_login_string>"
+            "</config></vendor></installedpackages></pfsense>"
+        )
+
+        result = run_redactor(config, tmp_path / "out.xml", "--strict")
+
+        assert result.returncode != 0
+        assert not (tmp_path / "out.xml").exists()
 
     def test_fail_on_warn_writes_no_output(self, adversarial_canary, run_redactor, tmp_path):
         """The gate must prevent the artefact, not just report on it"""
@@ -75,11 +97,6 @@ class TestFailClosed:
         assert not out.exists()
         assert "verification" in result.stderr.lower()
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-23: only 0 and 1 are used, so a caller cannot tell a "
-               "refused input from a retained secret from a write failure",
-    )
     def test_exit_codes_distinguish_failure_kinds(self, tmp_path, run_redactor,
                                                   adversarial_canary):
         """A CI job needs to tell apart why a run failed"""
@@ -114,11 +131,6 @@ class TestUnsupportedInput:
         result = run_redactor(config, "--stdout", "--fail-on-warn")
         assert result.returncode != 0
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-24: the config's own <version> is never inspected, so "
-               "a schema the tool has never seen is accepted silently",
-    )
     def test_unsupported_config_version_is_reported(self, tmp_path, run_redactor):
         """An unrecognised schema version is named, not ignored"""
         config = tmp_path / "future.xml"
@@ -157,12 +169,6 @@ class TestImplicitConfiguration:
 
         assert with_list != without, "the implicit allow-list had no effect"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-25: the 'Loaded default allow-list' notice is "
-               "suppressed under --stdout and --dry-run, the two modes most "
-               "likely to be scripted",
-    )
     def test_implicit_allowlist_is_announced_in_stdout_mode(self, workdir_with_allowlist,
                                                             run_redactor):
         """Weakened redaction must never be silent"""
@@ -172,10 +178,6 @@ class TestImplicitConfiguration:
             "the run never said so"
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-25: same suppression under --dry-run",
-    )
     def test_implicit_allowlist_is_announced_in_dry_run(self, workdir_with_allowlist,
                                                         run_redactor):
         """Same requirement in the mode used to decide about sharing"""
@@ -195,11 +197,6 @@ class TestImplicitConfiguration:
 class TestMachineReadableAssurance:
     """A sharing decision should be checkable by something other than a human"""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-26: there is no machine-readable report; the retained "
-               "paths and counts exist only as prose on stderr",
-    )
     def test_a_structured_report_is_available(self, adversarial_canary, run_redactor, tmp_path):
         """A sharing gate needs something other than prose to read"""
         import json  # pylint: disable=import-outside-toplevel
