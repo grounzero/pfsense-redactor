@@ -115,7 +115,7 @@ def test_inplace_modifies_original(cli_runner, create_xml_file):
     exit_code, _stdout, _stderr = cli_runner.run(
         str(xml_file),
         output_file=None,
-        flags=["--inplace"]
+        flags=["--inplace", "--force"]
     )
 
     assert exit_code == 0

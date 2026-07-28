@@ -87,13 +87,28 @@ class TestTheGatePredicate:
 class TestRedactConfigReturnValue:
     """The predicate reaching redact_config's return, in-process"""
 
-    def test_retained_value_returns_false_with_the_flag(self, tmp_path):
-        """The write still happens; only the reported success changes"""
+    def test_retained_value_returns_false_and_writes_nothing(self, tmp_path):
+        """A failed gate produces no output at all
+
+        This asserted the opposite until 1.5.0: that the file was still
+        written, so the operator could review the retained paths in it. That
+        reasoning does not survive the case the gate exists for. The candidate
+        can contain a private key in an element the tool did not recognise, and
+        an artefact that exists is an artefact that gets uploaded, attached,
+        or picked up by the next step in the pipeline. The gate has to prevent
+        the file, not annotate it.
+
+        The review path is still there and costs nothing: --dry-run reports the
+        same retained paths and the same verification findings, and never
+        wrote a file in the first place.
+        """
         redactor, ok = redact(tmp_path, UNKNOWN_BLOB, fail_on_warn=True)
 
         assert redactor.stats['high_entropy_retained'] == 1
         assert ok is False
-        assert (tmp_path / 'out.xml').exists(), 'output should still be written'
+        assert not (tmp_path / 'out.xml').exists(), (
+            'a failed gate must leave no artefact for someone to share'
+        )
 
     def test_retained_value_returns_true_without_the_flag(self, tmp_path):
         """Default behaviour is unchanged"""
@@ -170,16 +185,24 @@ class TestExitCodeReachesTheShell:
         assert 'high-entropy' in stderr
         assert '--aggressive' in stderr
 
-    def test_output_is_still_written_when_the_gate_fails(self, cli_runner, tmp_path):
-        """Failing the build must not mean losing the redacted file
+    def test_no_xml_is_emitted_when_the_gate_fails(self, cli_runner, tmp_path):
+        """The gate must prevent the artefact, not annotate it
 
-        The retained values were reported, not leaked, so the operator still
-        wants the output in order to review those paths.
+        Replaces test_output_is_still_written_when_the_gate_fails, which
+        asserted that the redacted document reached stdout even though the run
+        had just reported failure. A pipeline that pipes stdout to a file, or
+        a shell that redirects it, ends up with exactly the artefact the gate
+        was asked to prevent.
+
+        --dry-run remains the way to see what would be retained without
+        producing anything.
         """
         exit_code, stdout, _ = run_cli(cli_runner, tmp_path, UNKNOWN_BLOB, '--fail-on-warn')
 
         assert exit_code != 0
-        assert ET.fromstring(stdout).tag == 'pfsense'
+        assert stdout.strip() == '', 'a failed gate emitted the document anyway'
+        with pytest.raises(ET.ParseError):
+            ET.fromstring(stdout or '')
 
     def test_wrong_root_tag_exit_code(self, cli_runner, tmp_path):
         """The pre-existing behaviour, through the shell"""
