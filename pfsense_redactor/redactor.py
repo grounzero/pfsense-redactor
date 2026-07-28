@@ -12,11 +12,24 @@ context and nothing else beside it:
 
 For a tool whose job is to be trusted with secrets, "read this one file, then
 run it" is worth more than a tidier module tree. Any relative or sibling import
-would end that, so there are none; the only package-relative import is the
-optional __version__ lookup in resolve_version(), which falls back cleanly.
+would end that, so there are none that are required; the two optional ones -
+the __version__ lookup in resolve_version() and the verifier in
+_load_verifier() - both fall back cleanly.
 
 Guarded by tests/integration/test_standalone_script.py, and by the C0302
 disable in .pylintrc.
+
+The independent verifier
+------------------------
+verifier.py is a separate module on purpose. It re-reads the serialised output
+looking for material that should not be in it, using rules written and
+maintained apart from the ones here - a verifier that shares the transformer's
+assumptions cannot catch the transformer's mistakes.
+
+That makes it the one thing this file will not inline. Copied out alone,
+redactor.py still redacts, but it reports verification as **unavailable**
+rather than pretending it passed. Copy verifier.py alongside it to keep the
+assurance the package build gives you.
 
 Layout
 ------
@@ -25,10 +38,11 @@ Sections below are marked with banner comments, in this order:
     1. Logging          ColouredFormatter, setup_logging
     2. Constants        element sets, secret/cert tag patterns, deny-list
     3. Version          resolve_version
-    4. Redactor         PfSenseRedactor - the bulk of the file
-    5. Allowlists       allow-list file parsing
-    6. Path safety      path traversal / sensitive directory validation
-    7. CLI              argparse wiring and main()
+    4. Verification     _load_verifier and the candidate-verification API
+    5. Redactor         PfSenseRedactor - the bulk of the file
+    6. Allowlists       allow-list file parsing
+    7. Path safety      path traversal / sensitive directory validation
+    8. CLI              argparse wiring and main()
 """
 from __future__ import annotations
 
@@ -1039,7 +1053,57 @@ def _prolog_refusal_reason(input_file: str) -> str | None:
 
 
 # ==========================================================================
-# 4. REDACTOR
+# 4. VERIFICATION
+# ==========================================================================
+def _import_verifier_module(spelling: str):
+    """Try one import spelling for the verifier, returning None if it is absent"""
+    try:
+        if spelling == 'package':
+            from . import verifier  # pylint: disable=import-outside-toplevel,cyclic-import
+            return verifier
+        import verifier  # pylint: disable=import-outside-toplevel
+        return verifier
+    except ImportError:
+        return None
+
+
+def _load_verifier():
+    """Import the independent verifier, tolerating the single-file deployment
+
+    redactor.py must stay runnable as a lone file - see the module docstring -
+    so this cannot be a hard import. Two spellings are tried: the
+    package-relative one for a normal installation, and the plain one for a
+    redactor.py sitting beside a verifier.py.
+
+    The result is checked for the entry point rather than merely for being
+    importable, so an unrelated module called 'verifier' earlier on sys.path
+    cannot be mistaken for this one.
+
+    Returning None does NOT mean verification passed. It means verification is
+    unavailable, and every caller must treat it that way - see
+    PfSenseRedactor.verify_candidate_output.
+    """
+    for spelling in ('package', 'plain'):
+        module = _import_verifier_module(spelling)
+        if module is not None and hasattr(module, 'verify_candidate'):
+            return module
+    return None
+
+
+VERIFIER = _load_verifier()
+
+
+def verification_is_available() -> bool:
+    """Whether the independent verifier could be imported
+
+    False only in the single-file deployment, where redactor.py was copied out
+    without verifier.py beside it.
+    """
+    return VERIFIER is not None
+
+
+# ==========================================================================
+# 5. REDACTOR
 # ==========================================================================
 class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     """pfSense configuration redactor for sensitive data handling
@@ -1131,6 +1195,13 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # which is how most of the unit tests drive it.
         self.redact_ips: bool = True
         self.redact_domains: bool = True
+
+        # Independent verification. _input_values is the pre-redaction snapshot
+        # the retention comparison needs; last_verification is the result of the
+        # most recent redact_config, or None when the verifier was unavailable
+        # or has not run. None is never a pass - see verify_candidate_output.
+        self._input_values: list = []
+        self.last_verification = None
 
         # Every <refid> defined in the config being processed, so a short value
         # in a certificate-named element can be resolved rather than guessed at.
@@ -3134,6 +3205,89 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return tree
 
+    @staticmethod
+    def serialise_tree(tree: ET.ElementTree) -> str:
+        """Serialise a tree to exactly the text _write_output would produce
+
+        Byte-for-byte identity with the written file is the point: verifying
+        anything else - the tree, the statistics, a summary - verifies
+        something other than what the operator ends up sharing. Pinned by
+        tests/unit/test_output_verification.py.
+        """
+        return ET.tostring(
+            tree.getroot(), encoding='utf-8', xml_declaration=True
+        ).decode('utf-8')
+
+    def _allowlisted_literals(self) -> frozenset[str]:
+        """Values the operator explicitly asked to keep, lower-cased
+
+        Passed to the verifier so that an allow-listed domain or address
+        surviving verbatim is not reported as a retained value. Nothing else is
+        excluded on the operator's say-so.
+        """
+        literals = {str(addr).lower() for addr in self.allowlist_ip_addrs}
+        literals.update(domain.lower() for domain in self.allowlist_domains)
+        literals.update(domain.lower() for domain in self.allowlist_domains_idna)
+        return frozenset(literals)
+
+    def _snapshot_input_values(self, root: ET.Element) -> None:
+        """Record the input's leaf and attribute values before redaction
+
+        Redaction rewrites the tree in place, so the retention comparison has
+        to take its copy first. Values only - not the tree - because the list is
+        bounded and a second copy of the document is not.
+        """
+        if VERIFIER is None:
+            self._input_values = []
+            return
+        self._input_values = VERIFIER.collect_input_values(
+            root, self._allowlisted_literals()
+        )
+
+    def verify_candidate_output(self, candidate: str):
+        """Independently verify serialised candidate output
+
+        Returns a VerificationResult, or None when verifier.py could not be
+        imported. **None is not a pass.** Callers must distinguish "verified
+        clean" from "not verified", because conflating them is the fail-open
+        behaviour this whole module exists to remove.
+
+        Advisory in 1.4.0: the result is reported and does not decide whether
+        output is written. Enforcement arrives with the verify-before-write
+        change.
+        """
+        if VERIFIER is None:
+            return None
+
+        findings = list(VERIFIER.scan_shapes(candidate).findings)
+        findings.extend(VERIFIER.scan_retention(self._input_values, candidate).findings)
+        return VERIFIER.build_result(findings)
+
+    def _report_verification(self, result) -> None:
+        """Report an advisory verification result on stderr
+
+        describe() builds its lines from finding metadata only, so this cannot
+        print a secret by printing a finding.
+        """
+        if result is None:
+            self.logger.warning(
+                "[!] Independent verification unavailable: verifier.py is not "
+                "importable. Redaction ran, but nothing re-read the output."
+            )
+            return
+
+        if result.clean:
+            self.logger.info("[+] Independent verification: no findings")
+            return
+
+        self.logger.warning("")
+        self.logger.warning(
+            "[!] Independent verification found %d issue(s) in the output:",
+            result.count
+        )
+        for line in VERIFIER.describe(result):
+            self.logger.warning("    - %s", line)
+
     def _write_output(
         self, tree: ET.ElementTree, input_file: str, output_file: str | None,
         stdout_mode: bool, inplace: bool
@@ -3184,6 +3338,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             # against what the config actually defines
             self.known_refids = self._collect_refids(root)
 
+            # Also before the traversal: the retention comparison needs the
+            # input's values, and redaction overwrites them in place.
+            self._snapshot_input_values(root)
+
             self.redact_element(root)
 
             # Dry run mode: just print stats
@@ -3198,10 +3356,18 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             # Pretty print (Python 3.9+)
             ET.indent(tree, space="  ")
 
+            # Advisory in this release: reported, not enforced. The candidate
+            # is serialised once and both verified and written from the same
+            # text, so what is checked is what is shared.
+            self.last_verification = self.verify_candidate_output(
+                self.serialise_tree(tree)
+            )
+
             self._write_output(tree, input_file, output_file, stdout_mode, inplace)
 
             # Print summary (always print, logger routes to correct stream)
             self._print_stats()
+            self._report_verification(self.last_verification)
 
             return self._retained_values_are_acceptable()
 
@@ -3302,7 +3468,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
 
 # ==========================================================================
-# 5. ALLOWLISTS
+# 6. ALLOWLISTS
 # ==========================================================================
 def parse_allowlist_file(filepath: str, silent_if_missing: bool = False) -> tuple[set[str], list[IPNetwork], set[str]]:
     """Parse allow-list file containing IPs, CIDR networks, and domains (one per line)
@@ -3403,7 +3569,7 @@ def find_default_allowlist_files() -> list[Path]:
     return default_files
 
 # ==========================================================================
-# 6. PATH SAFETY
+# 7. PATH SAFETY
 # ==========================================================================
 def _windows_dirs_from_environment() -> set[str]:
     """Locate the real Windows system directories from the environment
@@ -3686,7 +3852,7 @@ def _resolved_path_error(
 
 
 # ==========================================================================
-# 7. CLI
+# 8. CLI
 # ==========================================================================
 def _build_arg_parser(version: str) -> argparse.ArgumentParser:
     """Construct the CLI parser
