@@ -47,7 +47,7 @@ That is the number each pull request below is compared against.
 | 1 | 1059 passed, 1 skipped, 26 xfailed | 31 | 26 |
 | 2 | 1106 passed, 1 skipped, 26 xfailed | 0 | 26 |
 | 3 | 1153 passed, 1 skipped, 18 xfailed | 8 | 18 |
-| 4 | (measured below) | 9 | 9 |
+| 4 | 1205 passed, 1 skipped, 9 xfailed | 9 | 9 |
 
 Every confirmed gap carries a `xfail(strict=True)` marker naming its finding id,
 so closing one turns its test into a failure until the marker is removed.
