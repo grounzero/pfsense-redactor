@@ -119,7 +119,7 @@ scanner that fails differently, see
 
 ## Documentation
 
-| | |
+| Guide | Covers |
 |---|---|
 | [CLI reference](https://github.com/grounzero/pfsense-redactor/blob/main/docs/cli-reference.md) | Every flag, with examples |
 | [Use cases](https://github.com/grounzero/pfsense-redactor/blob/main/docs/use-cases.md) | Netgate TAC, AI tools, MSP handoff, audits — and how this relates to `diag_sanitize.php` |
