@@ -50,6 +50,8 @@ import xml.etree.ElementTree as ET
 import argparse
 import base64
 import binascii
+import hashlib
+import json
 import math
 import re
 import sys
@@ -159,6 +161,59 @@ def setup_logging(level: int = logging.INFO, use_stderr: bool = False) -> loggin
     return logger
 
 
+# ==========================================================================
+# Exit codes
+# ==========================================================================
+class ExitCode:
+    """Process exit statuses, so a caller can tell failures apart
+
+    Before 1.6.0 only 0 and 1 were used, and a CI job could not distinguish
+    "this file is not parseable" from "this file still has secrets" from "the
+    disk is full". Every non-zero value below is still non-zero, so a caller
+    that only tests for success is unaffected.
+
+    One overlap is worth stating rather than hiding: argparse exits 2 of its
+    own accord for a malformed command line (an unknown flag, a missing
+    positional). That is the same value as INPUT_REJECTED. Both mean "what you
+    gave me cannot be used", they are distinguishable from stderr, and
+    suppressing argparse's convention would be worse than the overlap.
+    """
+
+    CLEAN = 0             # Output produced, and nothing was withheld
+    USAGE = 1             # The command line asks for something incoherent
+    INPUT_REJECTED = 2    # The input is unsupported or structurally unsafe
+    RETAINED_VALUE = 3    # Sensitive material was left in the candidate
+    VERIFIER_FINDING = 4  # Independent verification found something
+    IO_FAILURE = 5        # Reading or writing a file failed
+    INTERNAL_FAILURE = 6  # A defect in this program
+
+
+# ==========================================================================
+# Input limits
+# ==========================================================================
+# Nesting bound. redact_element, ET.indent and the verifier's value walk each
+# recurse once per level, so an unbounded document reaches the interpreter's
+# recursion limit and arrives at the shell as a traceback with interpreter
+# paths in it. 400 is comfortably above anything pfSense emits - real configs
+# are a handful of levels deep, and the deepest in this project's corpus is 9 -
+# and comfortably below the frame budget of the three recursive passes.
+MAX_XML_DEPTH: int = 400
+
+# Config schema versions this tool has been exercised against. Expressed as a
+# bound on the leading component rather than an enumeration, because pfSense
+# has written every value from 1.x to 23.x and enumerating them would refuse
+# every future release. 99.9 is not a version pfSense has ever written.
+MIN_CONFIG_VERSION_MAJOR: int = 1
+MAX_CONFIG_VERSION_MAJOR: int = 30
+CONFIG_VERSION_RE = re.compile(r'\A(\d+)\.(\d+)')
+
+# Written in place of a text element that exceeds MAX_TEXT_CHUNK. Truncating
+# it instead discarded the excess while reporting success - a 1,200,000
+# character element became 1,048,576, losing 151,424 characters of the
+# operator's configuration with a warning and exit 0.
+OVERSIZED_TEXT_PLACEHOLDER: str = '[REDACTED_OVERSIZED]'
+
+
 # Module-level constants (immutable for safety)
 # ==========================================================================
 # 2. CONSTANTS - element sets, secret/cert tag patterns, deny-list
@@ -242,7 +297,7 @@ CERT_TAG_PATTERN = re.compile(r'cert(?:ificate)?s?$|ssloffload', re.IGNORECASE)
 # '[REDACTED_CERT_OR_KEY]' fails to resolve as a certificate reference on a
 # second pass and degrades to the less informative '[REDACTED]'.
 REDACTION_PLACEHOLDERS: frozenset[str] = frozenset({
-    '[REDACTED]', '[REDACTED_CERT_OR_KEY]',
+    '[REDACTED]', '[REDACTED_CERT_OR_KEY]', OVERSIZED_TEXT_PLACEHOLDER,
 })
 
 # Tags that match SECRET_TAG_PATTERN but are not secrets.
@@ -757,6 +812,40 @@ def _has_mixed_character_classes(compact: str, hex_only: bool) -> bool:
     return has_digit + has_upper + has_lower >= 2
 
 
+def _document_depth(root: ET.Element, limit: int) -> int:
+    """Depth of the deepest element, stopping once `limit` is exceeded
+
+    Iterative on purpose. This exists because recursing over the document is
+    what fails, so measuring it by recursion would fail in the same way.
+    Returns as soon as the answer is "deeper than the limit", so a pathological
+    document costs the limit rather than its own size.
+    """
+    stack = [(root, 1)]
+    deepest = 0
+
+    while stack:
+        element, depth = stack.pop()
+        deepest = max(deepest, depth)
+        if deepest > limit:
+            return deepest
+        stack.extend((child, depth + 1) for child in element)
+
+    return deepest
+
+
+def _config_version_is_supported(version: str) -> bool:
+    """Whether a configuration schema version is one this tool has seen
+
+    A bound on the leading component rather than an enumeration: pfSense has
+    written every value from 1.x to 23.x, and enumerating them would refuse
+    every future release the day it shipped.
+    """
+    match = CONFIG_VERSION_RE.match(version)
+    if match is None:
+        return False
+    return MIN_CONFIG_VERSION_MAJOR <= int(match.group(1)) <= MAX_CONFIG_VERSION_MAJOR
+
+
 def is_rfc_documentation_ip(ip: IPAddress) -> bool:
     """Check whether an address is in a reserved documentation range
 
@@ -1174,15 +1263,28 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         allowlist_networks: list[IPNetwork] | None = None,
         dry_run_verbose: bool = False,
         redact_url_usernames: bool = False,
-        redact_descriptions: bool = False
+        redact_descriptions: bool = False,
+        strict: bool = False
     ) -> None:
         self.keep_private_ips = keep_private_ips
         self.anonymise = anonymise
-        self.aggressive = aggressive
+        self.strict = strict
+        # Strict mode is for output that may be read by anyone, indefinitely,
+        # so it turns on the strongest scanning the tool has rather than
+        # leaving it to the operator to remember two more flags.
+        self.aggressive = aggressive or strict
         self.fail_on_warn = fail_on_warn
         self.dry_run_verbose = dry_run_verbose
         self.redact_url_usernames = redact_url_usernames
-        self.redact_descriptions = redact_descriptions
+        self.redact_descriptions = redact_descriptions or strict
+
+        # Set by _load_config_tree, read by --strict and --report-json.
+        self.config_version: str | None = None
+        self.config_version_supported: bool = True
+
+        # The process status this run should end with. Raised, never lowered,
+        # by _fail_with; see ExitCode for what each value means.
+        self.exit_code: int = ExitCode.CLEAN
 
         # Element paths of high-entropy values retained (not redacted) so they
         # can be surfaced in the summary for manual review
@@ -2448,11 +2550,21 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         if not text:
             return text
 
-        # ReDoS protection - reject absurdly long text chunks
+        # ReDoS protection - a text chunk this long is refused, not trimmed.
+        #
+        # Truncating was worse than the bound it enforced: 151,424 characters
+        # of the operator's configuration were discarded and the run reported
+        # success. The whole value is replaced instead, which at least does not
+        # misrepresent what is left, and the run is failed by
+        # _oversized_text_refusal so the loss cannot pass unnoticed.
         if len(text) > self.MAX_TEXT_CHUNK:
-            # Log warning and truncate
-            self.logger.warning("[!] Warning: Text chunk too long (%d chars), truncating", len(text))
-            text = text[:self.MAX_TEXT_CHUNK]
+            self.logger.warning(
+                "[!] Warning: Text chunk too long (%d chars, limit %d). The "
+                "whole value has been replaced rather than trimmed.",
+                len(text), self.MAX_TEXT_CHUNK
+            )
+            self.stats['oversized_text'] += 1
+            return OVERSIZED_TEXT_PLACEHOLDER
 
         result = text
 
@@ -3111,7 +3223,17 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         return handled
 
     def redact_element(self, element: ET.Element) -> None:
-        """Recursively redact sensitive information from XML element"""
+        """Recursively redact sensitive information from XML element
+
+        Bounded by MAX_XML_DEPTH. redact_config refuses an over-deep document
+        before it gets here, but this method is also called directly - by the
+        tests, and by anyone importing the class - and unbounded recursion on
+        attacker-supplied XML reached the shell as a traceback with interpreter
+        paths in it.
+        """
+        if len(self._path_stack) >= MAX_XML_DEPTH:
+            self.stats['depth_limit_hits'] += 1
+            return
 
         # Normalise tag name to handle namespaced exports
         tag = self._normalise_tag(element.tag)
@@ -3162,13 +3284,16 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     def _check_root_tag(self, root: ET.Element) -> bool:
         """Warn if this does not look like a pfSense config. False means abort
 
-        Namespace-robust. Only --fail-on-warn turns the warning into an abort.
+        Namespace-robust. A gate - --fail-on-warn or --strict - turns the
+        warning into an abort: a document that is not a pfSense configuration
+        is one whose element names mean something else, and every redaction
+        decision this tool makes rests on those names.
         """
         if root.tag.rsplit('}', 1)[-1].lower() == 'pfsense':
             return True
 
         msg = f"[!] Warning: Root tag is '{root.tag}', expected 'pfsense'."
-        if self.fail_on_warn:
+        if self._gate_is_active:
             self.logger.error("%s Exiting.", msg)
             return False
 
@@ -3201,10 +3326,70 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # line or the one directly below, so it cannot be parked above a
         # comment block like this one.
         tree = ET.parse(input_file)  # nosemgrep  # nosec
-        if not self._check_root_tag(tree.getroot()):
+        root = tree.getroot()
+
+        if not self._check_root_tag(root):
+            self.exit_code = ExitCode.INPUT_REJECTED
             return None
 
+        if not self._check_structural_limits(root):
+            self.exit_code = ExitCode.INPUT_REJECTED
+            return None
+
+        self._check_config_version(root)
         return tree
+
+    def _check_structural_limits(self, root: ET.Element) -> bool:
+        """Refuse a document too deep to process. False means abort
+
+        Measured iteratively rather than by recursing, because the whole point
+        is that recursing over this document is what fails.
+        """
+        depth = _document_depth(root, MAX_XML_DEPTH)
+        if depth <= MAX_XML_DEPTH:
+            return True
+
+        self.logger.error(
+            "[!] Refusing to process this file because it nests more than %d "
+            "elements deep. pfSense configurations are a handful of levels "
+            "deep, and processing this one would exhaust the interpreter's "
+            "recursion limit rather than produce output.", MAX_XML_DEPTH
+        )
+        return False
+
+    def _check_config_version(self, root: ET.Element) -> None:
+        """Report a configuration schema version this tool has not seen
+
+        Not fatal outside strict mode. Redaction is name-driven, so an
+        unrecognised schema is exactly the case where coverage is weakest, and
+        an operator deciding whether to share the output is entitled to know
+        that. Recorded on self so --strict and --report-json can act on it.
+
+        Only the root's own <version> is read. Package configs carry their own,
+        and reading one of those would report a package version as the schema.
+        """
+        element = root.find('version')
+        self.config_version = (element.text or '').strip() if element is not None else None
+
+        if self.config_version is None:
+            self.logger.warning(
+                "[!] Warning: no <version> element; the configuration schema "
+                "is unknown, so redaction coverage cannot be judged."
+            )
+            self.config_version_supported = False
+            return
+
+        self.config_version_supported = _config_version_is_supported(self.config_version)
+        if self.config_version_supported:
+            return
+
+        self.logger.warning(
+            "[!] Warning: configuration schema version '%s' is outside the "
+            "range this tool has been exercised against (%d.x to %d.x). "
+            "Redaction is driven by element names, so an unfamiliar schema is "
+            "where coverage is weakest.",
+            self.config_version, MIN_CONFIG_VERSION_MAJOR, MAX_CONFIG_VERSION_MAJOR
+        )
 
     @staticmethod
     def serialise_tree(tree: ET.ElementTree) -> str:
@@ -3346,14 +3531,28 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 input_file, output_file, dry_run, stdout_mode, inplace
             )
         except ET.ParseError as e:
-            self.logger.error("[!] Error parsing XML: %s", e)
-            return False
+            return self._fail_with(
+                ExitCode.INPUT_REJECTED, "[!] Error parsing XML: %s", e
+            )
+        except RecursionError:
+            # Reached only by a caller driving redact_element directly past the
+            # depth guard; _check_structural_limits refuses such a document
+            # first. Caught anyway, because a traceback with interpreter paths
+            # in it is not a diagnosis.
+            return self._fail_with(
+                ExitCode.INPUT_REJECTED,
+                "[!] Refusing to process this file: it nests too deeply to "
+                "traverse without exhausting the interpreter's recursion limit."
+            )
         except (IOError, OSError) as e:
-            self.logger.error("[!] Error reading/writing file: %s", e)
-            return False
+            return self._fail_with(
+                ExitCode.IO_FAILURE, "[!] Error reading/writing file: %s", e
+            )
         except (ValueError, TypeError) as e:
-            self.logger.error("[!] Error processing configuration: %s", e)
-            return False
+            return self._fail_with(
+                ExitCode.INTERNAL_FAILURE,
+                "[!] Error processing configuration: %s", e
+            )
 
     def _process(
         self,
@@ -3423,16 +3622,87 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         ET.indent(tree, space="  ")
         return self.serialise_tree(tree)
 
+    def _fail_with(self, code: int, message: str, *args) -> bool:
+        """Record a non-zero outcome and say why. Always returns False
+
+        Only the *first* reason is recorded. _output_is_permitted runs its
+        checks in order of specificity - input rejected, data discarded,
+        value retained, verifier finding - so the first one to fire is the one
+        that tells the operator most. A run that trips three of them still
+        logs all three; it just exits with the code for the first.
+        """
+        if self.exit_code == ExitCode.CLEAN:
+            self.exit_code = code
+        self.logger.error(message, *args)
+        return False
+
+    @property
+    def _gate_is_active(self) -> bool:
+        """Whether this run refuses to produce output when something is found
+
+        Without a gate, findings are reported and the output is still produced:
+        an operator troubleshooting privately needs the file, and the
+        retained-value warning has always been advisory. --fail-on-warn and
+        --strict both exist precisely to stop the artefact.
+        """
+        return bool(self.fail_on_warn or self.strict)
+
     def _output_is_permitted(self) -> bool:
         """Whether policy allows this candidate to become externally visible
 
-        Two gates, both of which only bite under --fail-on-warn. Without a
-        gate, findings are reported and the output is still produced: an
-        operator troubleshooting privately needs the file, and the
-        retained-value warning has always been advisory. The gate exists
-        precisely to stop the artefact, so under it a finding means no output.
+        Every branch is evaluated rather than short-circuited, so a run that
+        fails three checks reports three reasons instead of the first one. The
+        exit code is the most severe of them.
         """
-        return self._retained_values_are_acceptable() and self._verification_permits_output()
+        checks = (
+            self._input_is_supported(),
+            self._no_data_was_discarded(),
+            self._retained_values_are_acceptable(),
+            self._verification_permits_output(),
+        )
+        return all(checks)
+
+    def _input_is_supported(self) -> bool:
+        """Whether strict mode accepts this configuration's schema
+
+        Outside strict mode an unrecognised schema is a warning: the tool will
+        do its best and has said so. Strict mode is for output that may be read
+        by anyone indefinitely, and "we have never seen this schema" is not a
+        basis for that claim.
+        """
+        if not self.strict:
+            return True
+        if self.config_version_supported:
+            return True
+
+        return self._fail_with(
+            ExitCode.INPUT_REJECTED,
+            "[!] Strict mode refuses this file: its configuration schema "
+            "version (%s) is outside the range this tool has been exercised "
+            "against. Redaction is name-driven, so coverage on an unfamiliar "
+            "schema cannot be claimed.",
+            self.config_version or 'absent'
+        )
+
+    def _no_data_was_discarded(self) -> bool:
+        """Whether any element was too large to process
+
+        Refused in every mode, not only under a gate. The alternative is
+        producing a file that silently lacks part of the operator's
+        configuration while reporting success, which misrepresents the output
+        rather than redacting it.
+        """
+        if not self.stats['oversized_text']:
+            return True
+
+        return self._fail_with(
+            ExitCode.INPUT_REJECTED,
+            "[!] Refusing to produce output: %d text element(s) exceeded the "
+            "%d character limit and were replaced wholesale. The output would "
+            "be missing part of the configuration, which is not something to "
+            "report as success.",
+            self.stats['oversized_text'], self.MAX_TEXT_CHUNK
+        )
 
     def _verification_permits_output(self) -> bool:
         """Whether the independent verification allows output, under a gate
@@ -3441,25 +3711,26 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         "nothing found", and a gate that passes because its check did not run
         is not a gate.
         """
-        if not self.fail_on_warn:
+        if not self._gate_is_active:
             return True
 
         if self.last_verification is None:
-            self.logger.error(
-                "[!] Failing because --fail-on-warn is set and independent "
-                "verification could not run: verifier.py is not importable."
+            return self._fail_with(
+                ExitCode.VERIFIER_FINDING,
+                "[!] Failing because independent verification could not run: "
+                "verifier.py is not importable. Nothing checked is not "
+                "nothing found."
             )
-            return False
 
         if self.last_verification.clean:
             return True
 
-        self.logger.error(
-            "[!] Failing because --fail-on-warn is set and independent "
-            "verification reported %d finding(s) in the candidate output.",
+        return self._fail_with(
+            ExitCode.VERIFIER_FINDING,
+            "[!] Failing because independent verification reported %d "
+            "finding(s) in the candidate output.",
             self.last_verification.count
         )
-        return False
 
     def _retained_values_are_acceptable(self) -> bool:
         """Whether the run should be treated as successful
@@ -3471,18 +3742,18 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         could pass on a file the tool had just told the operator to review
         before sharing. A gate that cannot fail is not a gate.
         """
-        if not self.fail_on_warn:
+        if not self._gate_is_active:
             return True
         if not self.stats['high_entropy_retained']:
             return True
 
-        self.logger.error(
-            "[!] Failing because --fail-on-warn is set and %d high-entropy "
-            "value(s) were retained. Re-run with --aggressive to redact them, "
-            "or review the paths listed above.",
+        return self._fail_with(
+            ExitCode.RETAINED_VALUE,
+            "[!] Failing because %d high-entropy value(s) were retained. "
+            "Re-run with --aggressive to redact them, or review the paths "
+            "listed above.",
             self.stats['high_entropy_retained']
         )
-        return False
 
     def _print_stats(self) -> None:
         """Print redaction statistics using logger"""
@@ -4183,6 +4454,16 @@ Examples:
   %(prog)s config.xml config-redacted.xml --aggressive
   %(prog)s config.xml config-redacted.xml --allowlist-ip 8.8.8.8 --allowlist-domain time.nist.gov
   %(prog)s config.xml config-redacted.xml --allowlist-file allowlist.txt
+  %(prog)s config.xml config-public.xml --strict --report-json report.json
+
+Exit codes:
+  0  clean output produced
+  1  usage error (argparse itself also uses 2 for a malformed command line)
+  2  input rejected: unparseable, unsupported schema, too deep, oversized
+  3  sensitive value retained (under --fail-on-warn or --strict)
+  4  independent verification found something
+  5  file or I/O failure
+  6  internal processing failure
 
 Allow-list file format (one item per line):
   # Public DNS servers
@@ -4245,7 +4526,11 @@ def _add_output_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('--verbose', '-v', action='store_true',
                         help='Show detailed debug information')
     parser.add_argument('--fail-on-warn', action='store_true',
-                        help='Exit with non-zero code if root tag is not pfsense (useful in CI)')
+                        help='Exit non-zero, and produce no output, if the root tag is not pfsense, if high-entropy values were retained, or if independent verification found anything (useful in CI)')
+    parser.add_argument('--strict', action='store_true',
+                        help='Fail-closed mode for output intended for public sharing. Implies --aggressive and --redact-descriptions; ignores allow-list files found in the working directory or home directory; refuses --inplace, unsupported configuration schemas, over-deep documents and oversized elements; and produces no output at all when anything is retained or found. Not a guarantee of safety - see docs/security.md.')
+    parser.add_argument('--report-json', metavar='PATH', dest='report_json',
+                        help='Write a machine-readable assurance report to PATH. Contains paths, kinds, lengths and counts only - never a value, a prefix of one, or a hash of one.')
 
 def _add_allowlist_arguments(parser: argparse.ArgumentParser) -> None:
     """Allow-list sources and the remaining opt-in redaction flags"""
@@ -4449,14 +4734,17 @@ def _merge_allowlist(target: Allowlists, parsed: Allowlists) -> None:
 def _load_default_allowlists(
     args: argparse.Namespace, logger: logging.Logger, target: Allowlists
 ) -> None:
-    """Merge every default allow-list file found on disk, unless disabled"""
-    if getattr(args, 'no_default_allowlist', False):
-        return
+    """Merge every default allow-list file found on disk, unless disabled
 
-    for default_file in find_default_allowlist_files():
+    Announced in every mode, including --dry-run and --stdout. The notice used
+    to be suppressed in exactly those two - the ones most likely to be
+    scripted - so redaction could be weakened by a file in the working
+    directory with nothing in the run saying so.
+    """
+    for default_file in _implicit_allowlist_files(args, logger):
         _merge_allowlist(target, parse_allowlist_file(default_file, silent_if_missing=True))
-        if not args.dry_run and not args.stdout:
-            logger.info("[+] Loaded default allow-list: %s", default_file)
+        logger.warning("[+] Loaded default allow-list: %s", default_file)
+        args.allowlist_sources.append(str(default_file))
 
 
 def _collect_allowlists(
@@ -4473,6 +4761,8 @@ def _collect_allowlists(
 
     if args.allowlist_file:
         _merge_allowlist(collected, parse_allowlist_file(args.allowlist_file, silent_if_missing=False))
+        logger.warning("[+] Loaded allow-list: %s", args.allowlist_file)
+        args.allowlist_sources.append(str(args.allowlist_file))
 
     allowlist_ips, allowlist_networks, allowlist_domains = collected
 
@@ -4484,6 +4774,33 @@ def _collect_allowlists(
         allowlist_domains.add(domain.lower())
 
     return allowlist_ips, allowlist_networks, allowlist_domains
+
+
+def _implicit_allowlist_files(
+    args: argparse.Namespace, logger: logging.Logger
+) -> list[Path]:
+    """Default allow-list files to load, honouring the opt-outs
+
+    Strict mode loads none of them. An allow-list weakens redaction, and one
+    picked up from the working directory or the home directory means the output
+    depends on where the tool was run - which is not a property output intended
+    for public sharing can have. The refusal is announced rather than silent,
+    so an operator who was relying on the file finds out.
+    """
+    if getattr(args, 'no_default_allowlist', False):
+        return []
+
+    found = find_default_allowlist_files()
+
+    if not args.strict:
+        return found
+
+    for ignored in found:
+        logger.warning(
+            "[!] Strict mode is ignoring the allow-list found at %s. Pass "
+            "--allowlist-file to use it deliberately.", ignored
+        )
+    return []
 
 
 def _add_cli_allowlist_ip(
@@ -4528,6 +4845,7 @@ def _handle_early_exit_flags(args: argparse.Namespace, parser: argparse.Argument
         parser.error("--quiet and --verbose are mutually exclusive")
 
     _require_consent_for_inplace(args, parser)
+    _reject_strict_inplace(args, parser)
 
 
 def _require_consent_for_inplace(
@@ -4545,6 +4863,25 @@ def _require_consent_for_inplace(
         parser.error(
             "--inplace overwrites the input file, destroying the only "
             "unredacted copy of the configuration. Add --force to confirm."
+        )
+
+
+def _reject_strict_inplace(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
+    """Refuse --strict --inplace
+
+    Strict mode withholds output when it finds anything, and in-place operation
+    has nowhere to withhold it to: the destination is the source. Producing
+    nothing would leave the original in place - which looks identical to a
+    successful run that changed nothing - so the combination is a usage error
+    rather than a mode with a subtle failure.
+    """
+    if args.strict and args.inplace:
+        parser.error(
+            "--strict cannot be combined with --inplace. Strict mode "
+            "withholds output when it finds anything, and in-place operation "
+            "has nowhere to withhold it to. Write to a separate file."
         )
 
 
@@ -4579,6 +4916,10 @@ def _needs_generated_output_name(args: argparse.Namespace) -> bool:
 
 def _apply_argument_defaults(args: argparse.Namespace) -> None:
     """Fill in values implied by other flags, before any validation"""
+    # Every allow-list source that took effect, for the JSON report. Populated
+    # by _collect_allowlists.
+    args.allowlist_sources = []
+
     # --dry-run-verbose is a louder --dry-run
     if args.dry_run_verbose:
         args.dry_run = True
@@ -4627,7 +4968,8 @@ def main() -> None:
         allowlist_networks=allowlist_networks,
         dry_run_verbose=args.dry_run_verbose,
         redact_url_usernames=args.redact_url_usernames,
-        redact_descriptions=args.redact_descriptions
+        redact_descriptions=args.redact_descriptions,
+        strict=args.strict
     )
 
     success = redactor.redact_config(
@@ -4640,7 +4982,152 @@ def main() -> None:
         inplace=args.inplace
     )
 
-    sys.exit(0 if success else 1)
+    exit_code = _resolve_exit_code(redactor, success)
+    _write_report_if_requested(args, redactor, exit_code, logger)
+    sys.exit(exit_code)
+
+
+REPORT_SCHEMA_VERSION: int = 1
+
+
+def _report_verdict(exit_code: int) -> str:
+    """One word for what happened, for a caller that does not want the codes"""
+    if exit_code == ExitCode.CLEAN:
+        return 'clean'
+    if exit_code == ExitCode.INPUT_REJECTED:
+        return 'rejected'
+    return 'findings'
+
+
+def _input_digest(input_file: str) -> dict:
+    """Size and SHA-256 of the input, so a report can be tied to a file
+
+    The digest is of the *input*, which is the file the operator already has.
+    It identifies which file a report describes; it is not a digest of any
+    secret, and there is nothing here to brute-force.
+    """
+    try:
+        data = Path(input_file).read_bytes()
+    except (OSError, ValueError):  # pragma: no cover - the run already read it
+        return {'sha256': None, 'bytes': None}
+    return {'sha256': hashlib.sha256(data).hexdigest(), 'bytes': len(data)}
+
+
+def _report_findings(redactor: PfSenseRedactor) -> list[dict]:
+    """Verifier findings as plain data
+
+    Metadata only, by construction: VerificationFinding has no field that could
+    hold a value, a prefix or a hash, and this copies its fields rather than
+    reaching for anything else.
+    """
+    result = redactor.last_verification
+    if result is None:
+        return []
+    return [
+        {'id': finding.finding_id, 'path': finding.path,
+         'kind': finding.kind, 'length': finding.length}
+        for finding in result.findings
+    ]
+
+
+def build_report(
+    args: argparse.Namespace, redactor: PfSenseRedactor, exit_code: int
+) -> dict:
+    """The machine-readable assurance report
+
+    What it deliberately does not contain: any retained value, any prefix of
+    one, any decoded content, any full credential-bearing URL, and any hash of
+    a secret - a short secret's hash is brute-forceable, so publishing one
+    publishes the secret to anyone willing to spend an afternoon.
+
+    What it does contain is enough to make a sharing decision without a human
+    reading prose on stderr: where the questionable values are, what kind they
+    are, how long they are, and what the run concluded.
+    """
+    return {
+        'schema_version': REPORT_SCHEMA_VERSION,
+        'tool': {'name': 'pfsense-redactor', 'version': resolve_version()},
+        'input': {
+            **_input_digest(args.input),
+            'root_tag': 'pfsense',
+            'config_version': redactor.config_version,
+            'config_version_supported': redactor.config_version_supported,
+        },
+        'mode': {
+            'strict': bool(args.strict),
+            'aggressive': bool(redactor.aggressive),
+            'redact_descriptions': bool(redactor.redact_descriptions),
+            'anonymise': bool(args.anonymise),
+            'fail_on_warn': bool(args.fail_on_warn),
+            'dry_run': bool(args.dry_run),
+            'allowlist_files': list(args.allowlist_sources),
+        },
+        'verdict': _report_verdict(exit_code),
+        'verification': {
+            'available': verification_is_available(),
+            'clean': None if redactor.last_verification is None
+                     else redactor.last_verification.clean,
+        },
+        'counts': {
+            'secrets_redacted': redactor.stats['secrets_redacted'],
+            'certificates_redacted': redactor.stats['certs_redacted'],
+            'ips_redacted': redactor.stats['ips_redacted'],
+            'domains_redacted': redactor.stats['domains_redacted'],
+            'identifiers_anonymised': len(redactor.ip_aliases) + len(redactor.domain_aliases),
+            'high_entropy_retained': redactor.stats['high_entropy_retained'],
+            'oversized_text': redactor.stats['oversized_text'],
+            'verifier_findings': 0 if redactor.last_verification is None
+                                 else redactor.last_verification.count,
+        },
+        'retained': [
+            {'path': path, 'kind': 'high-entropy'}
+            for path in redactor.high_entropy_paths
+        ],
+        'findings': _report_findings(redactor),
+        'exit_code': exit_code,
+    }
+
+
+def _write_report_if_requested(
+    args: argparse.Namespace, redactor: PfSenseRedactor, exit_code: int,
+    logger: logging.Logger
+) -> None:
+    """Write the JSON report, if one was asked for
+
+    Written on failure as well as on success - a run that withheld output is
+    exactly when a caller needs to know why - and written through the same
+    atomic 0600 writer as the XML, because it names the paths of everything
+    the tool decided to keep.
+
+    A failure to write the report does not change the run's own verdict. It is
+    reported and the exit code stands: the report is a description of what
+    happened, not part of it.
+    """
+    if not getattr(args, 'report_json', None):
+        return
+
+    try:
+        payload = json.dumps(build_report(args, redactor, exit_code), indent=2)
+        write_bytes_atomically(args.report_json, (payload + '\n').encode('utf-8'))
+    except (OSError, ValueError, TypeError) as error:
+        logger.error("[!] Could not write the report to %s: %s", args.report_json, error)
+        return
+
+    logger.info("[+] Assurance report written to: %s", args.report_json)
+
+
+def _resolve_exit_code(redactor: PfSenseRedactor, success: bool) -> int:
+    """The status this run ends with
+
+    redact_config records the specific reason on the redactor. This reconciles
+    it with the boolean, so a failure that somehow left the code at CLEAN still
+    exits non-zero rather than reporting success.
+    """
+    if success:
+        return ExitCode.CLEAN
+    if redactor.exit_code != ExitCode.CLEAN:
+        return redactor.exit_code
+    return ExitCode.INTERNAL_FAILURE
 
 
 if __name__ == '__main__':
