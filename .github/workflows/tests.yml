@@ -25,10 +25,11 @@ jobs:
     
     steps:
     - name: Checkout code
-      uses: actions/checkout@v7
-    
+      # v7.0.1
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v7
+      # v7.0.0
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: ${{ matrix.python-version }}
         cache: 'pip'
@@ -45,7 +46,8 @@ jobs:
         pytest -v --cov=pfsense_redactor --cov-report=term-missing --cov-report=xml
     
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v7
+      # v7.0.0
+      uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
       with:
         files: ./tests/coverage.xml
         flags: unittests
