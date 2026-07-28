@@ -654,30 +654,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self.MAX_TEXT_CHUNK: int = 1048576  # 1MB max for any text element
 
         # Allow-lists (opt-in, empty by default)
-        # IP allow-lists: support both individual IPs and CIDR networks
-        self.allowlist_ip_addrs: set[IPAddress] = set()
-        if allowlist_ips:
-            for ip_str in allowlist_ips:
-                try:
-                    self.allowlist_ip_addrs.add(ipaddress.ip_address(ip_str))
-                except ValueError:
-                    pass  # Will be handled as network or error elsewhere
-
-        self.allowlist_ip_networks: list[IPNetwork] = []
-        if allowlist_networks:
-            self.allowlist_ip_networks = list(allowlist_networks)
-
-        # Domain allow-lists: store both normalised Unicode and IDNA forms
-        self.allowlist_domains: set[str] = set()
-        self.allowlist_domains_idna: set[str] = set()
-        if allowlist_domains:
-            for domain in allowlist_domains:
-                norm_domain, idna_domain = self._normalise_domain(domain)
-                # Skip invalid/empty domains (returns None, None)
-                if norm_domain is not None:
-                    self.allowlist_domains.add(norm_domain)
-                    if idna_domain and idna_domain != norm_domain:
-                        self.allowlist_domains_idna.add(idna_domain)
+        self._ingest_allowlist_ips(allowlist_ips, allowlist_networks)
+        self._ingest_allowlist_domains(allowlist_domains)
 
         # Sample collection for --dry-run-verbose
         self.sample_limit: int = self.SAMPLE_LIMIT
@@ -728,6 +706,35 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self.PEM_MARKER = re.compile(
             r'-----BEGIN (?:CERTIFICATE|RSA PRIVATE KEY|EC PRIVATE KEY|ENCRYPTED PRIVATE KEY|PRIVATE KEY|PUBLIC KEY|OPENVPN STATIC KEY|OPENSSH PRIVATE KEY)-----'
         )
+
+    def _ingest_allowlist_ips(self, allowlist_ips: set[str] | None,
+                              allowlist_networks: list[IPNetwork] | None) -> None:
+        """Populate the IP allow-lists, accepting both addresses and CIDRs"""
+        self.allowlist_ip_addrs: set[IPAddress] = set()
+        self.allowlist_ip_networks: list[IPNetwork] = list(allowlist_networks or [])
+
+        for ip_str in allowlist_ips or ():
+            try:
+                self.allowlist_ip_addrs.add(ipaddress.ip_address(ip_str))
+            except ValueError:
+                pass  # Will be handled as network or error elsewhere
+
+    def _ingest_allowlist_domains(self, allowlist_domains: set[str] | None) -> None:
+        """Populate the domain allow-lists in both Unicode and IDNA forms
+
+        Both are stored so a host written either way matches the same entry.
+        """
+        self.allowlist_domains: set[str] = set()
+        self.allowlist_domains_idna: set[str] = set()
+
+        for domain in allowlist_domains or ():
+            norm_domain, idna_domain = self._normalise_domain(domain)
+            # Skip invalid/empty domains (returns None, None)
+            if norm_domain is None:
+                continue
+            self.allowlist_domains.add(norm_domain)
+            if idna_domain and idna_domain != norm_domain:
+                self.allowlist_domains_idna.add(idna_domain)
 
     def _normalise_domain(self, domain: str) -> tuple[str | None, str | None]:
         """Normalise domain: lowercase, strip leading and trailing dots, handle wildcards, compute IDNA
