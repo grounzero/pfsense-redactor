@@ -23,6 +23,7 @@ asking the question.
 """
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 
@@ -49,8 +50,18 @@ class TestTheHarnessCanRunTheTool:
         assert result.returncode == 0, result.stderr
 
     def test_the_project_root_is_on_the_child_pythonpath(self):
-        """The mechanism, pinned so it is not removed as redundant"""
-        assert str(PROJECT_ROOT) in _subprocess_env()["PYTHONPATH"].split(":")
+        """The mechanism, pinned so it is not removed as redundant
+
+        os.pathsep, not ':'. Windows separates PYTHONPATH entries with ';' and
+        its paths contain a colon in the drive letter, so splitting on ':'
+        turns 'D:\\a\\repo' into ['D', '\\a\\repo'] and the entry is never
+        found. _subprocess_env has always used os.pathsep; this assertion did
+        not, and it failed on all six Windows cells while passing everywhere
+        else.
+        """
+        entries = _subprocess_env()["PYTHONPATH"].split(os.pathsep)
+
+        assert str(PROJECT_ROOT) in entries, entries
 
     def test_a_run_from_a_temporary_directory_produces_output(self, tmp_path, run_redactor):
         """The end-to-end version of the two above"""
