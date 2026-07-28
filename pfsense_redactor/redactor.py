@@ -417,6 +417,18 @@ _PROLOG_CHUNK: int = 65536
 _UTF8_BOM: bytes = b'\xef\xbb\xbf'
 _DOCTYPE_DECL: bytes = b'<!DOCTYPE'
 
+# Ceiling on how much prolog will be examined. The largest prolog in this
+# project's own fixtures is 68 bytes, so this is roughly 15,000x any real one.
+# It exists to bound the work a hostile file can demand: the buffer is
+# rescanned on each refill, which is quadratic, and at 50 MB of comment that
+# is seconds rather than milliseconds.
+#
+# Exceeding it *refuses* the file. A cap that instead stopped scanning and
+# carried on parsing would reintroduce the bypass this scan exists to close -
+# a DOCTYPE hidden behind one byte more than the cap - which is the whole
+# reason a fixed-size prefix check was rejected in the first place.
+_PROLOG_MAX: int = 1024 * 1024
+
 # Constructs that may legally precede the root element, as (opener, closer).
 _PROLOG_SKIPPABLE: tuple[tuple[bytes, bytes], ...] = (
     (b'<!--', b'-->'),  # comment
@@ -471,14 +483,18 @@ def _prolog_scan_is_conclusive(data: bytes, pos: int, at_eof: bool) -> bool:
     return at_eof or len(data) - pos >= len(_DOCTYPE_DECL)
 
 
-def _declares_doctype(input_file: str) -> bool:
-    """Report whether a DOCTYPE declaration precedes the root element
+def _prolog_refusal_reason(input_file: str) -> str | None:
+    """Say why the input's XML prolog is unacceptable, or None if it is fine
 
-    pfSense never emits one, so its presence means the file did not come from
-    pfSense untouched. That is worth refusing rather than parsing: ElementTree
-    does not resolve external entities - a SYSTEM entity raises ParseError, so
-    there is no XXE here - but it does expand internal ones, and a few hundred
-    bytes of nested definitions expand to gigabytes.
+    Two refusals, both fail-closed:
+
+    - A DOCTYPE declaration. pfSense never emits one, so its presence means the
+      file did not come from pfSense untouched. ElementTree does not resolve
+      external entities - a SYSTEM entity raises ParseError, so there is no XXE
+      here - but it does expand internal ones, and a few hundred bytes of
+      nested definitions expand to gigabytes.
+    - A prolog past _PROLOG_MAX, which bounds the work a hostile file can ask
+      for without letting an oversized one through unexamined.
 
     Scanning the whole prolog rather than a fixed-size prefix is the point. A
     DOCTYPE preceded by a comment longer than the window sails straight past a
@@ -491,6 +507,10 @@ def _declares_doctype(input_file: str) -> bool:
             data += chunk
 
             at_eof = not chunk
+            if len(data) > _PROLOG_MAX:
+                return (f"its XML prolog exceeds {_PROLOG_MAX // 1024} KiB "
+                        "without reaching a root element")
+
             start = len(_UTF8_BOM) if data.startswith(_UTF8_BOM) else 0
             pos = _skip_prolog_noise(data, start)
 
@@ -498,12 +518,14 @@ def _declares_doctype(input_file: str) -> bool:
                 # Compared case-insensitively even though XML requires the
                 # upper-case spelling, so that '<!doctype' is refused here
                 # rather than relying on the parser to reject it.
-                return data[pos:pos + len(_DOCTYPE_DECL)].upper() == _DOCTYPE_DECL
+                if data[pos:pos + len(_DOCTYPE_DECL)].upper() == _DOCTYPE_DECL:
+                    return "it declares a DOCTYPE, which pfSense never emits"
+                return None
 
             if at_eof:
                 # Unterminated comment or PI. The file is malformed, and
                 # ET.parse reports that more precisely than this guard could.
-                return False
+                return None
 
 
 # ==========================================================================
@@ -2178,23 +2200,26 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         None means abort; the reason has already been logged. Both checks live
         here so that redact_config has one failure branch rather than three.
         """
-        if _declares_doctype(input_file):
+        refusal = _prolog_refusal_reason(input_file)
+        if refusal is not None:
             self.logger.error(
-                "[!] Input declares a DOCTYPE, which pfSense never emits. "
-                "Refusing to parse: internal entity expansion can turn a "
-                "small file into gigabytes of memory. Remove the DOCTYPE "
-                "if you trust the file."
+                "[!] Refusing to parse this file because %s. Entity expansion "
+                "in a DOCTYPE can turn a small file into gigabytes of memory, "
+                "so the prolog is checked before parsing.", refusal
             )
             return None
 
-        # nosemgrep: python.lang.security.use-defusedxml.use-defusedxml
         # Scanners flag any stdlib xml use as XXE-prone. It does not apply:
         # ElementTree does not resolve external entities (a SYSTEM entity
         # raises ParseError, so no file disclosure and no SSRF), and the
-        # DOCTYPE refusal above is stricter still, blocking internal entity
+        # prolog refusal above is stricter still, blocking internal entity
         # expansion too. defusedxml would add a runtime dependency, which
         # tests/integration/test_standalone_script.py exists to prevent.
-        tree = ET.parse(input_file)
+        #
+        # The suppression sits on the statement itself: it applies to its own
+        # line or the one directly below, so it cannot be parked above a
+        # comment block like this one.
+        tree = ET.parse(input_file)  # nosemgrep  # nosec
         if not self._check_root_tag(tree.getroot()):
             return None
 
