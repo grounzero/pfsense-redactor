@@ -54,30 +54,52 @@ def count_operands(node: ast.AST) -> int:
     return sum(count_operands(value) for value in node.values)
 
 
+def too_deep(func: ast.AST):
+    """Report a function whose blocks nest further than the limit"""
+    depth = nesting_depth(func)
+    if depth > MAX_NESTING:
+        yield func.lineno, func.name, f"nested {depth} deep (max {MAX_NESTING})"
+
+
+def too_bumpy(func: ast.AST):
+    """Report a function carrying several separate blocks of nested logic
+
+    A bump is a top-level block that itself contains nested logic. A flat loop
+    is not one; a loop wrapping a conditional is. Two of them in one function
+    means two things are going on in it.
+    """
+    bumps = sum(1 for stmt in func.body
+                if isinstance(stmt, NESTING_NODES) and nesting_depth(stmt) >= 1)
+    if bumps > MAX_BUMPS:
+        yield func.lineno, func.name, f"{bumps} blocks of nested logic (max {MAX_BUMPS})"
+
+
+def chained_conditions(func: ast.AST):
+    """Report each condition joining more operators than the limit allows"""
+    for node in ast.walk(func):
+        test = getattr(node, 'test', None)
+        if not isinstance(test, ast.BoolOp):
+            continue
+        operators = count_operands(test) - 1
+        if operators > MAX_BOOL_OPERATORS:
+            yield (test.lineno, func.name,
+                   f"condition chains {operators} operators "
+                   f"(max {MAX_BOOL_OPERATORS}) - name it instead")
+
+
+RULES = (too_deep, too_bumpy, chained_conditions)
+
+
 def violations(tree: ast.AST):
-    """Yield (line, function, reason) for every shape over threshold"""
+    """Yield (line, function, reason) for every shape over threshold
+
+    One function per rule, rather than three blocks in a loop. The tool that
+    gates complexity is a poor advertisement for it otherwise - this function
+    was itself the worst in the repository until it was split.
+    """
     for func in (n for n in ast.walk(tree) if isinstance(n, FUNCTION_NODES)):
-        depth = nesting_depth(func)
-        if depth > MAX_NESTING:
-            yield func.lineno, func.name, f"nested {depth} deep (max {MAX_NESTING})"
-
-        # A bump is a top-level block that itself contains nested logic. A flat
-        # loop is not one; a loop wrapping a conditional is. Two of them in one
-        # function means two things are going on in it.
-        bumps = sum(1 for stmt in func.body
-                    if isinstance(stmt, NESTING_NODES) and nesting_depth(stmt) >= 1)
-        if bumps > MAX_BUMPS:
-            yield func.lineno, func.name, f"{bumps} blocks of nested logic (max {MAX_BUMPS})"
-
-        for node in ast.walk(func):
-            test = getattr(node, 'test', None)
-            if not isinstance(test, ast.BoolOp):
-                continue
-            operators = count_operands(test) - 1
-            if operators > MAX_BOOL_OPERATORS:
-                yield (test.lineno, func.name,
-                       f"condition chains {operators} operators "
-                       f"(max {MAX_BOOL_OPERATORS}) - name it instead")
+        for rule in RULES:
+            yield from rule(func)
 
 
 def python_files(targets: list[str]):

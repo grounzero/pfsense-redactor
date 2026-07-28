@@ -225,6 +225,7 @@ def _is_secret_query_param(name_lower: str, value: str) -> bool:
             and name_lower not in SECRET_TAG_DENYLIST
             and bool(SECRET_TAG_PATTERN.search(name_lower)))
 
+
 # Opaque free-text containers that routinely carry credentials inline.
 # custom_options is the standard place for OpenVPN/Unbound/Squid directives and
 # frequently holds askpass, auth-user-pass and inline keys.
