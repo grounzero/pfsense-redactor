@@ -1,5 +1,7 @@
 # Allow-lists
 
+[← Documentation index](../README.md#documentation)
+
 Allow-lists let you preserve specific well-known IPs and domains that don't leak private information.
 
 ## Default allow-list files
@@ -35,7 +37,7 @@ pool.ntp.org
 *.pfsense.org
 ```
 
-See [`allowlist.example`](allowlist.example) for a complete template.
+See [`allowlist.example`](../allowlist.example) for a complete template.
 
 ## CLI allow-list flags
 

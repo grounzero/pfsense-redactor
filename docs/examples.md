@@ -1,5 +1,7 @@
 # Examples
 
+[← Documentation index](../README.md#documentation)
+
 ## Before and after
 
 ### Input

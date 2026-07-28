@@ -1,5 +1,7 @@
 # Security
 
+[← Documentation index](../README.md#documentation)
+
 ## Threat model
 
 The failure that matters is **failing to redact**. Output is produced in order to

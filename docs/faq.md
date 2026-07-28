@@ -1,5 +1,7 @@
 # FAQ
 
+[← Documentation index](../README.md#documentation)
+
 ## What does pfsense-redactor redact by default?
 
 pfsense-redactor removes secrets such as passwords, private keys, certificates, tokens, and shared secrets.  

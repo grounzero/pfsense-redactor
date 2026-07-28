@@ -1,5 +1,7 @@
 # CLI reference
 
+[← Documentation index](../README.md#documentation)
+
 ## Requirements
 
 - **Python 3.9+**

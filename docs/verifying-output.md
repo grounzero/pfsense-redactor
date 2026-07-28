@@ -1,5 +1,7 @@
 # Verifying redacted output
 
+[← Documentation index](../README.md#documentation)
+
 Redaction is not a thing to take on trust. This page covers the checks built
 into the tool, and how to get a second opinion from a scanner that fails
 differently.

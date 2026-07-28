@@ -1,5 +1,7 @@
 # Use cases
 
+[← Documentation index](../README.md#documentation)
+
 Common command patterns depending on who you’re sharing with.
 
 ## Sharing with Netgate TAC Support

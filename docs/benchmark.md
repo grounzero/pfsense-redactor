@@ -1,5 +1,7 @@
 # Canary corpus benchmark
 
+[← Documentation index](../README.md#documentation)
+
 How much of a pfSense `config.xml` does a redaction tool actually catch?
 
 `tests/corpus/canary-corpus.xml` answers that with 46 planted secrets, each a
