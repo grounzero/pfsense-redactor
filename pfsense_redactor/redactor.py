@@ -410,6 +410,124 @@ def _idna_encode(domain: str) -> str:
         return domain
 
 
+# Prologs are a few bytes in any real config, but a hostile file can pad one
+# with a large comment, so the scan below grows on demand rather than peeking
+# at a fixed-size prefix.
+_PROLOG_CHUNK: int = 65536
+_UTF8_BOM: bytes = b'\xef\xbb\xbf'
+_DOCTYPE_DECL: bytes = b'<!DOCTYPE'
+
+# Ceiling on how much prolog will be examined. The largest prolog in this
+# project's own fixtures is 68 bytes, so this is roughly 15,000x any real one.
+# It exists to bound the work a hostile file can demand: the buffer is
+# rescanned on each refill, which is quadratic, and at 50 MB of comment that
+# is seconds rather than milliseconds.
+#
+# Exceeding it *refuses* the file. A cap that instead stopped scanning and
+# carried on parsing would reintroduce the bypass this scan exists to close -
+# a DOCTYPE hidden behind one byte more than the cap - which is the whole
+# reason a fixed-size prefix check was rejected in the first place.
+_PROLOG_MAX: int = 1024 * 1024
+
+# Constructs that may legally precede the root element, as (opener, closer).
+_PROLOG_SKIPPABLE: tuple[tuple[bytes, bytes], ...] = (
+    (b'<!--', b'-->'),  # comment
+    (b'<?', b'?>'),     # XML declaration or processing instruction
+)
+
+
+def _skip_one_prolog_construct(data: bytes, pos: int) -> int | None:
+    """Advance past a single comment or processing instruction at pos
+
+    Returns the offset just after it, `pos` unchanged when no construct starts
+    here, or None if the construct is unterminated within `data`.
+    """
+    for opener, closer in _PROLOG_SKIPPABLE:
+        if not data.startswith(opener, pos):
+            continue
+        end = data.find(closer, pos + len(opener))
+        return None if end == -1 else end + len(closer)
+
+    return pos
+
+
+def _skip_prolog_noise(data: bytes, pos: int) -> int | None:
+    """Advance past whitespace, comments and processing instructions
+
+    Returns the offset of the first byte that is none of those, or None if
+    `data` ends inside a comment or PI, meaning more input is needed to tell.
+    """
+    while pos < len(data):
+        if data[pos:pos + 1].isspace():
+            pos += 1
+            continue
+
+        after = _skip_one_prolog_construct(data, pos)
+        if after is None or after == pos:
+            # None: unterminated, so undecidable. Unchanged: nothing skippable
+            # starts here, so this is where the prolog ends.
+            return after
+        pos = after
+
+    return pos
+
+
+def _prolog_scan_is_conclusive(data: bytes, pos: int, at_eof: bool) -> bool:
+    """Whether enough input is present for the comparison at pos to be final
+
+    The subtle case this guards: a declaration straddling a read boundary. With
+    only part of it buffered the comparison would say "no DOCTYPE" and be
+    believed, so the scan must wait for either the full length or the end of
+    the file.
+    """
+    return at_eof or len(data) - pos >= len(_DOCTYPE_DECL)
+
+
+def _prolog_refusal_reason(input_file: str) -> str | None:
+    """Say why the input's XML prolog is unacceptable, or None if it is fine
+
+    Two refusals, both fail-closed:
+
+    - A DOCTYPE declaration. pfSense never emits one, so its presence means the
+      file did not come from pfSense untouched. ElementTree does not resolve
+      external entities - a SYSTEM entity raises ParseError, so there is no XXE
+      here - but it does expand internal ones, and a few hundred bytes of
+      nested definitions expand to gigabytes.
+    - A prolog past _PROLOG_MAX, which bounds the work a hostile file can ask
+      for without letting an oversized one through unexamined.
+
+    Scanning the whole prolog rather than a fixed-size prefix is the point. A
+    DOCTYPE preceded by a comment longer than the window sails straight past a
+    prefix check, which would leave the guard passing while doing nothing.
+    """
+    with open(input_file, 'rb') as handle:
+        data = b''
+        while True:
+            chunk = handle.read(_PROLOG_CHUNK)
+            data += chunk
+
+            at_eof = not chunk
+            if len(data) > _PROLOG_MAX:
+                return (f"its XML prolog exceeds {_PROLOG_MAX // 1024} KiB "
+                        "without reaching a root element")
+
+            start = len(_UTF8_BOM) if data.startswith(_UTF8_BOM) else 0
+            pos = _skip_prolog_noise(data, start)
+
+            if pos is not None and _prolog_scan_is_conclusive(data, pos, at_eof):
+                # Compared case-insensitively even though XML requires the
+                # upper-case spelling, so that '<!doctype' is refused here
+                # rather than relying on the parser to reject it.
+                if data[pos:pos + len(_DOCTYPE_DECL)].upper() == _DOCTYPE_DECL:
+                    return "it declares a DOCTYPE, which pfSense never emits"
+                return None
+
+            if at_eof:
+                # Unterminated comment or PI. The file is malformed, and
+                # ET.parse reports that more precisely than this guard could.
+                return None
+
+
 # ==========================================================================
 # 4. REDACTOR
 # ==========================================================================
@@ -2076,6 +2194,37 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self.logger.warning("%s Proceeding anyway...", msg)
         return True
 
+    def _load_config_tree(self, input_file: str) -> ET.ElementTree | None:
+        """Parse the configuration, refusing input pfSense would not produce
+
+        None means abort; the reason has already been logged. Both checks live
+        here so that redact_config has one failure branch rather than three.
+        """
+        refusal = _prolog_refusal_reason(input_file)
+        if refusal is not None:
+            self.logger.error(
+                "[!] Refusing to parse this file because %s. Entity expansion "
+                "in a DOCTYPE can turn a small file into gigabytes of memory, "
+                "so the prolog is checked before parsing.", refusal
+            )
+            return None
+
+        # Scanners flag any stdlib xml use as XXE-prone. It does not apply:
+        # ElementTree does not resolve external entities (a SYSTEM entity
+        # raises ParseError, so no file disclosure and no SSRF), and the
+        # prolog refusal above is stricter still, blocking internal entity
+        # expansion too. defusedxml would add a runtime dependency, which
+        # tests/integration/test_standalone_script.py exists to prevent.
+        #
+        # The suppression sits on the statement itself: it applies to its own
+        # line or the one directly below, so it cannot be parked above a
+        # comment block like this one.
+        tree = ET.parse(input_file)  # nosemgrep  # nosec
+        if not self._check_root_tag(tree.getroot()):
+            return None
+
+        return tree
+
     def _write_output(
         self, tree: ET.ElementTree, input_file: str, output_file: str | None,
         stdout_mode: bool, inplace: bool
@@ -2105,12 +2254,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     ) -> bool:
         """Redact pfSense configuration file"""
         try:
-            # Parse XML
-            tree = ET.parse(input_file)
-            root = tree.getroot()
-
-            if not self._check_root_tag(root):
+            tree = self._load_config_tree(input_file)
+            if tree is None:
                 return False
+            root = tree.getroot()
 
             if not dry_run and not stdout_mode:
                 self.logger.info("[+] Parsing XML configuration from: %s", input_file)

@@ -59,6 +59,25 @@ def temp_output_dir(tmp_path):
 
 
 @pytest.fixture
+def require_writable_home():
+    """Skip when $HOME is a directory the redactor refuses to write to
+
+    Containers that run as root have HOME=/root, which _get_sensitive_directories
+    lists. Tests asserting that an ordinary home directory is an acceptable
+    output location have nothing to say there - the tool is right to refuse, and
+    the test's premise is what fails - so they skip rather than report a defect.
+    """
+    from pfsense_redactor.redactor import (  # pylint: disable=import-outside-toplevel
+        _get_sensitive_directories,
+    )
+
+    home = Path.home().resolve()
+    enclosing = {str(home).lower(), *(str(parent).lower() for parent in home.parents)}
+    if enclosing & _get_sensitive_directories():
+        pytest.skip(f"$HOME ({home}) is a sensitive directory")
+
+
+@pytest.fixture
 def update_reference():
     """Check if reference files should be updated"""
     return os.environ.get("UPDATE_REFERENCE", "0") == "1"

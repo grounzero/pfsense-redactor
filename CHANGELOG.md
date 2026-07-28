@@ -27,6 +27,20 @@ reviewing that work, both older than 1.1.0.
 - **FIX**: `<webhook_url>` and similar elements are now redacted whole. A Slack
   or Discord webhook URL is a credential in its entirety, not merely a
   secret-bearing path segment.
+- **HARDENING**: Input declaring a `<!DOCTYPE>` is now refused. pfSense never
+  emits one, so its presence means the file did not come from pfSense
+  untouched.
+
+  This is deliberately *not* described as an XXE fix. `xml.etree.ElementTree`
+  does not resolve external entities — a `SYSTEM` entity raises `ParseError`,
+  so there is no file disclosure and no SSRF. What it does do is expand
+  *internal* entities, where a few hundred bytes of nested definitions expand
+  to gigabytes. Severity is low: the input is a file the user supplies, and the
+  failure is loud rather than a silent under-redaction.
+
+  The whole prolog is scanned rather than a fixed-size prefix. A DOCTYPE placed
+  behind a larger comment passes a prefix check untouched, which would leave
+  the guard reporting success while doing nothing.
 
 ### Fixed
 - **FIX**: FQDN substitution rewrote filenames as domains, corrupting output
