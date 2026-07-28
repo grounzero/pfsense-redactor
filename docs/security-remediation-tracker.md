@@ -31,6 +31,21 @@ python -m pytest tests/ -q
 825 passed, 1 skipped, 57 xfailed
 ```
 
+After the adversarial suite and this page were committed (both add tests of
+their own), the same command reports:
+
+```text
+829 passed, 1 skipped, 57 xfailed
+```
+
+That is the number each pull request below is compared against.
+
+## Progress
+
+| PR | Full suite | Xfails removed | Xfails remaining |
+| --- | --- | --- | --- |
+| 1 | 1063 passed, 1 skipped, 26 xfailed | 31 | 26 |
+
 Every confirmed gap carries a `xfail(strict=True)` marker naming its finding id,
 so closing one turns its test into a failure until the marker is removed.
 

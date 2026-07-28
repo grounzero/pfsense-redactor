@@ -15,12 +15,80 @@ Verify before sharing: see [verifying output](verifying-output.md), and see
 
 ## What gets redacted
 
-Secrets are found by **element name**, not by value shape, because a real SNMP
-community (`public`) or WPA passphrase looks like ordinary text. Matching is
+Secrets are found mostly by **element name**, not by value shape, because a real
+SNMP community (`public`) or WPA passphrase looks like ordinary text. Matching is
 substring-based, since the spellings that leak are the concatenated ones
 pfSense and its packages actually emit: `rocommunity`, `radiussecret`,
 `passwordagain`. A deny-list handles the false positives that creates
 (`keylen`, `certref`, `password_type`).
+
+Element names and attribute names are classified by **one** pattern. They were
+two, and they disagreed: `bearer`, `cookie` and `signature` were secrets only as
+attribute names, `credentials`, `privkey`, `psk`, `passphrase`, `licensekey` and
+`community` only as element names. A name means the same thing wherever it
+appears, so there is now a single predicate with the deny-list applied
+consistently to both.
+
+Short names that are common substrings of innocent ones — `auth`, `bearer`,
+`cookie`, `signature` — are matched on word boundaries. `author`, `authserver`,
+`enable_cookie` and `signature_algorithm` are not credentials and are left
+alone.
+
+`<digest>` and `<hash>` are decided by their value rather than their name.
+pfSense writes `<digest>SHA384</digest>` to select an IPsec algorithm and the
+reader needs it; the same element name can also hold a digest. A closed list of
+algorithm names is preserved and everything else in those elements is treated as
+a secret.
+
+### Key material is not a judgement call
+
+Three things are redacted on the strength of the **value alone**, in every mode,
+whatever element or attribute holds them and whether or not the name means
+anything to the tool:
+
+- **Private-key PEM material.** `PRIVATE KEY`, `RSA`/`EC`/`DSA`/`ED25519 PRIVATE
+  KEY`, `ENCRYPTED PRIVATE KEY`, `OPENSSH PRIVATE KEY`, `SSH2 ENCRYPTED PRIVATE
+  KEY`, `PGP PRIVATE KEY BLOCK` and OpenVPN's `STATIC KEY`. A public key or a
+  certificate is not one of these and is unaffected.
+- **The same material through an encoding.** Base64 and Base64URL values are
+  decoded to a bounded depth of 3 and re-examined. An encoding is not a
+  protection, and a package that stores its key base64-encoded is not thereby
+  storing something else.
+- **Compact JWTs.** `header.payload.signature`, recognised either by the `eyJ`
+  prefix or by the first segment decoding to a JOSE header.
+
+These carry no over-redaction risk to weigh, which is why they are removed
+rather than reported. Everything else the tool cannot name keeps the report-only
+default described under [opaque values](#opaque-values), where the
+false-positive argument genuinely applies.
+
+Decoding is bounded in every dimension — source length, decoded size, depth, and
+the total number of decode operations per value — because decoding
+attacker-influenced text without limits is its own vulnerability. Decoded
+content is inspected in memory and discarded: it is never logged, never sampled
+and never placed in an error message.
+
+### Opaque values
+
+A value the tool cannot name is judged on shape, and this is the only heuristic
+of the three. It must be at least 32 characters, free of whitespace, and
+Base64- or hex-shaped:
+
+| Shape | Rule |
+| --- | --- |
+| Hex, 32 characters or more | Treated as opaque. 32 hex characters is a 128-bit key or digest whatever subset of the alphabet it uses |
+| Base64, 36 characters or more | Treated as opaque regardless of character classes |
+| Base64, 32 to 36 characters | Must mix character classes — the band where an ordinary word collides with an encoded one |
+
+Every band also requires Shannon entropy above 2 bits per character, so an
+all-zero field, a run of padding and `abababab…` are not reported. UUIDs are
+excluded by shape: they are 36 characters of hex and hyphens, pfSense uses them
+as object identifiers, and none of them is a secret.
+
+Before 1.3.0 all three bands required two of {digit, upper, lower}, so an
+all-lowercase token, an all-uppercase token and a digest spelled only in `a-f`
+were neither redacted **nor reported** — invisible to `--fail-on-warn` and to the
+summary as well as to the output.
 
 ### Certificate references are resolved, not guessed
 
@@ -53,7 +121,9 @@ the tool accepts whatever XML it is given. Attributes are handled two ways:
   and `descr`.
 - **By value.** Since 1.2.0, an attribute whose name says nothing but whose
   *value* looks like key material is reported among the retained high-entropy
-  values, and redacted under `--aggressive`.
+  values, and redacted under `--aggressive`. Since 1.3.0 the two unambiguous
+  cases — private-key PEM and JWTs — are redacted here in every mode, on the
+  same reasoning as for elements.
 
 The second exists because name matching cannot see a blob in an innocuously
 named attribute, so before 1.2.0 such a value was invisible to `--fail-on-warn`
