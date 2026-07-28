@@ -33,7 +33,7 @@
 #   - pylint      via .pylintrc (production, strict) and .pylintrc-tests
 #   - flake8      E9,F63,F7,F82
 #
-# Bandit is NOT enforced in CI. This comment claimed it was until 1.7.0; the
+# Bandit is NOT enforced in CI. This comment claimed it was until 1.4.1; the
 # .bandit config exists (excludes tests/, skips B101) and the tool is useful to
 # run locally, but no workflow invokes it. Disabling the Codacy engine on the
 # strength of a gate that does not exist is how a check quietly disappears, so
