@@ -15,6 +15,25 @@ Against the 46-secret canary corpus, `--aggressive` now catches 44 where 1.1.2
 caught 42, and 45 with `--redact-descriptions` where 1.1.2 caught 43.
 
 ### Security
+- **FIX**: A bracketed IPv6 address carrying a zone identifier was not redacted
+  at all. `%` was a token separator, so `[2001:db8::1%igb0]:51820` split into
+  `[2001:db8::1` and `igb0]:51820`; the first half carried an unbalanced
+  bracket, failed to parse as an address, and was returned untouched.
+
+  The bare form `fe80::1%igb0` appeared to work, but only by accident: its two
+  halves were masked and copied through separately. Every bracketed form leaked,
+  with or without a port, and **routable addresses leaked as readily as
+  link-local ones**. `[address%zone]:port` is the shape pfSense writes for a
+  WireGuard peer endpoint, so real configs carry it.
+
+  `%` is now a token character. The masking code already handled the shape
+  correctly once given the whole token; only tokenising was wrong.
+
+  Two existing tests covered this exact input and passed throughout, because
+  they asserted only that the zone identifier and the port survived. Returning
+  the input untouched satisfies both. They now assert the address is gone as
+  well, which is the property that actually mattered.
+
 - **FIX**: A short value in a certificate-named element was kept on the strength
   of its length alone. Under 50 characters and without a PEM header, it was
   assumed to be a `refid` reference rather than key material.

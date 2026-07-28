@@ -808,8 +808,17 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self.FQDN_RE = re.compile(r'\b(?:[A-Za-z0-9-]+\.){1,10}(?:[A-Za-z]{2,}|xn--[A-Za-z0-9-]{2,})\b')
 
         # IP pattern for token matching and splitting
+        #
+        # '%' is a token character, not a separator. IP_PATTERN already expects
+        # a zone identifier to arrive attached to its address, and splitting on
+        # '%' severed it: 'fe80::1%igb0' happened to survive because the two
+        # halves were masked and copied through separately, but
+        # '[fe80::1%igb0]:51820' split into '[fe80::1' and 'igb0]:51820', so the
+        # address carried an unbalanced bracket, failed to parse, and was
+        # returned untouched. Any bracketed address with a zone leaked, routable
+        # ones included.
         self.IP_PATTERN = re.compile(r'^[\[\]]?[0-9A-Fa-f:.]+(?:%[A-Za-z0-9_.:+-]+)?[\[\]]?(?::\d+)?$')
-        self._ip_token_splitter = re.compile(r'([^0-9A-Za-z\.\:\[\]_+-])')
+        self._ip_token_splitter = re.compile(r'([^0-9A-Za-z\.\:\[\]_+%-])')
 
         # PEM marker detection
         self.PEM_MARKER = re.compile(
