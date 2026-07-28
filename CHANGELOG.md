@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2][] - 2026-07-28
+
+An independent verifier. Until now the only check on a redacted file was the
+transformer reporting what it had chosen to keep, so a class of secret the
+transformer could not see was equally invisible to the check.
+
+### Added
+
+- **`pfsense_redactor/verifier.py`, an independent post-redaction verifier.**
+  It re-reads the serialised candidate output - the exact text that gets
+  written - rather than the transformer's statistics, warning counts or record
+  of retained values. Its rules are written and maintained separately from the
+  transformer's, so a mistake in one is not automatically a mistake in the
+  other. (FINDING-21)
+
+  Two checks, deliberately different in kind:
+
+  - **Shape scan**: private-key PEM headers, compact JWTs, credential-bearing
+    URLs, and long hexadecimal or Base64 runs, including through up to three
+    bounded layers of Base64 decoding.
+  - **Input-value retention**: every input leaf and attribute value of 16
+    characters or more is checked for verbatim survival in the output. This is
+    the check that cannot inherit the transformer's blind spots, because it
+    classifies nothing - it does not need to know what a value means to notice
+    that it came out unchanged.
+
+- Every run now reports a verification result on stderr. Findings carry a path,
+  a category, a length and a reason, and never the value, a prefix of it, or a
+  hash of it.
+
+### Security
+
+- Verification is **advisory in this release**: the result is reported and does
+  not decide whether output is written. Enforcement - refusing to write when
+  verification fails - arrives with the verify-before-write change.
+
+- When `redactor.py` is copied out and run as a single file without
+  `verifier.py` beside it, the run reports verification as **unavailable**
+  rather than passing. An unavailable check is not a clean one, and conflating
+  the two is the fail-open behaviour the verifier exists to remove.
+
+### Changed
+
+- Candidate output is serialised once and both verified and written from the
+  same text, so what is checked is what is shared. `PfSenseRedactor.serialise_tree`
+  is pinned byte-for-byte against what the writer produces.
+
+- `PfSenseRedactor.last_verification` holds the most recent result, or `None`
+  when the verifier was unavailable. `None` is never a pass.
+
+No action is required. No CLI option, default or exit code changes, and output
+is byte-identical to 1.2.1 for the same input.
+
 ## [1.2.1][] - 2026-07-28
 
 Secret detection hardening. Five classes of credential that previously survived
@@ -678,6 +731,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.2.2]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.2.2
 [1.2.1]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.2.1
 [1.2.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.2.0
 [1.1.2]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.2

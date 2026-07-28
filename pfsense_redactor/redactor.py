@@ -3252,7 +3252,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         clean" from "not verified", because conflating them is the fail-open
         behaviour this whole module exists to remove.
 
-        Advisory in 1.4.0: the result is reported and does not decide whether
+        Advisory in 1.2.2: the result is reported and does not decide whether
         output is written. Enforcement arrives with the verify-before-write
         change.
         """
