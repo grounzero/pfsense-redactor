@@ -408,6 +408,41 @@ class TestNameCoverage:
             f"'{name}': element={as_element} attribute={as_attribute}"
         )
 
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            (CANARY_PEM, "private-key"),
+            (JWT, "jwt"),
+            ("aGVsbG8gd29ybGQxMjM0NTY3ODkwQUJDREVGRw==", None),
+            ("deadbeefdeadbeefdeadbeefcafefeedcafefeed", None),
+            ("an ordinary rule description", None),
+            ("-----BEGIN PUBLIC KEY-----\nAAAA\n", None),
+        ],
+        ids=["pem", "jwt", "base64-blob", "hex", "prose", "public-key"],
+    )
+    def test_the_same_value_decides_the_same_way_in_both_positions(self, value, expected):
+        """The value parity law, the counterpart of the name one above
+
+        Private-key material and JWTs are removed in every mode whatever holds
+        them, and the element and attribute paths must not disagree about which
+        values those are. Both classify through one function, so this asserts
+        the classification itself rather than each path separately.
+        """
+        from pfsense_redactor.redactor import (  # pylint: disable=import-outside-toplevel
+            unambiguous_secret_kind,
+        )
+        assert unambiguous_secret_kind(value) == expected
+
+    @pytest.mark.parametrize("value", [CANARY_PEM, JWT])
+    def test_element_and_attribute_remove_the_same_values(self, value):
+        """And the two paths act on that classification identically"""
+        as_element = redact(wrap(f"<vendorblob>{value}</vendorblob>"))
+        as_attribute = redact(wrap(f'<endpoint blob="{value}"/>'))
+
+        for fragment in ("CANARYPRIVATEKEY", "BEGIN RSA PRIVATE KEY", "eyJhbGciOiJIUzI1NiIs"):
+            assert fragment not in as_element, f"element kept {fragment}"
+            assert fragment not in as_attribute, f"attribute kept {fragment}"
+
     def test_mixed_case_tag_is_matched(self):
         """Regression pin: _normalise_tag lower-cases, so case cannot evade"""
         out = redact(wrap("<ApiKey>CANARY_MIXEDCASE</ApiKey><PASSWORD>CANARY_UPPER</PASSWORD>"))

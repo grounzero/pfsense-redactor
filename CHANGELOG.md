@@ -56,6 +56,12 @@ redaction while the run reported success are now removed or reported.
   `bearer`, `salt`, `seed`, `otpseed`, `digest`, `hash`, `nonce`, `keydata`,
   `keystore`, `authorization`, `sessionid` and `totp`. (FINDING-09)
 
+- **Element text and attribute values are classified by one shared function.**
+  `unambiguous_secret_kind` decides what counts as private-key material or a
+  JWT, and both paths dispatch on its answer, so the two cannot come to
+  different conclusions about the same value. This is the parity the name
+  patterns already have (FINDING-10), applied to values.
+
 ### Changed
 
 - Values in these positions may now be redacted where they were previously kept

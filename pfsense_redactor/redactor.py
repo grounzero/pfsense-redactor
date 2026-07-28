@@ -583,6 +583,42 @@ def contains_jwt(text: str) -> bool:
     return any(_segment_is_jose_header(match.group(1)) for match in candidates)
 
 
+# What an unambiguous secret is, and which placeholder replaces it. Ordered:
+# a value is classified by the first entry that matches.
+UNAMBIGUOUS_SECRET_KINDS: tuple[tuple[str, str, str], ...] = (
+    ('private-key', 'Cert/Key', '[REDACTED_CERT_OR_KEY]'),
+    ('jwt', 'Secret', '[REDACTED]'),
+)
+
+
+def unambiguous_secret_kind(text: str) -> str | None:
+    """Classify a value that is a credential whatever contains it
+
+    Returns 'private-key', 'jwt', or None. Both are structural facts about the
+    value rather than inferences from its name or its shape, so neither carries
+    the over-redaction risk that keeps the opaque-value heuristic in
+    report-only mode by default.
+
+    One function rather than a pair of checks at each call site, because there
+    are two call sites - element text and attribute values - and they must not
+    drift. The same reasoning produced one shared predicate for element and
+    attribute *names*; this is that principle applied to values.
+    """
+    if contains_private_key_material(text):
+        return 'private-key'
+    if contains_jwt(text):
+        return 'jwt'
+    return None
+
+
+def _redaction_for(kind: str) -> tuple[str, str]:
+    """The (statistics category, placeholder) pair for a secret kind"""
+    for name, category, placeholder in UNAMBIGUOUS_SECRET_KINDS:
+        if name == kind:
+            return category, placeholder
+    raise ValueError(f'unknown secret kind: {kind}')  # pragma: no cover - unreachable
+
+
 def shannon_entropy_bits(value: str) -> float:
     """Shannon entropy of `value`, in bits per character
 
@@ -2635,17 +2671,56 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self._redact_text_and_track(element, 'Secret')
         return True
 
+    def _redact_unambiguous_secret_element(self, element: ET.Element, text: str) -> bool:
+        """Remove private-key material or a JWT from element text, in every mode
+
+        These do not depend on the element being recognised, and they are not
+        subject to the report-only policy below: a PEM private-key header and a
+        compact JWT are unambiguous evidence, so there is no over-redaction risk
+        to trade against.
+        """
+        kind = unambiguous_secret_kind(text)
+        if kind is None:
+            return False
+
+        category, placeholder = _redaction_for(kind)
+        self._redact_text_and_track(element, category, placeholder)
+        return True
+
+    def _account_for_opaque_element(self, tag: str, element: ET.Element, text: str) -> bool:
+        """Redact or report an opaque value, which is the heuristic half
+
+        Default: record the value's location so users can audit it manually,
+        because the false-positive argument genuinely applies to a shapeless
+        blob. --aggressive: redact it.
+        """
+        if not self._is_high_entropy_value(text):
+            return False
+
+        if self.aggressive:
+            self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
+            return True
+
+        # _path_stack holds ancestors only; this element's own tag completes it
+        self._record_retained_path('/'.join([*self._path_stack, tag]))
+        return False
+
+    def _record_retained_path(self, path: str) -> None:
+        """Count a retained high-entropy value and remember where it is"""
+        self.stats['high_entropy_retained'] += 1
+        if path not in self.high_entropy_paths:
+            self.high_entropy_paths.append(path)
+
     def _redact_unknown_blob_element(self, tag: str, element: ET.Element) -> bool:
         """Handle high-entropy values in elements we do not otherwise recognise
 
-        Private-key material: redacted, in every mode, whatever the element is
-        called. A PEM private-key header is unambiguous evidence, so there is no
-        over-redaction risk to trade against - the argument for report-only does
-        not apply to it.
+        Two policies, in order, split into a method each because they are
+        decided on different grounds:
 
-        Everything else keeps the previous policy, where that argument does
-        apply. Default: record the value's location so users can audit it
-        manually. --aggressive: redact it.
+        1. _redact_unambiguous_secret_element - private-key material and JWTs,
+           removed in every mode because the value itself settles the question
+        2. _account_for_opaque_element - everything else, where the shape is
+           only evidence and report-only remains the default
 
         The <key> handler already covers its own tag; everything else previously
         sailed through regardless of how much it looked like key material.
@@ -2656,30 +2731,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             return False
 
         text = element.text.strip()
-
-        # Neither of these may survive because its XML tag is unrecognised.
-        if contains_private_key_material(text):
-            self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
+        if self._redact_unambiguous_secret_element(element, text):
             return True
-
-        if contains_jwt(text):
-            self._redact_text_and_track(element, 'Secret')
-            return True
-
-        if not self._is_high_entropy_value(text):
-            return False
-
-        # _path_stack holds ancestors only; this element's own tag completes it
-        path = '/'.join([*self._path_stack, tag])
-
-        if self.aggressive:
-            self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
-            return True
-
-        self.stats['high_entropy_retained'] += 1
-        if path not in self.high_entropy_paths:
-            self.high_entropy_paths.append(path)
-        return False
+        return self._account_for_opaque_element(tag, element, text)
 
     def _redact_key_element_if_needed(self, tag: str, element: ET.Element) -> bool:
         """Redact <key> element if needed - can be short secret or PEM blob. Returns True if handled."""
@@ -2858,18 +2912,13 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         Private-key material and JWTs are the exceptions, on the same reasoning
         as _redact_unknown_blob_element: they are removed here rather than
-        reported, in every mode.
+        reported, in every mode. Both paths classify through
+        unambiguous_secret_kind, so the two cannot decide the same value
+        differently.
         """
         value = element.attrib[attr]
 
-        # Neither of these may survive because its attribute name is
-        # unrecognised.
-        if contains_private_key_material(value):
-            self._replace_attribute(element, attr, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
-            return
-
-        if contains_jwt(value):
-            self._replace_attribute(element, attr)
+        if self._redact_unambiguous_secret_attribute(element, attr, value):
             return
 
         if not self._is_high_entropy_value(value):
@@ -2879,10 +2928,23 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             self._replace_attribute(element, attr, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
             return
 
-        self.stats['high_entropy_retained'] += 1
-        path = f"{'/'.join([*self._path_stack, tag])}[@{attr}]"
-        if path not in self.high_entropy_paths:
-            self.high_entropy_paths.append(path)
+        self._record_retained_path(f"{'/'.join([*self._path_stack, tag])}[@{attr}]")
+
+    def _redact_unambiguous_secret_attribute(
+        self, element: ET.Element, attr: str, value: str
+    ) -> bool:
+        """The attribute counterpart of _redact_unambiguous_secret_element
+
+        Same classification, same ordering, same placeholders - only the
+        mechanism for replacing the value differs.
+        """
+        kind = unambiguous_secret_kind(value)
+        if kind is None:
+            return False
+
+        category, placeholder = _redaction_for(kind)
+        self._replace_attribute(element, attr, category, placeholder)
+        return True
 
     def _redact_sensitive_attributes(self, element: ET.Element, tag: str) -> None:
         """Handle attribute values: redact by name, and account for blobs in the rest
