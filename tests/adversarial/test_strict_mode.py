@@ -24,7 +24,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
-from pfsense_redactor.redactor import ExitCode, MAX_XML_DEPTH
+from pfsense_redactor.redactor import ExitCode, MAX_XML_DEPTH, PfSenseRedactor
 
 PEM = (
     "-----BEGIN RSA PRIVATE KEY-----\n"
@@ -304,6 +304,76 @@ class TestStrictModeRejectsInput:
         assert not out.exists()
 
 
+class TestIncompleteTraversalFailsClosed:
+    """A subtree the traversal never reached is unredacted, not clean
+
+    redact_element stops descending at MAX_XML_DEPTH and counts it.
+    _check_structural_limits normally refuses such a document first, so this
+    should be unreachable through the CLI - but nothing was reading the
+    counter, so if the two limits ever disagreed the run would emit a document
+    containing elements it had never examined, and report success.
+
+    Refused in every mode, not only under a gate: the elements below the cut
+    were not redacted, and the run knows only that it stopped.
+    """
+
+    @pytest.fixture
+    def too_deep(self, tmp_path):
+        """A document past MAX_XML_DEPTH"""
+        depth = MAX_XML_DEPTH + 50
+        return write(
+            tmp_path,
+            f"<pfsense><version>23.1</version>{'<a>' * depth}"
+            f"CANARYBELOWTHECUT42{'</a>' * depth}</pfsense>"
+        )
+
+    def test_the_traversal_records_that_it_stopped(self, too_deep):
+        """The premise: the counter this now gates on is actually set"""
+        redactor = PfSenseRedactor()
+        redactor.redact_element(ET.parse(too_deep).getroot())
+
+        assert redactor.stats['depth_limit_hits'] > 0
+
+    @pytest.mark.parametrize("flags", [[], ["--aggressive"], ["--strict"]],
+                             ids=["default", "aggressive", "strict"])
+    def test_it_is_refused_with_input_rejected(self, too_deep, tmp_path, run_redactor, flags):
+        """Non-zero, and the same code in every mode"""
+        result = run_redactor(too_deep, tmp_path / "out.xml", *flags)
+
+        assert result.returncode == ExitCode.INPUT_REJECTED, result.stderr
+
+    def test_it_creates_no_output(self, too_deep, tmp_path, run_redactor):
+        """Nothing to find and share"""
+        out = tmp_path / "out.xml"
+        run_redactor(too_deep, out)
+
+        assert not out.exists()
+
+    def test_it_preserves_an_existing_output(self, too_deep, tmp_path, run_redactor):
+        """And does not destroy what was already there"""
+        out = tmp_path / "out.xml"
+        out.write_bytes(b"<pfsense><previous/></pfsense>")
+        before = out.read_bytes()
+
+        run_redactor(too_deep, out, "--force")
+
+        assert out.read_bytes() == before
+
+    def test_it_emits_no_xml_to_stdout(self, too_deep, run_redactor):
+        """A redirected stdout is an artefact like any other"""
+        result = run_redactor(too_deep, "--stdout")
+
+        assert result.returncode != 0
+        assert result.stdout.strip() == ""
+        assert "CANARYBELOWTHECUT42" not in result.stdout
+
+    def test_the_reason_names_the_depth(self, too_deep, tmp_path, run_redactor):
+        """An operator has to be able to tell this from any other refusal"""
+        result = run_redactor(too_deep, tmp_path / "out.xml")
+
+        assert "nested deeper" in result.stderr or "nests more than" in result.stderr
+
+
 class TestStrictModeHasNoImplicitConfiguration:
     """Output must not depend on where the tool was run"""
 
@@ -393,6 +463,36 @@ class TestExitCodes:
         source = write(tmp_path, wrap(SURVIVOR))
         result = run_redactor(source, tmp_path / "o.xml", "--strict")
         assert result.returncode == ExitCode.VERIFIER_FINDING
+
+    @pytest.mark.parametrize(
+        "flags,why",
+        [
+            (["--inplace"], "--inplace without --force"),
+            (["--strict", "--inplace", "--force"], "--strict with --inplace"),
+            (["--quiet", "--verbose"], "mutually exclusive verbosity"),
+        ],
+    )
+    def test_usage_errors_exit_one(self, tmp_path, run_redactor, flags, why):
+        """1, not argparse's 2
+
+        The documented scheme has always said 1 means a usage error, and
+        nothing produced it: every one of these went through parser.error,
+        which exits 2. argparse still exits 2 for a command line it rejects
+        itself - an unknown flag - and that overlap is documented.
+        """
+        source = write(tmp_path, CLEAN_CONFIG)
+
+        result = run_redactor(source, *flags)
+
+        assert result.returncode == ExitCode.USAGE, f"{why}: {result.stderr[:200]}"
+
+    def test_an_unknown_flag_still_exits_two(self, tmp_path, run_redactor):
+        """argparse's own convention, left alone and documented"""
+        source = write(tmp_path, CLEAN_CONFIG)
+
+        result = run_redactor(source, "--no-such-flag")
+
+        assert result.returncode == 2
 
     def test_the_codes_are_distinct(self, tmp_path, run_redactor):
         """The property the finding was about"""
@@ -513,6 +613,49 @@ class TestJsonReport:
                      "--allowlist-file", allowlist, "--report-json", path)
 
         assert str(allowlist) in json.loads(path.read_text())['mode']['allowlist_files']
+
+    @pytest.mark.parametrize(
+        "verdict,setup",
+        [
+            ('clean', 'clean'),
+            ('rejected', 'unparseable'),
+            ('findings', 'survivor'),
+            ('error', 'unwritable'),
+        ],
+    )
+    def test_every_verdict_is_reachable_and_distinct(
+        self, tmp_path, run_redactor, verdict, setup
+    ):
+        """All four mappings, each from a run that really produces that code
+
+        'findings' is a statement about the configuration. An I/O or internal
+        failure is a statement about the run, and reporting it as 'findings'
+        tells a pipeline the config still holds secrets when the disk was
+        actually full - which is why 'error' exists.
+        """
+        report = tmp_path / "report.json"
+
+        if setup == 'clean':
+            source = write(tmp_path, CLEAN_CONFIG)
+        elif setup == 'unparseable':
+            source = write(tmp_path, "<pfsense><unclosed></pfsense>")
+        elif setup == 'survivor':
+            source = write(tmp_path, wrap(SURVIVOR))
+        else:
+            source = write(tmp_path, CLEAN_CONFIG)
+
+        target = tmp_path / "out.xml"
+        if setup == 'unwritable':
+            # A destination whose parent directory does not exist. The
+            # candidate is produced and verified, and the failure lands in the
+            # atomic writer - which is an I/O failure, not a finding about the
+            # configuration. A directory would not do: it has more than one
+            # name, so it is refused by the hard-link guard before any of this.
+            target = tmp_path / "no-such-directory" / "out.xml"
+
+        run_redactor(source, target, "--strict", "--force", "--report-json", report)
+
+        assert json.loads(report.read_text())['verdict'] == verdict
 
     def test_it_works_outside_strict_mode(self, adversarial_canary, run_redactor, tmp_path):
         """--report-json is not strict-only; --dry-run is the usual pairing"""
