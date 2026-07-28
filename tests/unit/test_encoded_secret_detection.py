@@ -106,6 +106,39 @@ class TestBoundedDecoding:
 
         assert time.monotonic() - started < 10
 
+    def test_a_run_of_only_padding_decodes_to_nothing(self):
+        """'====' strips to an empty body, which is not a decoding
+
+        Reachable from real input: a run of padding characters satisfies
+        ENCODED_RUN_RE, so the decoder has to have an answer for it.
+        """
+        from pfsense_redactor.redactor import (  # pylint: disable=import-outside-toplevel
+            _b64_decode_bounded,
+        )
+        assert _b64_decode_bounded("=" * 40) is None
+
+    def test_a_run_decoding_past_the_byte_bound_is_refused(self):
+        """The size bound is enforced on the decoded result, not just the input
+
+        A run can be short enough to attempt and still produce more than
+        MAX_DECODED_BYTES, which is the case this bound exists for.
+        """
+        from pfsense_redactor.redactor import (  # pylint: disable=import-outside-toplevel
+            _b64_decode_bounded,
+        )
+        oversized = base64.b64encode(b"A" * (MAX_DECODED_BYTES + 1024)).decode()
+
+        assert _b64_decode_bounded(oversized) is None
+
+    def test_a_run_decoding_within_the_bound_is_accepted(self):
+        """The control, so the test above is not passing on the wrong branch"""
+        from pfsense_redactor.redactor import (  # pylint: disable=import-outside-toplevel
+            _b64_decode_bounded,
+        )
+        payload = base64.b64encode(b"A" * (MAX_DECODED_BYTES - 1024)).decode()
+
+        assert _b64_decode_bounded(payload) is not None
+
     def test_input_is_never_returned_as_a_layer(self):
         """Returning the source would double-count it in every caller"""
         source = wrap_b64(PEM)

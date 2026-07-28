@@ -287,6 +287,17 @@ class TestStructuredContent:
         out = redact(wrap('<cfg>{"api_secret": "CANARY_JSON_SECRET", "n": 3}</cfg>'))
         assert "CANARY_JSON_SECRET" not in out
 
+    @pytest.mark.parametrize("descr", ["<descr></descr>", "<descr>   </descr>"],
+                             ids=["empty", "whitespace"])
+    def test_an_empty_description_is_left_alone(self, descr):
+        """--redact-descriptions must not put a placeholder where nothing was
+
+        Replacing an empty element with [REDACTED] invents a value the config
+        never had, and a reader cannot tell that from a redacted one.
+        """
+        out = redact(wrap(f"<rule>{descr}</rule>"), redact_descriptions=True)
+        assert "[REDACTED]" not in out
+
     def test_secret_in_cdata_is_reached(self):
         """CDATA is flattened by ElementTree, so name rules still apply
 
@@ -375,6 +386,23 @@ class TestNameCoverage:
         out = redact("<pfsense><ipsec><phase1><digest>SHA384</digest></phase1></ipsec></pfsense>")
         assert "SHA384" in out
 
+    def test_digest_element_with_children_is_not_read_as_an_algorithm_name(self):
+        """A container is not a value
+
+        <digest><item>..</item></digest> has no text of its own. Without the
+        child guard, that empty text reads as "no value", the element is
+        classified as an algorithm choice, and the whole secret-name treatment
+        is skipped for it - including its attributes. The attribute below is
+        redacted only because the guard fires first.
+        """
+        out = redact(
+            '<pfsense><pkg><digest algo="CANARY_DIGEST_ATTR">'
+            '<item>x</item></digest></pkg></pfsense>'
+        )
+
+        assert "CANARY_DIGEST_ATTR" not in out
+        assert "<item>" in out, "the container was collapsed instead of traversed"
+
     def test_digest_element_loses_anything_else(self):
         """The same element holding a digest, rather than naming one, is a secret"""
         out = redact("<pfsense><pkg><digest>CANARY_DIGEST_VALUE</digest></pkg></pfsense>")
@@ -442,6 +470,26 @@ class TestNameCoverage:
         for fragment in ("CANARYPRIVATEKEY", "BEGIN RSA PRIVATE KEY", "eyJhbGciOiJIUzI1NiIs"):
             assert fragment not in as_element, f"element kept {fragment}"
             assert fragment not in as_attribute, f"attribute kept {fragment}"
+
+    def test_a_repeated_path_is_listed_once(self):
+        """Two siblings of the same name produce one retained path, not two
+
+        The path is computed from the element's ancestors and its own tag, so
+        siblings share it. Without the de-duplication the summary repeats the
+        same location, and an operator counting lines to judge how much is left
+        to review gets the wrong number.
+        """
+        redactor = PfSenseRedactor()
+        root = ET.fromstring(wrap(
+            "<blob>canaryadvlowercaseonlysecretvaluehere</blob>"
+            "<blob>CANARYADVUPPERCASEONLYSECRETVALUEHERE</blob>"
+        ))
+        redactor.redact_element(root)
+
+        assert redactor.stats['high_entropy_retained'] == 2, "both must be counted"
+        assert redactor.high_entropy_paths.count(
+            'pfsense/installedpackages/vendorpkg/config/blob'
+        ) == 1, redactor.high_entropy_paths
 
     def test_mixed_case_tag_is_matched(self):
         """Regression pin: _normalise_tag lower-cases, so case cannot evade"""

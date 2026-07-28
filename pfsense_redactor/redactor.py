@@ -481,7 +481,11 @@ def _decode_encoded_runs(layer: str, budget: int) -> tuple[list[str], int]:
     distributed between depths.
     """
     produced: list[str] = []
-    for run in ENCODED_RUN_RE.findall(layer):
+    # finditer, not findall: the loop usually stops on the operation budget
+    # long before the runs are exhausted, so materialising them all first is
+    # work thrown away on exactly the large values that make it expensive.
+    for match in ENCODED_RUN_RE.finditer(layer):
+        run = match.group()
         if budget <= 0:
             break
         if len(run) > MAX_ENCODED_RUN_CHARS:
@@ -2552,15 +2556,21 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         value can be shorter than BLOB_MIN_SCAN_LENGTH and still be a key
         header or a token.
 
-        Stricter than _looks_like_secret_blob for case 3: the whole value must
-        be base64/hex-shaped, so ordinary long prose is not flagged.
+        The complete predicate, and the one to call when nothing is known about
+        the value. A caller that has *already* ruled out cases 1 and 2 should
+        call _is_opaque_value instead: repeating them here costs a second
+        bounded decode of the same text, which is the expensive half.
         """
-        if contains_private_key_material(text):
+        if unambiguous_secret_kind(text) is not None:
             return True
+        return self._is_opaque_value(text)
 
-        if contains_jwt(text):
-            return True
+    def _is_opaque_value(self, text: str) -> bool:
+        """Case 3 alone: whether the value is shaped like an opaque secret
 
+        Stricter than _looks_like_secret_blob: the whole value must be
+        base64/hex-shaped, so ordinary long prose is not flagged.
+        """
         if len(text) < BLOB_MIN_SCAN_LENGTH:
             return False
 
@@ -2694,7 +2704,10 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         because the false-positive argument genuinely applies to a shapeless
         blob. --aggressive: redact it.
         """
-        if not self._is_high_entropy_value(text):
+        # _is_opaque_value, not _is_high_entropy_value: the caller has already
+        # established the value is not private-key material and not a JWT, and
+        # re-checking would decode it a second time.
+        if not self._is_opaque_value(text):
             return False
 
         if self.aggressive:
@@ -2921,7 +2934,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         if self._redact_unambiguous_secret_attribute(element, attr, value):
             return
 
-        if not self._is_high_entropy_value(value):
+        # As in _account_for_opaque_element: the unambiguous cases are already
+        # ruled out above, so the complete predicate would decode twice.
+        if not self._is_opaque_value(value):
             return
 
         if self.aggressive:
