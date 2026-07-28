@@ -56,6 +56,18 @@ pfsense-redactor config.xml --dry-run-verbose
 pfsense-redactor $INPUT_CONFIG $OUTPUT_CONFIG --aggressive --fail-on-warn
 ```
 
+`--fail-on-warn` exits non-zero if the root tag is wrong, or if the tool left
+any high-entropy value in place for review. With `--aggressive` those values are
+redacted rather than retained, so the gate passes; drop `--aggressive` and the
+job fails instead, listing the element paths to look at.
+
+To check a configuration without writing anything, which is often what a
+pipeline wants:
+
+```bash
+pfsense-redactor $INPUT_CONFIG --dry-run --fail-on-warn
+```
+
 ## Relationship to pfSense built-in sanitisation
 
 pfSense includes a built-in configuration sanitisation script:

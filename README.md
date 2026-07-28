@@ -6,8 +6,8 @@
 [![Tests](https://github.com/grounzero/pfsense-redactor/actions/workflows/tests.yml/badge.svg)](https://github.com/grounzero/pfsense-redactor/actions/workflows/tests.yml)
 [![Downloads](https://pepy.tech/badge/pfsense-redactor)](https://pepy.tech/project/pfsense-redactor)
 
-Redact secrets from a pfSense `config.xml` so you can share it — with Netgate
-support, a vendor, a forum, or an AI tool — without handing over your passwords,
+Redact secrets from a pfSense `config.xml` so you can share it with Netgate
+support, a vendor, a forum or an AI tool, without handing over your passwords,
 keys and network layout.
 
 Unlike generic XML redaction, it understands pfSense structures: IPsec, OpenVPN,
@@ -55,7 +55,7 @@ pip install -e .
 
 ## Quick start
 
-**Sharing with support — keep internal addressing readable:**
+**Sharing with support, keeping internal addressing readable:**
 
 ```bash
 pfsense-redactor config.xml redacted.xml --keep-private-ips
@@ -64,7 +64,7 @@ pfsense-redactor config.xml redacted.xml --keep-private-ips
 Removes secrets and public identifiers, leaves RFC 1918 addressing intact so
 whoever is helping can still follow your topology.
 
-**Sharing with a vendor, forum or AI tool — anonymise identifiers:**
+**Sharing with a vendor, forum or AI tool, anonymising identifiers:**
 
 ```bash
 pfsense-redactor config.xml redacted.xml --anonymise
@@ -97,8 +97,8 @@ Measured against a 46-secret canary corpus that ships with the repository:
 | ForesightCyber Config Anonymizer | 17 / 46 |
 | netgate-xlsx | 11 / 46 |
 
-The corpus was built alongside this tool, which biases it — and the four misses
-are documented rather than hidden. Run it yourself:
+The corpus was built alongside this tool, which biases it. The four misses are
+documented rather than hidden. Run it yourself:
 
 ```bash
 pfsense-redactor tests/corpus/canary-corpus.xml --stdout --aggressive \
@@ -113,7 +113,7 @@ Full method, caveats and per-secret results in
 > **Never restore a redacted file to pfSense.** Comments, CDATA and some
 > metadata do not survive the round trip. Keep your original.
 
-Read the run summary — it reports high-entropy values it deliberately *kept*,
+Read the run summary. It reports high-entropy values it deliberately *kept*,
 with their element paths, so you can audit them. For a second opinion from a
 scanner that fails differently, see
 [verifying output](https://github.com/grounzero/pfsense-redactor/blob/main/docs/verifying-output.md).
@@ -123,7 +123,7 @@ scanner that fails differently, see
 | Guide | Covers |
 | --- | --- |
 | [CLI reference](https://github.com/grounzero/pfsense-redactor/blob/main/docs/cli-reference.md) | Every flag, with examples |
-| [Use cases](https://github.com/grounzero/pfsense-redactor/blob/main/docs/use-cases.md) | Netgate TAC, AI tools, MSP handoff, audits — and how this relates to `diag_sanitize.php` |
+| [Use cases](https://github.com/grounzero/pfsense-redactor/blob/main/docs/use-cases.md) | Netgate TAC, AI tools, MSP handoff, audits, and how this relates to `diag_sanitize.php` |
 | [Allow-lists](https://github.com/grounzero/pfsense-redactor/blob/main/docs/allow-lists.md) | Keep specific IPs, CIDRs and domains readable |
 | [Security](https://github.com/grounzero/pfsense-redactor/blob/main/docs/security.md) | Threat model, what gets redacted, path safety |
 | [Verifying output](https://github.com/grounzero/pfsense-redactor/blob/main/docs/verifying-output.md) | Checking the result, and using gitleaks alongside |
@@ -135,7 +135,7 @@ scanner that fails differently, see
 ## Contributing
 
 Issues and pull requests are welcome. If you find a secret that survives
-redaction, that is the most valuable report there is — a minimal fragment with
+redaction, that is the most valuable report there is. A minimal fragment with
 the value replaced by a `CANARY_*` marker can go straight into the corpus so the
 miss stays fixed.
 
@@ -148,4 +148,4 @@ pytest
 
 ## Licence
 
-MIT — see [LICENSE](https://github.com/grounzero/pfsense-redactor/blob/main/LICENSE).
+MIT. See [LICENSE](https://github.com/grounzero/pfsense-redactor/blob/main/LICENSE).

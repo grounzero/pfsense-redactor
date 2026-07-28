@@ -25,7 +25,7 @@ release at the time of testing.
 ## Read this before quoting the numbers
 
 **The corpus was built alongside pfsense-redactor.** It grew out of bug reports
-filed against this tool — several of the 46 markers exist precisely because a
+filed against this tool, and several of the 46 markers exist precisely because a
 1.0.10 or 1.1.0 release missed them. It therefore covers what this tool has been
 taught to look for, and a corpus assembled by either of the other projects would
 likely look different and score differently. That is a real selection effect,
@@ -38,7 +38,7 @@ out to do. Treat its number as context, not a verdict.
 
 **A high score is not a guarantee.** 42 / 46 on a corpus this tool was developed
 against says more about regression coverage than about an unseen configuration.
-Always read the output before sharing it — see
+Always read the output before sharing it. See
 [verifying output](verifying-output.md).
 
 ## What pfsense-redactor does not catch

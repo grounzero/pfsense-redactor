@@ -6,7 +6,7 @@ Redaction is not a thing to take on trust. This page covers the checks built
 into the tool, and how to get a second opinion from a scanner that fails
 differently.
 
-## 1. Read the summary — especially what was *kept*
+## 1. Read the summary, especially what was *kept*
 
 Every run prints what it redacted. More usefully, it also reports what it
 deliberately did **not**:
@@ -18,23 +18,36 @@ deliberately did **not**:
 ```
 
 These are values that look like key material in elements the tool does not
-recognise — typically third-party package fields. It reports the element path
+recognise, typically third-party package fields. It reports the element path
 rather than the value, so the warning is safe to paste into a ticket.
 
 This warning is the direct answer to "what did you leave behind". Do not ignore
 it, and re-run with `--aggressive` if any path looks like it holds a secret.
 
-## 2. Preview before you share
+## 2. Let CI check it for you
+
+The same warning drives an exit code, so a pipeline can gate on it:
+
+```bash
+pfsense-redactor config.xml --dry-run --fail-on-warn
+```
+
+Non-zero means either the root tag is not `pfsense`, or values were retained for
+review. Nothing is written, so this is safe to run on every commit. Adding
+`--aggressive` redacts those values instead of retaining them, which makes the
+gate pass.
+
+## 3. Preview before you share
 
 ```bash
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
 Shows counts plus masked before/after examples, so you can confirm the right
-things are being caught without writing a file. Samples are masked — the
+things are being caught without writing a file. Samples are masked, so the
 preview never prints a live secret to your terminal or CI log.
 
-## 3. Get a second opinion
+## 4. Get a second opinion
 
 An independent secret scanner such as [gitleaks](https://github.com/gitleaks/gitleaks)
 is worth running over the output, because it fails in the opposite direction to
@@ -53,7 +66,7 @@ gitleaks dir redacted.xml --no-banner
 
 ### What that actually buys you
 
-Measured, not assumed — gitleaks 8.30.1 against a config containing six real
+Measured, not assumed. gitleaks 8.30.1 against a config containing six real
 secrets, run against 1.1.1:
 
 | Secret | gitleaks | redactor 1.1.1 (default) | redactor 1.1.2 (default) |
@@ -65,7 +78,7 @@ secrets, run against 1.1.1:
 | `<secret_access_key>` | ❌ | ✅ | ✅ |
 | `<slack_url>` webhook token | **✅** | **❌** | ✅ |
 
-gitleaks found one of the six — and it was the one this tool was missing.
+gitleaks found one of the six, and it was the one this tool was missing.
 **That row is why this page exists**: the finding was reported and fixed in
 1.1.2, which now redacts path tokens on known webhook hosts in every mode. An
 independent scanner earned its keep on the first run.
@@ -74,7 +87,7 @@ independent scanner earned its keep on the first run.
 passphrase of `CorrectHorseBattery` have no distinguishing shape; nothing about
 the value says "secret". Only the element name does. It also skipped the AWS key
 because `AKIAIOSFODNN7EXAMPLE` is Amazon's documented example key and is
-allowlisted — worth knowing if you test with it.
+allowlisted, which is worth knowing if you test with it.
 
 That asymmetry is the point, and it did not go away with the fix. The two tools
 fail in opposite directions, so a second opinion is still worth having on a
@@ -87,7 +100,7 @@ to be a feed URL as a credential.
 ### A clean scan is not a clean file
 
 Do not read "no leaks found" as proof. On this project's own 46-secret
-[canary corpus](benchmark.md), gitleaks reports **no findings at all** — before
+[canary corpus](benchmark.md), gitleaks reports **no findings at all**, before
 any redaction. The planted markers are low-entropy placeholder strings, which is
 the same reason it misses a real SNMP community.
 
@@ -95,7 +108,7 @@ A scanner that finds nothing may mean the file is clean, or that the secrets do
 not look like secrets. Use it to catch what this tool missed, never to certify
 that nothing was missed.
 
-## 4. Diff the two files
+## 5. Diff the two files
 
 For a config small enough to read, nothing beats looking:
 
@@ -109,6 +122,6 @@ Every line that did *not* change is a line you are choosing to share.
 
 If you find a secret that survived, please open an issue. A minimal
 `config.xml` fragment with the value replaced by a marker such as
-`CANARY_MYSECRET` is ideal — that is exactly the shape of
+`CANARY_MYSECRET` is ideal. That is exactly the shape of
 [the corpus](../tests/corpus/canary-corpus.xml), and it can be added to it so
 the miss stays fixed.
