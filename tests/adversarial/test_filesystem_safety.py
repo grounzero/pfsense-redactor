@@ -32,11 +32,6 @@ class TestInputPreservation:
             run_redactor(canary_copy, *flags)
             assert canary_copy.read_bytes() == before, flags
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-15: input and output paths are never compared, so "
-               "naming the input as the output destroys it",
-    )
     def test_same_input_and_output_path_is_refused(self, canary_copy, run_redactor):
         """Naming the input as the output must not destroy it"""
         before = canary_copy.read_bytes()
@@ -45,11 +40,6 @@ class TestInputPreservation:
         assert result.returncode != 0
         assert canary_copy.read_bytes() == before
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-15: the comparison is textual at best, so ./name and "
-               "name reach the same file undetected",
-    )
     def test_same_file_via_relative_indirection_is_refused(self, canary_copy, run_redactor):
         """Spelling the path differently must not defeat the check"""
         before = canary_copy.read_bytes()
@@ -58,11 +48,6 @@ class TestInputPreservation:
         assert result.returncode != 0
         assert canary_copy.read_bytes() == before
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-16: an output path that is a symlink is followed, so a "
-               "link pointing back at the input overwrites the input",
-    )
     def test_output_symlink_pointing_at_input_is_refused(self, canary_copy, run_redactor, tmp_path):
         """Nor must reaching the input through a link"""
         link = tmp_path / "out-link.xml"
@@ -73,11 +58,6 @@ class TestInputPreservation:
 
         assert result.returncode != 0 or canary_copy.read_bytes() == before
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-17: --inplace rewrites the original without requiring "
-               "--force; only args.output is covered by the overwrite guard",
-    )
     def test_inplace_requires_explicit_consent(self, canary_copy, run_redactor):
         """Destroying the original is not a default-worthy action"""
         before = canary_copy.read_bytes()
@@ -95,40 +75,25 @@ class TestInputPreservation:
         ET.fromstring(canary_copy.read_text())
 
 
-def explode_on_path_write(monkeypatch):
-    """Make tree.write() fail the way a real interrupted write fails
+def fail_at(monkeypatch, name):
+    """Make one step of the atomic write fail, the way a real one can
 
-    Emulates a crash *after* the target has been opened for writing, which is
-    what ElementTree.write does before it can fail: the file is truncated, some
-    bytes land, and then the error arrives.
-
-    Writes to a *stream* are passed through to the real implementation. The
-    redactor serialises the candidate to a string before writing it, and
-    ET.tostring goes through this same method with a stream target - so a fake
-    that raised unconditionally would abort during serialisation and the test
-    would never reach the write it is named after.
+    The write is: temp file in the destination directory, chmod, write, flush,
+    fsync, close, os.replace, fsync the directory. A crash can land at any of
+    them - disk full at the write, SIGINT before the rename, power loss after
+    it - and the guarantee is the same in every case: the destination holds
+    either its previous content or the complete new content, and no temporary
+    file survives.
     """
-    real_write = ET.ElementTree.write
+    def explode(*args, **kwargs):
+        raise OSError(f"simulated failure in {name}")
 
-    def explode(self, file_or_filename, *args, **kwargs):
-        if hasattr(file_or_filename, "write"):
-            return real_write(self, file_or_filename, *args, **kwargs)
-
-        with open(file_or_filename, "wb") as handle:
-            handle.write(b'<?xml version="1.0"?>\n<pfsense><syst')
-        raise OSError("simulated I/O failure mid-write")
-
-    monkeypatch.setattr(ET.ElementTree, "write", explode)
+    monkeypatch.setattr(f"os.{name}", explode)
 
 
 class TestWriteSafety:
     """How the output is written, not where"""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-18: tree.write() creates the file with the process "
-               "umask, so redacted output is typically world-readable 0644",
-    )
     def test_output_is_not_world_readable(self, canary_copy, run_redactor, tmp_path):
         """Redacted output can still hold retained values"""
         out = tmp_path / "out.xml"
@@ -140,15 +105,17 @@ class TestWriteSafety:
             f"high-entropy values and identifying material"
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-19: the write is not atomic - tree.write() truncates "
-               "the target first, so a failure mid-write destroys it",
-    )
-    def test_interrupted_inplace_write_preserves_the_original(self, canary_copy, monkeypatch):
-        """A crash mid-write must not leave the operator with nothing"""
+    @pytest.mark.parametrize("step", ["fsync", "replace"])
+    def test_interrupted_inplace_write_preserves_the_original(
+        self, canary_copy, monkeypatch, step
+    ):
+        """A crash mid-write must not leave the operator with nothing
+
+        Reproduced before the fix at 7889 bytes -> 36: tree.write() opened the
+        target, truncating it, and only then began serialising.
+        """
         before = canary_copy.read_bytes()
-        explode_on_path_write(monkeypatch)
+        fail_at(monkeypatch, step)
 
         redactor = PfSenseRedactor()
         assert redactor.redact_config(str(canary_copy), str(canary_copy), inplace=True) is False
@@ -157,21 +124,45 @@ class TestWriteSafety:
             f"from {len(before)}"
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-19: a failed write leaves the partial file behind "
-               "rather than removing it",
-    )
-    def test_interrupted_write_leaves_no_partial_output(self, canary_copy, tmp_path, monkeypatch):
+    @pytest.mark.parametrize("step", ["fsync", "replace"])
+    def test_interrupted_write_leaves_no_partial_output(
+        self, canary_copy, tmp_path, monkeypatch, step
+    ):
         """A truncated file that looks like output is worse than none"""
         out = tmp_path / "out.xml"
-        explode_on_path_write(monkeypatch)
+        fail_at(monkeypatch, step)
 
         PfSenseRedactor().redact_config(str(canary_copy), str(out))
 
         assert not out.exists(), (
             "a truncated file that looks like output is worse than no output"
         )
+
+    @pytest.mark.parametrize("step", ["fsync", "replace"])
+    def test_interrupted_overwrite_preserves_the_existing_destination(
+        self, canary_copy, tmp_path, monkeypatch, step
+    ):
+        """An existing destination survives a failed write byte-for-byte"""
+        out = tmp_path / "out.xml"
+        out.write_bytes(b"<pfsense><previous/></pfsense>")
+        before = out.read_bytes()
+        fail_at(monkeypatch, step)
+
+        PfSenseRedactor().redact_config(str(canary_copy), str(out))
+
+        assert out.read_bytes() == before
+
+    @pytest.mark.parametrize("step", ["fsync", "replace"])
+    def test_interrupted_write_leaves_no_temporary_file(
+        self, canary_copy, tmp_path, monkeypatch, step
+    ):
+        """Cleanup runs on every failure path, not just the tidy ones"""
+        out = tmp_path / "out.xml"
+        fail_at(monkeypatch, step)
+
+        PfSenseRedactor().redact_config(str(canary_copy), str(out))
+
+        assert not list(tmp_path.glob(".pfsense-redactor-*"))
 
     def test_no_temporary_files_are_left_behind(self, canary_copy, run_redactor, tmp_path):
         """Whatever the write strategy, the directory must be clean afterwards"""
@@ -217,22 +208,45 @@ class TestSpecialFiles:
             "looking for the wrong problem"
         )
 
-    def test_hardlinked_output_write_is_in_place(self, canary_copy, run_redactor, tmp_path):
-        """Writing over one name of a hard-linked file changes every name
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX hard links only")
+    def test_hardlinked_output_is_refused(self, canary_copy, run_redactor, tmp_path):
+        """A hard-linked destination is refused rather than written through
 
-        tests/unit/test_symlink_security.py:139 documents --inplace on a hard
-        link. This pins the *output* side, and it matters to whoever implements
-        FINDING-19: an atomic temp-file-plus-rename write would break the link
-        instead, leaving the alias holding the unredacted content. That is a
-        behaviour change, and this test is where it will surface.
+        This test previously asserted the opposite - that writing over one name
+        of a hard-linked file changed every name - and its own docstring named
+        this as the place the atomic-write change would surface. It has.
+
+        Atomic replacement puts a *new inode* at the destination, so the other
+        name keeps pointing at the old content. For a file being redacted that
+        old content is the unredacted configuration, now sitting under a name
+        the operator has no reason to check. Writing through the link is not
+        available any more, and silently stranding a stale copy is worse than
+        refusing, so the destination is refused.
+
+        The invariant is unchanged and is asserted below: after the run, no
+        name holds content the operator believes was redacted but was not.
         """
         out = tmp_path / "out.xml"
         out.write_text("<pfsense><old/></pfsense>")
         alias = tmp_path / "alias.xml"
         os.link(out, alias)
+        before = out.read_bytes()
 
-        run_redactor(canary_copy, out, "--force")
+        result = run_redactor(canary_copy, out, "--force")
 
-        assert out.stat().st_nlink == 2, "the write broke the hard link"
-        assert Path(alias).read_bytes() == out.read_bytes()
-        assert "<old/>" not in alias.read_text()
+        assert result.returncode != 0
+        assert "hard link" in result.stderr.lower()
+        assert out.read_bytes() == before, "the refused write happened anyway"
+        assert Path(alias).read_bytes() == before
+        assert out.stat().st_nlink == 2, "the link was broken despite the refusal"
+
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX hard links only")
+    def test_hardlinked_output_with_no_alias_is_allowed(self, canary_copy, run_redactor, tmp_path):
+        """The control: an ordinary destination with one name still works"""
+        out = tmp_path / "out.xml"
+        out.write_text("<pfsense><old/></pfsense>")
+
+        result = run_redactor(canary_copy, out, "--force")
+
+        assert result.returncode == 0
+        assert "<old/>" not in out.read_text()
