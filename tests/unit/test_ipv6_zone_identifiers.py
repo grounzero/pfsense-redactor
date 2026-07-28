@@ -102,6 +102,11 @@ class TestIPv6ZoneIdentifiers:
             # Zone should be preserved in bracketed form
             assert any(z in result for z in ('%eth0.100]', '%wlan0-1]', '%eth0:1]')), \
                 f"Zone identifier lost in bracketed form for {input_text}, got: {result}"
+            # ...but not by leaving the whole token alone. Asserting only that
+            # the zone survived passed happily while the address leaked, which
+            # is how the bracketed-zone gap went unnoticed.
+            assert 'fe80::1' not in result, \
+                f"Address should be redacted for {input_text}, got: {result}"
 
     def test_bracketed_ipv6_with_zone_and_port(self):
         """Test bracketed IPv6 with zone identifier and port"""
@@ -120,6 +125,11 @@ class TestIPv6ZoneIdentifiers:
                 f"Zone identifier or port lost for {input_text}, got: {result}"
             assert any(p in result for p in (':51820', ':8080', ':443')), \
                 f"Port lost for {input_text}, got: {result}"
+            # The assertion this test was missing. Both checks above are
+            # satisfied by returning the input untouched, which is exactly what
+            # used to happen to this shape.
+            assert 'fe80::1' not in result, \
+                f"Address should be redacted for {input_text}, got: {result}"
 
     def test_zone_parsing_in_parse_ip_token(self):
         """Test _parse_ip_token correctly extracts zone identifiers"""
@@ -255,6 +265,80 @@ class TestIPv6ZoneAndPortHandling:
         assert "2001:db8::1" not in result
         assert ":443" in result
         assert "[XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX]:443" in result
+
+
+class TestBracketedAddressWithZone:
+    """A bracketed IPv6 carrying a zone identifier, which used to leak whole
+
+    '%' was a token separator, so '[fe80::1%igb0]:51820' was split into
+    '[fe80::1' and 'igb0]:51820'. The first half carried an unbalanced bracket,
+    failed to parse as an address, and was returned untouched, so nothing was
+    redacted. The bare form 'fe80::1%igb0' happened to survive only because its
+    two halves were masked and reassembled separately.
+
+    Routable addresses leaked the same way, so this was not limited to
+    link-local. '[addr%zone]:port' is the shape pfSense writes for a WireGuard
+    peer endpoint.
+    """
+
+    @pytest.mark.parametrize('text,address', [
+        ('[2001:db8::1%igb0]:51820', '2001:db8::1'),
+        ('[2001:db8::1%igb0]', '2001:db8::1'),
+        ('[fe80::1%igb0]:51820', 'fe80::1'),
+        ('Endpoint = [2001:db8:abcd::5%vtnet0]:51820', '2001:db8:abcd::5'),
+    ])
+    def test_the_address_is_redacted(self, text, address):
+        """The leak itself: the address must not survive"""
+        assert address not in PfSenseRedactor()._mask_ip_like_tokens(text)
+
+    def test_zone_brackets_and_port_all_survive(self):
+        """Redacting the address must not destroy the structure around it"""
+        result = PfSenseRedactor()._mask_ip_like_tokens('[fe80::1%igb0]:51820')
+
+        assert result == '[XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX%igb0]:51820'
+
+    @pytest.mark.parametrize('zone', ['eth0.100', 'eth0:1', 'br-lan', 'bond0.50'])
+    def test_awkward_interface_names_inside_brackets(self, zone):
+        """The zone spellings the unbracketed tests already cover"""
+        result = PfSenseRedactor()._mask_ip_like_tokens(f'[fe80::1%{zone}]:500')
+
+        assert 'fe80::1' not in result
+        assert f'%{zone}' in result
+
+    def test_it_survives_a_whole_config(self, create_xml_file, cli_runner):
+        """End to end, since the gap was in tokenising text rather than masking"""
+        source = create_xml_file(
+            '<?xml version="1.0"?><pfsense><installedpackages><wireguard><tunnels>'
+            '<item><endpoint>[2001:db8::99%vtnet0]:51820</endpoint></item>'
+            '</tunnels></wireguard></installedpackages></pfsense>',
+            'wg.xml'
+        )
+
+        _, stdout, _ = cli_runner.run(str(source), flags=['--stdout'])
+
+        assert '2001:db8::99' not in stdout
+        assert '%vtnet0' in stdout
+
+
+class TestPercentIsNotOverRedacted:
+    """Making '%' a token character must not start rewriting ordinary text
+
+    The masker only rewrites a token once ipaddress has parsed it, so prose and
+    percent-encoding are unaffected. Worth pinning: this is the cost side of
+    the fix above.
+    """
+
+    @pytest.mark.parametrize('text', [
+        'CPU at 50% load',
+        'disk 85% full',
+        '/var/log%2Ffile',
+        'user%40host',
+        'abc%20def',
+        'dead%20beef',
+    ])
+    def test_left_alone(self, text):
+        """Percent signs in prose and percent-encoding are not addresses"""
+        assert PfSenseRedactor()._mask_ip_like_tokens(text) == text
 
 
 if __name__ == '__main__':
