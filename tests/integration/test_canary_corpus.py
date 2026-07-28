@@ -48,18 +48,36 @@ EXPECTED_SURVIVORS = {
 
 
 def redact_corpus(*flags):
-    """Redact the corpus to stdout and return the output"""
+    """Redact the corpus to stdout, returning the whole CompletedProcess
+
+    The full result rather than just stdout, because the retained-value warning
+    these tests also check is written to stderr.
+    """
     result = subprocess.run(
         [sys.executable, '-m', 'pfsense_redactor', str(CORPUS), '--stdout', *flags],
         capture_output=True, text=True, cwd=str(PROJECT_ROOT), check=False
     )
     assert result.returncode == 0, f'redaction failed: {result.stderr}'
-    return result.stdout
+    return result
 
 
-def survivors(output):
+def survivors(result):
     """Markers still present in redacted output"""
-    return set(CANARY_RE.findall(output))
+    return set(CANARY_RE.findall(result.stdout))
+
+
+# Module-scoped: redacting the corpus is a subprocess spawn, and every test
+# below wants one of these same two runs.
+@pytest.fixture(scope='module', name='default_run')
+def default_run_fixture():
+    """The corpus redacted in default mode"""
+    return redact_corpus()
+
+
+@pytest.fixture(scope='module', name='aggressive_run')
+def aggressive_run_fixture():
+    """The corpus redacted under --aggressive, which the benchmark publishes"""
+    return redact_corpus('--aggressive')
 
 
 class TestCorpusIntegrity:
@@ -89,9 +107,9 @@ class TestCorpusIntegrity:
 class TestAggressiveScore:
     """The published headline: 42 of 46 under --aggressive"""
 
-    def test_exactly_the_known_survivors(self):
+    def test_exactly_the_known_survivors(self, aggressive_run):
         """Fails in both directions - regression, or a stale benchmark doc"""
-        found = survivors(redact_corpus('--aggressive'))
+        found = survivors(aggressive_run)
 
         unexpected = found - set(EXPECTED_SURVIVORS)
         assert not unexpected, (
@@ -105,9 +123,9 @@ class TestAggressiveScore:
             'docs/benchmark.md and EXPECTED_SURVIVORS: ' + ', '.join(sorted(fixed))
         )
 
-    def test_published_score_is_42_of_46(self):
-        """The exact number docs/benchmark.md states"""
-        caught = TOTAL_CANARIES - len(survivors(redact_corpus('--aggressive')))
+    def test_published_score_is_42_of_46(self, aggressive_run):
+        """The count of secrets caught, which docs/benchmark.md publishes"""
+        caught = TOTAL_CANARIES - len(survivors(aggressive_run))
 
         assert caught == 42
 
@@ -124,19 +142,19 @@ class TestDefaultModeIsNotWorse:
     actually use from drifting apart from it unnoticed.
     """
 
-    def test_default_mode_survivors_are_a_superset(self):
+    def test_default_mode_survivors_are_a_superset(self, default_run, aggressive_run):
         """Anything --aggressive leaves, default mode may also leave - not less"""
-        default_survivors = survivors(redact_corpus())
-        aggressive_survivors = survivors(redact_corpus('--aggressive'))
+        default_survivors = survivors(default_run)
+        aggressive_survivors = survivors(aggressive_run)
 
         assert aggressive_survivors <= default_survivors, (
             'aggressive mode leaked something default mode caught, which '
             'inverts the intended relationship between the two'
         )
 
-    def test_default_mode_still_catches_the_core_secrets(self):
+    def test_default_mode_still_catches_the_core_secrets(self, default_run):
         """A floor, so default mode cannot quietly regress toward doing nothing"""
-        caught = TOTAL_CANARIES - len(survivors(redact_corpus()))
+        caught = TOTAL_CANARIES - len(survivors(default_run))
 
         assert caught >= 35, f'default mode caught only {caught}/{TOTAL_CANARIES}'
 
@@ -148,12 +166,8 @@ class TestRetainedValuesAreReported:
     behind", and docs/verifying-output.md tells people to read it.
     """
 
-    def test_high_entropy_retained_is_reported(self):
+    def test_high_entropy_retained_is_reported(self, default_run):
         """The warning names the element path, not just a count"""
-        result = subprocess.run(
-            [sys.executable, '-m', 'pfsense_redactor', str(CORPUS), '--stdout'],
-            capture_output=True, text=True, cwd=str(PROJECT_ROOT), check=False
-        )
-
-        assert 'high-entropy' in result.stderr
-        assert '--aggressive' in result.stderr, 'the warning should say how to fix it'
+        assert 'high-entropy' in default_run.stderr
+        assert '--aggressive' in default_run.stderr, \
+            'the warning should say how to fix it'

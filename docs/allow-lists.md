@@ -1,10 +1,8 @@
 # Allow-lists
 
-## Allow-lists
-
 Allow-lists let you preserve specific well-known IPs and domains that don't leak private information.
 
-### Default allow-list files
+## Default allow-list files
 
 The tool automatically loads allow-lists from these locations (if they exist):
 
@@ -13,7 +11,7 @@ The tool automatically loads allow-lists from these locations (if they exist):
 
 To disable: use `--no-default-allowlist`
 
-### Allow-list file format
+## Allow-list file format
 
 Create `.pfsense-allowlist` or use `--allowlist-file`:
 
@@ -39,7 +37,7 @@ pool.ntp.org
 
 See [`allowlist.example`](allowlist.example) for a complete template.
 
-### CLI allow-list flags
+## CLI allow-list flags
 
 ```bash
 # Add specific IPs or CIDR ranges (repeatable)

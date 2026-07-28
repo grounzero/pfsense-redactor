@@ -23,21 +23,39 @@ pfSense and its packages actually emit — `rocommunity`, `radiussecret`,
 Credentials embedded in URLs are handled separately:
 
 | Location | Default | `--aggressive` |
-|---|---|---|
+| --- | --- | --- |
 | `user:password@host` | password redacted | same |
 | `?token=…` query parameter | redacted | same |
-| Path segment (Slack/Discord webhook token) | kept | redacted |
+| Path token on a known webhook host | redacted | same |
+| Path segment on any other host | kept | redacted |
 
 Path segments are kept by default because pfBlockerNG feed URLs legitimately
-carry long path components that redaction would destroy. An element *named* for a
-secret — `<webhook_url>` — is redacted whole regardless of mode, but
-`<slack_url>` or a bare `<url>` is not. If your configuration sends
-notifications, use `--aggressive`.
+carry long path components that redaction would destroy — a corrupted config is
+its own kind of failure.
+
+The exception is endpoints where the path token *is* the credential, since
+anyone holding the URL can post as that integration. For those the token is
+redacted in every mode:
+
+| Endpoint | Matched as |
+| --- | --- |
+| Slack | `hooks.slack.com` + `/services/` |
+| Discord | `discord.com`, `discordapp.com`, `ptb.`/`canary.` variants + `/api/webhooks/` |
+| Telegram | `api.telegram.org` + `/bot` |
+
+Hosts are matched **exactly, never by suffix**, so `hooks.slack.com.example.net`
+does not inherit the rule; and the path prefix must match too, so an ordinary
+`discord.com/channels/…` link is untouched. Everything else still needs
+`--aggressive`.
 
 Recognised credential formats in path segments include AWS access key IDs
 (exactly 20 characters), Telegram bot tokens (`bot<id>:<secret>`, where the
 colon defeats a naive base64 test) and Slack/Discord tokens with no digits in
 them.
+
+Before 1.1.2 this depended on the element name: `<webhook_url>` matched the
+secret-name pattern and was redacted whole, but the same URL in `<slack_url>`,
+`<notifyurl>` or a plain `<url>` kept its token unless `--aggressive` was used.
 
 ## Input handling
 

@@ -12,7 +12,7 @@ than take them on trust.
 ## Results
 
 | Tool | Caught | Date tested |
-|---|---|---|
+| --- | --- | --- |
 | **pfsense-redactor 1.1.1** | **42 / 46** | 2026-07-28 |
 | ForesightCyber pfSense Config Anonymizer | 17 / 46 | 2026-07-28 |
 | netgate-xlsx | 11 / 46 | 2026-07-28 |
@@ -45,7 +45,7 @@ Four markers survive. Two are artefacts of how the corpus is written rather than
 gaps, which matters when comparing the columns:
 
 | Marker | Element | Why it survives |
-|---|---|---|
+| --- | --- | --- |
 | `CANARY_HAPROXYCERTS` | `config/ha_certificates` | **Corpus artefact.** The value is a short literal. Short values in certificate-named elements are deliberately preserved as *references* (a `certref`, a key id), because they help a reader understand config structure and are not key material. With real PEM or base64 content the same element redacts to `[REDACTED_CERT_OR_KEY]`. |
 | `CANARY_SSLOFFLOAD` | `config/ssloffloadcert` | Same. |
 | `CANARY_WGPUB` | `item/publickey` | **Deliberate.** A WireGuard *public* key is not a secret; it is in `SECRET_TAG_DENYLIST`. It is identifying, so redact it with `--aggressive` if that matters to you. |
@@ -99,7 +99,7 @@ number that nothing enforces drifts, so it is enforced.
 <summary>All 46 planted secrets</summary>
 
 | Path | Secret type | redactor 1.1.1 | ForesightCyber | netgate-xlsx |
-|---|---|:--:|:--:|:--:|
+| --- | --- | :--: | :--: | :--: |
 | `user/bcrypt-hash` | password hash | ✅ | ✅ | ✅ |
 | `user/md5-hash` | password hash | ✅ | ❌ | ❌ |
 | `user/nt-hash` | password hash | ✅ | ❌ | ❌ |

@@ -1,10 +1,8 @@
 # Use cases
 
-## Use Cases
-
 Common command patterns depending on who you’re sharing with.
 
-### Sharing with Netgate TAC Support
+## Sharing with Netgate TAC Support
 
 ```bash
 # On the firewall (recommended for TAC)
@@ -14,7 +12,7 @@ Common command patterns depending on who you’re sharing with.
 pfsense-redactor config_sanitised.xml support-safe.xml --keep-private-ips --no-redact-domains
 ```
 
-### Sharing with AI tools
+## Sharing with AI tools
 
 Use `--aggressive` if you have third-party packages or aren’t sure where secrets live.
 
@@ -30,7 +28,7 @@ pfsense-redactor config.xml ai-ready.xml --anonymise --no-keep-private-ips --agg
 # Now safe to upload to AI tools for configuration analysis
 ```
 
-### Vendor/MSP Handoffs
+## Vendor/MSP Handoffs
 
 ```bash
 # Option A: Preserve private IPs for troubleshooting context
@@ -42,14 +40,14 @@ pfsense-redactor config.xml vendor-share.xml --anonymise
 pfsense-redactor config.xml vendor-share.xml --anonymise --no-keep-private-ips
 ```
 
-### Security Audits
+## Security Audits
 
 ```bash
 # Preview what will be redacted before sharing
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
-### Automated Compliance Workflows
+## Automated Compliance Workflows
 
 ```bash
 # CI/CD integration for automated sanitisation

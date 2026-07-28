@@ -81,9 +81,10 @@ pfsense-redactor config.xml --dry-run-verbose
 
 Prints what would change, with samples safely masked.
 
-**If your config sends notifications** (Slack, Discord, Telegram), add
-`--aggressive` — webhook tokens live in URL paths, which are preserved by
-default so package feed URLs are not destroyed. See
+**Using an unusual package?** Add `--aggressive`. Webhook tokens live in URL
+paths, and paths are otherwise preserved so package feed URLs are not destroyed.
+Slack, Discord and Telegram are recognised and redacted without it; anything
+else needs the flag. See
 [security](https://github.com/grounzero/pfsense-redactor/blob/main/docs/security.md#what-gets-redacted).
 
 ## How well does it work?
@@ -91,7 +92,7 @@ default so package feed URLs are not destroyed. See
 Measured against a 46-secret canary corpus that ships with the repository:
 
 | Tool | Caught |
-|---|---|
+| --- | --- |
 | **pfsense-redactor 1.1.1** | **42 / 46** |
 | ForesightCyber Config Anonymizer | 17 / 46 |
 | netgate-xlsx | 11 / 46 |
@@ -120,7 +121,7 @@ scanner that fails differently, see
 ## Documentation
 
 | Guide | Covers |
-|---|---|
+| --- | --- |
 | [CLI reference](https://github.com/grounzero/pfsense-redactor/blob/main/docs/cli-reference.md) | Every flag, with examples |
 | [Use cases](https://github.com/grounzero/pfsense-redactor/blob/main/docs/use-cases.md) | Netgate TAC, AI tools, MSP handoff, audits — and how this relates to `diag_sanitize.php` |
 | [Allow-lists](https://github.com/grounzero/pfsense-redactor/blob/main/docs/allow-lists.md) | Keep specific IPs, CIDRs and domains readable |

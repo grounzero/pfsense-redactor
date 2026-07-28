@@ -52,10 +52,10 @@ gitleaks dir redacted.xml --no-banner
 ### What that actually buys you
 
 Measured, not assumed — gitleaks 8.30.1 against a config containing six real
-secrets:
+secrets, run against 1.1.1:
 
-| Secret | gitleaks | redactor (default) | redactor (`--aggressive`) |
-|---|:--:|:--:|:--:|
+| Secret | gitleaks | redactor 1.1.1 (default) | redactor 1.1.2 (default) |
+| --- | :--: | :--: | :--: |
 | `<rocommunity>public` | ❌ | ✅ | ✅ |
 | `<passphrase>CorrectHorseBattery` | ❌ | ✅ | ✅ |
 | `<ldap_bindpw>Sw0rdf1sh!` | ❌ | ✅ | ✅ |
@@ -63,8 +63,10 @@ secrets:
 | `<secret_access_key>` | ❌ | ✅ | ✅ |
 | `<slack_url>` webhook token | **✅** | **❌** | ✅ |
 
-gitleaks found one of the six — and it was the one this tool misses by default.
-That single row is the argument for running both.
+gitleaks found one of the six — and it was the one this tool was missing.
+**That row is why this page exists**: the finding was reported and fixed in
+1.1.2, which now redacts path tokens on known webhook hosts in every mode. An
+independent scanner earned its keep on the first run.
 
 **Why gitleaks missed the other five:** an SNMP community of `public` and a
 passphrase of `CorrectHorseBattery` have no distinguishing shape; nothing about
@@ -72,15 +74,13 @@ the value says "secret". Only the element name does. It also skipped the AWS key
 because `AKIAIOSFODNN7EXAMPLE` is Amazon's documented example key and is
 allowlisted — worth knowing if you test with it.
 
-**Why this tool missed the Slack token by default:** webhook credentials live in
-the URL *path*, and path-segment redaction is gated behind `--aggressive`
-because feed URLs (pfBlockerNG and similar) legitimately carry long path
-segments that would otherwise be destroyed. The element name decides it:
-`<webhook_url>` matches the secret-name pattern and is redacted whole, but
-`<slack_url>`, `<notifyurl>` and a bare `<url>` are not.
+That asymmetry is the point, and it did not go away with the fix. The two tools
+fail in opposite directions, so a second opinion is still worth having on a
+config this one has not seen.
 
-If your config sends notifications, use `--aggressive`, or check those elements
-by hand.
+Webhook tokens on hosts other than Slack, Discord and Telegram still need
+`--aggressive`, since a long path segment on an unrecognised host is as likely
+to be a feed URL as a credential.
 
 ### A clean scan is not a clean file
 

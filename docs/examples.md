@@ -1,6 +1,6 @@
 # Examples
 
-## Example
+## Before and after
 
 ### Input
 
