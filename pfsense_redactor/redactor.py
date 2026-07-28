@@ -745,6 +745,14 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self.high_entropy_paths: list[str] = []
         self._path_stack: list[str] = []
 
+        # Whether IPs and domains are redacted on this run. Policy for the whole
+        # traversal rather than per element, so they are set once by
+        # redact_config rather than threaded through every method beneath it.
+        # Defaulted here so redact_element stays callable on a bare element,
+        # which is how most of the unit tests drive it.
+        self.redact_ips: bool = True
+        self.redact_domains: bool = True
+
         # Every <refid> defined in the config being processed, so a short value
         # in a certificate-named element can be resolved rather than guessed at.
         # Populated by _collect_refids before the traversal starts; empty here
@@ -912,21 +920,32 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             return True
         return any(ip in net for net in self.allowlist_ip_networks)
 
+    @staticmethod
+    def _mask_v4_sample(value: str) -> str:
+        """Keep the first two octets and the last, hide the third"""
+        parts = value.split('.')
+        if len(parts) != 4:
+            return value
+        return f"{parts[0]}.{parts[1]}.***.{parts[3]}"
+
+    @staticmethod
+    def _mask_v6_sample(value: str) -> str:
+        """Keep the leading hextets and the last, hide the middle"""
+        parts = value.split(':')
+        if len(parts) < 3:
+            return value
+        return f"{parts[0]}:{parts[1]}:*:****::{parts[-1]}"
+
     def _mask_ip_sample(self, value: str) -> str:
         """Mask IP address for sample display"""
         try:
             ip = ipaddress.ip_address(value)
-            if ip.version == 4:
-                parts = value.split('.')
-                if len(parts) == 4:
-                    return f"{parts[0]}.{parts[1]}.***.{parts[3]}"
-            else:
-                parts = value.split(':')
-                if len(parts) >= 3:
-                    return f"{parts[0]}:{parts[1]}:*:****::{parts[-1]}"
         except ValueError:
-            pass
-        return value
+            return value
+
+        if ip.version == 4:
+            return self._mask_v4_sample(value)
+        return self._mask_v6_sample(value)
 
     @staticmethod
     def _mask_sample_host(host: str) -> str:
@@ -1021,16 +1040,28 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             return f"***.{value}"
         return value
 
+    @staticmethod
+    def _mask_colon_mac(value: str) -> str:
+        """Six-group form: keep the OUI and the last two groups"""
+        parts = value.split(':')
+        if len(parts) != 6:
+            return value
+        return f"{parts[0]}:{parts[1]}:**:**:{parts[4]}:{parts[5]}"
+
+    @staticmethod
+    def _mask_dotted_mac(value: str) -> str:
+        """Cisco three-group form"""
+        parts = value.split('.')
+        if len(parts) != 3:
+            return value
+        return f"{parts[0]}.****.{parts[2]}"
+
     def _mask_mac_sample(self, value: str) -> str:
         """Mask MAC address for sample display"""
         if ':' in value:
-            parts = value.split(':')
-            if len(parts) == 6:
-                return f"{parts[0]}:{parts[1]}:**:**:{parts[4]}:{parts[5]}"
-        elif '.' in value:
-            parts = value.split('.')
-            if len(parts) == 3:
-                return f"{parts[0]}.****.{parts[2]}"
+            return self._mask_colon_mac(value)
+        if '.' in value:
+            return self._mask_dotted_mac(value)
         return value
 
     def _mask_secret_sample(self, value: str) -> str:
@@ -2064,9 +2095,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return bool(CERT_TAG_PATTERN.search(tag) or CERT_TAG_PATTERN.search(tag_base))
 
-    def _should_redact_completely(
-        self, tag: str, tag_base: str, element: ET.Element, redact_ips: bool, redact_domains: bool
-    ) -> bool:
+    def _should_redact_completely(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Check if element should be completely redacted and handle it. Returns True if handled."""
         if not self._is_secret_tag(tag, tag_base):
             return False
@@ -2083,7 +2112,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         # Process children recursively
         for child in element:
-            self.redact_element(child, redact_ips, redact_domains)
+            self.redact_element(child)
 
         return True
 
@@ -2252,7 +2281,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             self.high_entropy_paths.append(path)
         return False
 
-    def _redact_key_element_if_needed(self, tag: str, element: ET.Element, redact_ips: bool, redact_domains: bool) -> bool:
+    def _redact_key_element_if_needed(self, tag: str, element: ET.Element) -> bool:
         """Redact <key> element if needed - can be short secret or PEM blob. Returns True if handled."""
         if tag != 'key' or not element.text:
             return False
@@ -2266,7 +2295,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         # Process children
         for child in element:
-            self.redact_element(child, redact_ips, redact_domains)
+            self.redact_element(child)
 
         return True
 
@@ -2368,13 +2397,11 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return True
 
-    def _redact_ip_containing_element(
-        self, tag: str, tag_base: str, element: ET.Element, redact_ips: bool, redact_domains: bool
-    ) -> bool:
+    def _redact_ip_containing_element(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Redact IPs/domains in known IP-containing elements. Returns True if processed."""
         if (tag in self.ip_containing_elements or tag_base in self.ip_containing_elements):
             if element.text:
-                element.text = self.redact_text(element.text, redact_ips, redact_domains)
+                element.text = self.redact_text(element.text, self.redact_ips, self.redact_domains)
                 return True
         return False
 
@@ -2441,9 +2468,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 continue
             self._account_for_attribute_blob(element, tag, attr)
 
-    def _redact_text_aggressive(
-        self, element: ET.Element, text_already_processed: bool, redact_ips: bool, redact_domains: bool
-    ) -> None:
+    def _redact_text_aggressive(self, element: ET.Element, text_already_processed: bool) -> None:
         """Redact text and attributes in aggressive mode"""
         tag = self._normalise_tag(element.tag)
         if self._is_secret_tag(tag, self._get_tag_base(tag)):
@@ -2451,17 +2476,17 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         # Process text if not already done
         if element.text and not text_already_processed:
-            element.text = self.redact_text(element.text, redact_ips, redact_domains)
+            element.text = self.redact_text(element.text, self.redact_ips, self.redact_domains)
 
         # Process tail
         if element.tail:
-            element.tail = self.redact_text(element.tail, redact_ips, redact_domains)
+            element.tail = self.redact_text(element.tail, self.redact_ips, self.redact_domains)
 
         # Process attributes
         for attr in list(element.attrib.keys()):
             if element.attrib[attr]:
                 element.attrib[attr] = self.redact_text(
-                    element.attrib[attr], redact_ips, redact_domains
+                    element.attrib[attr], self.redact_ips, self.redact_domains
                 )
 
     @staticmethod
@@ -2473,10 +2498,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         """
         return bool(text) and not handled and '://' in text
 
-    def _redact_element_text(
-        self, tag: str, tag_base: str, element: ET.Element,
-        redact_ips: bool, redact_domains: bool
-    ) -> bool:
+    def _redact_element_text(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Run the text-content passes. Returns whether the text was handled
 
         The return value gates the later passes, so a pass that fully rewrote
@@ -2495,7 +2517,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         if self._redact_unknown_blob_element(tag, element):
             handled = True
 
-        if self._redact_ip_containing_element(tag, tag_base, element, redact_ips, redact_domains):
+        if self._redact_ip_containing_element(tag, tag_base, element):
             handled = True
 
         # Credentials embedded in URLs in elements that are not known URL
@@ -2507,7 +2529,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return handled
 
-    def redact_element(self, element: ET.Element, redact_ips: bool = True, redact_domains: bool = True) -> None:
+    def redact_element(self, element: ET.Element) -> None:
         """Recursively redact sensitive information from XML element"""
 
         # Normalise tag name to handle namespaced exports
@@ -2519,19 +2541,17 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # <key> is handled specially (PEM blob vs short secret) and must be
         # checked before the generic secret match, which would otherwise claim
         # it via SECRET_TAG_PATTERN and lose the cert/key distinction.
-        if self._redact_key_element_if_needed(tag, element, redact_ips, redact_domains):
+        if self._redact_key_element_if_needed(tag, element):
             return
 
         # Handle complete redaction cases
-        if self._should_redact_completely(tag, tag_base, element, redact_ips, redact_domains):
+        if self._should_redact_completely(tag, tag_base, element):
             return
 
         # Handle cert/key elements (don't return - continue to process children)
         self._redact_cert_key_element(tag, tag_base, element)
 
-        text_already_processed = self._redact_element_text(
-            tag, tag_base, element, redact_ips, redact_domains
-        )
+        text_already_processed = self._redact_element_text(tag, tag_base, element)
 
         # Redact attributes with sensitive names, and account for high-entropy
         # values in the rest. Runs before the aggressive text pass below, which
@@ -2542,13 +2562,13 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self._path_stack.append(tag)
         try:
             for child in element:
-                self.redact_element(child, redact_ips, redact_domains)
+                self.redact_element(child)
         finally:
             self._path_stack.pop()
 
         # Aggressive mode: apply redaction to text content, tail, and attributes
         if self.aggressive:
-            self._redact_text_aggressive(element, text_already_processed, redact_ips, redact_domains)
+            self._redact_text_aggressive(element, text_already_processed)
 
     def _add_redaction_comment(self, root: ET.Element) -> None:
         """Add a comment to the XML indicating it was redacted"""
@@ -2645,11 +2665,17 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 self.logger.info("[+] Parsing XML configuration from: %s", input_file)
                 self.logger.info("[+] Redacting sensitive information...")
 
+            # Policy for this run, set before the traversal reads it. Assigned
+            # on every call so a reused instance cannot inherit the previous
+            # run's flags.
+            self.redact_ips = redact_ips
+            self.redact_domains = redact_domains
+
             # Before the traversal, so certificate references can be resolved
             # against what the config actually defines
             self.known_refids = self._collect_refids(root)
 
-            self.redact_element(root, redact_ips, redact_domains)
+            self.redact_element(root)
 
             # Dry run mode: just print stats
             if dry_run:

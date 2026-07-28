@@ -114,6 +114,92 @@ class TestBumps:
 
         assert not [r for r in reasons(tool, src) if 'blocks' in r]
 
+    def test_elif_branches_count_separately(self, tool):
+        """An if/elif chain is one ast.If, but two humps
+
+        Counting the node once read a two-way branch as a single block, so this
+        shape passed the gate while CodeScene reported it. _mask_mac_sample was
+        the real instance.
+        """
+        src = (
+            "def f(value):\n"
+            "    if ':' in value:\n"
+            "        parts = value.split(':')\n"
+            "        if len(parts) == 6:\n"
+            "            return 'a'\n"
+            "    elif '.' in value:\n"
+            "        parts = value.split('.')\n"
+            "        if len(parts) == 3:\n"
+            "            return 'b'\n"
+            "    return value\n"
+        )
+
+        assert any('blocks of nested logic' in r for r in reasons(tool, src))
+
+    def test_else_branch_counts_too(self, tool):
+        """The same applies to a plain else, not only to elif"""
+        src = (
+            "def f(value):\n"
+            "    if value:\n"
+            "        for i in value:\n"
+            "            print(i)\n"
+            "    else:\n"
+            "        for j in range(3):\n"
+            "            print(j)\n"
+        )
+
+        assert any('blocks of nested logic' in r for r in reasons(tool, src))
+
+    def test_a_try_contributes_its_body_not_itself(self, tool):
+        """Error handling must not hide the humps inside it
+
+        A try wrapping the real work contributed only itself, so a function
+        whose whole body sat inside one was measured as a single block.
+        _mask_ip_sample was the real instance.
+        """
+        src = (
+            "def f(value):\n"
+            "    try:\n"
+            "        if value.version == 4:\n"
+            "            parts = value.split('.')\n"
+            "            if len(parts) == 4:\n"
+            "                return 'a'\n"
+            "        else:\n"
+            "            parts = value.split(':')\n"
+            "            if len(parts) >= 3:\n"
+            "                return 'b'\n"
+            "    except ValueError:\n"
+            "        pass\n"
+            "    return value\n"
+        )
+
+        assert any('blocks of nested logic' in r for r in reasons(tool, src))
+
+    def test_dispatching_to_named_helpers_is_clean(self, tool):
+        """The shape the two rules above push you toward"""
+        src = (
+            "def f(self, value):\n"
+            "    if ':' in value:\n"
+            "        return self._colon(value)\n"
+            "    if '.' in value:\n"
+            "        return self._dotted(value)\n"
+            "    return value\n"
+        )
+
+        assert not [r for r in reasons(tool, src) if 'blocks' in r]
+
+    def test_a_single_guarded_block_is_still_allowed(self, tool):
+        """One hump is the budget; the rules must not drop it to zero"""
+        src = (
+            "def f(value):\n"
+            "    if value:\n"
+            "        for i in value:\n"
+            "            print(i)\n"
+            "    return value\n"
+        )
+
+        assert not [r for r in reasons(tool, src) if 'blocks' in r]
+
 
 class TestComplexConditional:
     """Conditions chaining several operators are reported"""
