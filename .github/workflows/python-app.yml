@@ -32,13 +32,19 @@ jobs:
       run: |
         # stop the build if there are Python syntax errors or undefined names
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        # Cyclomatic complexity is a hard gate for the package itself. Every
-        # function was brought under 10; without a blocking check that decays.
-        # Scoped to pfsense_redactor/ deliberately - the tests carry pre-existing
-        # style findings that are a separate concern.
-        flake8 pfsense_redactor/ --count --select=C901 --max-complexity=10 --show-source --statistics
+        # Cyclomatic complexity is a hard gate, across the tests as well as the
+        # package. Every function was brought under 9; without a blocking check
+        # that decays. mccabe folds a nested closure into its parent, so a
+        # closure cannot be used to hide complexity from this.
+        flake8 pfsense_redactor/ tests/ tools/ --count --select=C901 --max-complexity=8 --show-source --statistics
         # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        flake8 . --count --exit-zero --max-complexity=8 --max-line-length=127 --statistics
+    - name: Check code structure
+      run: |
+        # Nesting depth, separate blocks of nested logic, and multi-operator
+        # conditions. flake8 measures none of these, so they need their own
+        # gate or the shape work decays even while complexity stays green.
+        python tools/check_structure.py pfsense_redactor/ tests/ tools/
     - name: Test with pytest
       run: |
         pytest

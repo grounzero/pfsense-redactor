@@ -230,7 +230,7 @@ class TestSymlinkSecurity:
 
         # Error should mention symlink or that it's not a file
         stderr_lower = result.stderr.lower()
-        assert "symlink" in stderr_lower or "not found" in stderr_lower or "directory" in stderr_lower, \
+        assert any(w in stderr_lower for w in ("symlink", "not found", "directory")), \
             f"Error should mention issue: {result.stderr}"
 
     def test_relative_symlink_refused(self, sample_config, temp_dir):

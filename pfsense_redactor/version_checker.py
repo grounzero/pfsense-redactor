@@ -10,6 +10,7 @@ import os
 import sys
 import urllib.request
 import urllib.error
+from collections.abc import Iterable
 from pathlib import Path
 from typing import NamedTuple
 import logging
@@ -32,6 +33,29 @@ class InstallationMethod(NamedTuple):
     upgrade_command: str
 
 
+def _scan_for_version(lines: Iterable[str]) -> str:
+    """Pull __version__ out of the lines of an __init__.py"""
+    for line in lines:
+        if line.startswith('__version__'):
+            # Extract version from __version__ = "x.y.z"
+            return line.split('=')[1].strip().strip('"').strip("'")
+    return "unknown"
+
+
+def _version_from_source() -> str:
+    """Read the version straight from __init__.py
+
+    The fallback for a source checkout, where no distribution metadata has been
+    installed for importlib.metadata to find.
+    """
+    try:
+        init_file = Path(__file__).parent / '__init__.py'
+        with open(init_file, 'r', encoding='utf-8') as file_handle:
+            return _scan_for_version(file_handle)
+    except Exception:  # pylint: disable=broad-except
+        return "unknown"
+
+
 def get_current_version() -> str:
     """Get the current installed version"""
     try:
@@ -39,17 +63,7 @@ def get_current_version() -> str:
         import importlib.metadata
         return importlib.metadata.version('pfsense-redactor')
     except Exception:  # pylint: disable=broad-except
-        # Fallback: try to read from __init__.py directly
-        try:
-            init_file = Path(__file__).parent / '__init__.py'
-            with open(init_file, 'r', encoding='utf-8') as file_handle:
-                for line in file_handle:
-                    if line.startswith('__version__'):
-                        # Extract version from __version__ = "x.y.z"
-                        return line.split('=')[1].strip().strip('"').strip("'")
-        except Exception:
-            pass
-        return "unknown"
+        return _version_from_source()
 
 
 def check_pypi_version(timeout: int = 5) -> str | None:

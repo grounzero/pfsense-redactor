@@ -71,6 +71,15 @@ class ColouredFormatter(logging.Formatter):
         super().__init__(fmt, datefmt, style)
         self.stream = stream
 
+    @staticmethod
+    def _stream_is_tty(stream) -> bool:
+        """Whether the stream is a terminal that can render colour
+
+        Streams reaching here are not always file objects - the tests pass
+        stand-ins - so isatty is checked for rather than assumed.
+        """
+        return bool(stream) and hasattr(stream, 'isatty') and stream.isatty()
+
     def format(self, record):
         """Format log record with colours if outputting to a TTY
 
@@ -81,7 +90,7 @@ class ColouredFormatter(logging.Formatter):
         formatted = super().format(record)
 
         # Only add colours if outputting to a TTY
-        if self.stream and hasattr(self.stream, 'isatty') and self.stream.isatty():
+        if self._stream_is_tty(self.stream):
             levelname = record.levelname
             if levelname in self.COLOURS:
                 colour = self.COLOURS[levelname]
@@ -204,6 +213,19 @@ SECRET_TAG_DENYLIST: frozenset[str] = frozenset({
     'source_hash_key',       # HAProxy load-balancing algorithm selector
 })
 
+
+def _is_secret_query_param(name_lower: str, value: str) -> bool:
+    """Whether a URL query parameter carries a credential
+
+    The deny-list is consulted before the pattern, so a name that merely looks
+    secret-ish ('keylen', 'certref') is not redacted on the strength of a
+    substring match.
+    """
+    return (bool(value)
+            and name_lower not in SECRET_TAG_DENYLIST
+            and bool(SECRET_TAG_PATTERN.search(name_lower)))
+
+
 # Opaque free-text containers that routinely carry credentials inline.
 # custom_options is the standard place for OpenVPN/Unbound/Squid directives and
 # frequently holds askpass, auth-user-pass and inline keys.
@@ -293,6 +315,15 @@ RFC_DOC_NETWORKS_V4: tuple[IPNetwork, ...] = (
     ipaddress.ip_network('203.0.113.0/24'),
 )
 RFC_DOC_NETWORK_V6: IPNetwork = ipaddress.ip_network('2001:db8::/32')
+
+
+def _disqualified_as_blob(compact: str) -> bool:
+    """Whether a candidate is ruled out as encoded key material on shape alone
+
+    Too short to be a key, or containing whitespace - which encoded blobs do
+    not, once line wrapping has been removed, but ordinary prose does.
+    """
+    return len(compact) < BLOB_MIN_SCAN_LENGTH or ' ' in compact or '\t' in compact
 
 
 def _has_mixed_character_classes(compact: str, hex_only: bool) -> bool:
@@ -483,6 +514,40 @@ def _prolog_scan_is_conclusive(data: bytes, pos: int, at_eof: bool) -> bool:
     return at_eof or len(data) - pos >= len(_DOCTYPE_DECL)
 
 
+# Distinguishes "this buffer cannot decide yet" from "accept" (None), which a
+# bare None would conflate.
+_NEED_MORE_INPUT = object()
+
+
+def _examine_prolog(data: bytes, at_eof: bool) -> str | None | object:
+    """Judge the prolog from the bytes read so far
+
+    Returns a refusal reason, None to accept, or _NEED_MORE_INPUT when the
+    answer still depends on bytes that have not been read.
+    """
+    if len(data) > _PROLOG_MAX:
+        return (f"its XML prolog exceeds {_PROLOG_MAX // 1024} KiB "
+                "without reaching a root element")
+
+    start = len(_UTF8_BOM) if data.startswith(_UTF8_BOM) else 0
+    pos = _skip_prolog_noise(data, start)
+
+    if pos is not None and _prolog_scan_is_conclusive(data, pos, at_eof):
+        # Compared case-insensitively even though XML requires the upper-case
+        # spelling, so that '<!doctype' is refused here rather than relying on
+        # the parser to reject it.
+        if data[pos:pos + len(_DOCTYPE_DECL)].upper() == _DOCTYPE_DECL:
+            return "it declares a DOCTYPE, which pfSense never emits"
+        return None
+
+    if at_eof:
+        # Unterminated comment or PI. The file is malformed, and ET.parse
+        # reports that more precisely than this guard could.
+        return None
+
+    return _NEED_MORE_INPUT
+
+
 def _prolog_refusal_reason(input_file: str) -> str | None:
     """Say why the input's XML prolog is unacceptable, or None if it is fine
 
@@ -505,27 +570,9 @@ def _prolog_refusal_reason(input_file: str) -> str | None:
         while True:
             chunk = handle.read(_PROLOG_CHUNK)
             data += chunk
-
-            at_eof = not chunk
-            if len(data) > _PROLOG_MAX:
-                return (f"its XML prolog exceeds {_PROLOG_MAX // 1024} KiB "
-                        "without reaching a root element")
-
-            start = len(_UTF8_BOM) if data.startswith(_UTF8_BOM) else 0
-            pos = _skip_prolog_noise(data, start)
-
-            if pos is not None and _prolog_scan_is_conclusive(data, pos, at_eof):
-                # Compared case-insensitively even though XML requires the
-                # upper-case spelling, so that '<!doctype' is refused here
-                # rather than relying on the parser to reject it.
-                if data[pos:pos + len(_DOCTYPE_DECL)].upper() == _DOCTYPE_DECL:
-                    return "it declares a DOCTYPE, which pfSense never emits"
-                return None
-
-            if at_eof:
-                # Unterminated comment or PI. The file is malformed, and
-                # ET.parse reports that more precisely than this guard could.
-                return None
+            verdict = _examine_prolog(data, at_eof=not chunk)
+            if verdict is not _NEED_MORE_INPUT:
+                return verdict
 
 
 # ==========================================================================
@@ -624,30 +671,8 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self.MAX_TEXT_CHUNK: int = 1048576  # 1MB max for any text element
 
         # Allow-lists (opt-in, empty by default)
-        # IP allow-lists: support both individual IPs and CIDR networks
-        self.allowlist_ip_addrs: set[IPAddress] = set()
-        if allowlist_ips:
-            for ip_str in allowlist_ips:
-                try:
-                    self.allowlist_ip_addrs.add(ipaddress.ip_address(ip_str))
-                except ValueError:
-                    pass  # Will be handled as network or error elsewhere
-
-        self.allowlist_ip_networks: list[IPNetwork] = []
-        if allowlist_networks:
-            self.allowlist_ip_networks = list(allowlist_networks)
-
-        # Domain allow-lists: store both normalised Unicode and IDNA forms
-        self.allowlist_domains: set[str] = set()
-        self.allowlist_domains_idna: set[str] = set()
-        if allowlist_domains:
-            for domain in allowlist_domains:
-                norm_domain, idna_domain = self._normalise_domain(domain)
-                # Skip invalid/empty domains (returns None, None)
-                if norm_domain is not None:
-                    self.allowlist_domains.add(norm_domain)
-                    if idna_domain and idna_domain != norm_domain:
-                        self.allowlist_domains_idna.add(idna_domain)
+        self._ingest_allowlist_ips(allowlist_ips, allowlist_networks)
+        self._ingest_allowlist_domains(allowlist_domains)
 
         # Sample collection for --dry-run-verbose
         self.sample_limit: int = self.SAMPLE_LIMIT
@@ -699,6 +724,35 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             r'-----BEGIN (?:CERTIFICATE|RSA PRIVATE KEY|EC PRIVATE KEY|ENCRYPTED PRIVATE KEY|PRIVATE KEY|PUBLIC KEY|OPENVPN STATIC KEY|OPENSSH PRIVATE KEY)-----'
         )
 
+    def _ingest_allowlist_ips(self, allowlist_ips: set[str] | None,
+                              allowlist_networks: list[IPNetwork] | None) -> None:
+        """Populate the IP allow-lists, accepting both addresses and CIDRs"""
+        self.allowlist_ip_addrs: set[IPAddress] = set()
+        self.allowlist_ip_networks: list[IPNetwork] = list(allowlist_networks or [])
+
+        for ip_str in allowlist_ips or ():
+            try:
+                self.allowlist_ip_addrs.add(ipaddress.ip_address(ip_str))
+            except ValueError:
+                pass  # Will be handled as network or error elsewhere
+
+    def _ingest_allowlist_domains(self, allowlist_domains: set[str] | None) -> None:
+        """Populate the domain allow-lists in both Unicode and IDNA forms
+
+        Both are stored so a host written either way matches the same entry.
+        """
+        self.allowlist_domains: set[str] = set()
+        self.allowlist_domains_idna: set[str] = set()
+
+        for domain in allowlist_domains or ():
+            norm_domain, idna_domain = self._normalise_domain(domain)
+            # Skip invalid/empty domains (returns None, None)
+            if norm_domain is None:
+                continue
+            self.allowlist_domains.add(norm_domain)
+            if idna_domain and idna_domain != norm_domain:
+                self.allowlist_domains_idna.add(idna_domain)
+
     def _normalise_domain(self, domain: str) -> tuple[str | None, str | None]:
         """Normalise domain: lowercase, strip leading and trailing dots, handle wildcards, compute IDNA
 
@@ -737,17 +791,19 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # Compute IDNA form using cached function
         host_idna = _idna_encode(host_l)
 
-        # Check exact match or suffix match against Unicode forms
-        for allow_domain in self.allowlist_domains:
-            if host_l == allow_domain or host_l.endswith('.' + allow_domain):
-                return True
+        # Both forms are checked so a host written either way matches the
+        # same allow-list entry.
+        return (self._matches_allowed_domain(host_l, self.allowlist_domains)
+                or self._matches_allowed_domain(host_idna, self.allowlist_domains_idna))
 
-        # Check exact match or suffix match against IDNA forms
-        for allow_domain_idna in self.allowlist_domains_idna:
-            if host_idna == allow_domain_idna or host_idna.endswith('.' + allow_domain_idna):
-                return True
+    @staticmethod
+    def _matches_allowed_domain(host: str, allowed: set[str]) -> bool:
+        """Whether host equals, or is a subdomain of, any allowed domain
 
-        return False
+        The leading dot on the suffix test matters: without it 'notexample.com'
+        would match an allow-list entry of 'example.com'.
+        """
+        return any(host == domain or host.endswith('.' + domain) for domain in allowed)
 
     def _is_ip_allowed(self, ip: IPAddress) -> bool:
         """Check if an IP address is in the allow-list (including CIDR networks)"""
@@ -796,6 +852,36 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         host_parts = host.split(':')
         return f"[{host_parts[0]}:{host_parts[1]}:*:****::{host_parts[-1]}]" if len(host_parts) >= 3 else f"[{host}]"
 
+    @staticmethod
+    def _build_sample_netloc(parts: SplitResult, masked_host: str) -> str:
+        """Assemble the netloc for a sample display
+
+        The password becomes *** rather than disappearing, so the preview still
+        shows that one was there.
+        """
+        userinfo = ''
+        if parts.username:
+            userinfo = f"{parts.username}:***@" if parts.password else f"{parts.username}@"
+        netloc = f"{userinfo}{masked_host}"
+        if parts.port:
+            netloc += f":{parts.port}"
+        return netloc
+
+    @staticmethod
+    def _join_bracketed_url(parts: SplitResult, netloc: str,
+                            path: str, query: str) -> str:
+        """Reassemble a sample URL whose masked host is a bracketed IPv6 literal
+
+        Kept as hand assembly rather than urlunsplit, which is how this branch
+        has always built the bracketed form.
+        """
+        result = f"{parts.scheme}://{netloc}{path}"
+        if query:
+            result += f"?{query}"
+        if parts.fragment:
+            result += f"#{parts.fragment}"
+        return result
+
     def _mask_url_sample(self, value: str) -> str:
         """Mask URL for sample display
 
@@ -812,25 +898,14 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 return value
 
             masked_host = self._mask_sample_host(host)
-
-            userinfo = ''
-            if parts.username:
-                userinfo = f"{parts.username}:***@" if parts.password else f"{parts.username}@"
-            netloc = f"{userinfo}{masked_host}"
-            if parts.port:
-                netloc += f":{parts.port}"
+            netloc = self._build_sample_netloc(parts, masked_host)
 
             # Credentials also live in the path and query, not just userinfo
             safe_path, _ = self._build_redacted_path(parts.path)
             safe_query, _ = self._build_redacted_query(parts.query)
 
             if '[' in masked_host:
-                result = f"{parts.scheme}://{netloc}{safe_path}"
-                if safe_query:
-                    result += f"?{safe_query}"
-                if parts.fragment:
-                    result += f"#{parts.fragment}"
-                return result
+                return self._join_bracketed_url(parts, netloc, safe_path, safe_query)
             return urlunsplit((parts.scheme, netloc, safe_path, safe_query, parts.fragment))
         except (ValueError, AttributeError):
             pass
@@ -1182,53 +1257,63 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # multicast, reserved and unspecified
         return self.keep_private_ips and not ip.is_global
 
+    def _mask_one_ip_token(self, token: str) -> str:
+        """Mask a single IP-like token, or return it unchanged
+
+        A method rather than a closure inside _mask_ip_like_tokens: it uses
+        nothing but self and its argument, and analysers that fold nested
+        functions into their parent counted the whole thing as one oversized
+        unit.
+        """
+        # Skip already-masked tokens
+        if token in ('XXX.XXX.XXX.XXX', 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX', '[XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX]'):
+            return token
+        original_token = token
+
+        token, port_suffix = self._strip_ip_token_port(token)
+
+        ip, bracketed, zone = self._parse_ip_token(token)
+        if ip is None:
+            return original_token
+
+        if self._should_preserve_ip(ip):
+            return original_token
+
+        # Anonymisation mode
+        if self.anonymise:
+            rep = self._anonymise_ip(str(ip))
+        else:
+            # Standard redaction
+            rep = 'XXX.XXX.XXX.XXX' if ip.version == 4 else 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX'
+
+        # Preserve zone identifier if present
+        if zone:
+            rep = f"{rep}%{zone}"
+        if bracketed:
+            rep = f"[{rep}]"
+
+        result = rep + port_suffix
+
+        # Only count if actually changed
+        if result != original_token:
+            self.stats['ips_redacted'] += 1
+            # Collect sample for dry-run-verbose
+            self._add_sample('IP', str(ip), rep)
+
+        return result
+
     def _mask_ip_like_tokens(self, text: str) -> str:
         """IP address masking using ipaddress module"""
-        def repl(token: str) -> str:
-            # Skip already-masked tokens
-            if token in ('XXX.XXX.XXX.XXX', 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX', '[XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX]'):
-                return token
-            original_token = token
-
-            token, port_suffix = self._strip_ip_token_port(token)
-
-            ip, bracketed, zone = self._parse_ip_token(token)
-            if ip is None:
-                return original_token
-
-            if self._should_preserve_ip(ip):
-                return original_token
-
-            # Anonymisation mode
-            if self.anonymise:
-                rep = self._anonymise_ip(str(ip))
-            else:
-                # Standard redaction
-                rep = 'XXX.XXX.XXX.XXX' if ip.version == 4 else 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX'
-
-            # Preserve zone identifier if present
-            if zone:
-                rep = f"{rep}%{zone}"
-            if bracketed:
-                rep = f"[{rep}]"
-
-            result = rep + port_suffix
-
-            # Only count if actually changed
-            if result != original_token:
-                self.stats['ips_redacted'] += 1
-                # Collect sample for dry-run-verbose
-                self._add_sample('IP', str(ip), rep)
-
-            return result
-
         # Split conservatively - matches IP-like tokens including zone IDs and ports
         # Pattern matches: IPs with optional brackets, zone identifiers, and ports
         # Examples: [fe80::1%eth0]:51820, [fe80::1%eth0], fe80::1%eth0, 192.168.1.1
         parts = self._ip_token_splitter.split(text)
         # Match tokens that look like IPs (with or without brackets/zones/ports)
         # Use pre-compiled pattern for consistency and performance
-        return ''.join(repl(p) if self.IP_PATTERN.match(p) else p for p in parts)
+        return ''.join(
+            self._mask_one_ip_token(p) if self.IP_PATTERN.match(p) else p
+            for p in parts
+        )
 
     def _anonymise_domain(self, domain: str) -> str:
         """Generate a consistent alias for a domain
@@ -1364,20 +1449,35 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         masked = self._anonymise_domain(host) if self.anonymise else 'example.com'
         return masked, True, False
 
+    @staticmethod
+    def _needs_ipv6_brackets(host: str, is_ipv6: bool) -> bool:
+        """Whether a host must be bracketed to be a valid URL netloc
+
+        A colon in an unbracketed host means IPv6 even when the caller did not
+        already know it, which is why the flag alone is not enough.
+        """
+        return is_ipv6 or (':' in host and not host.startswith('['))
+
+    def _build_userinfo(self, parts: SplitResult) -> str:
+        """Build the 'user:pass@' prefix of a netloc, redacting as configured
+
+        The password is always replaced; the username only under
+        --redact-url-usernames, since it is often an ordinary account name that
+        is more useful left readable.
+        """
+        if not parts.username:
+            return ''
+
+        username = 'REDACTED' if self.redact_url_usernames else parts.username
+        password = ':REDACTED' if parts.password else ''
+        return f"{username}{password}@"
+
     def _build_netloc(self, parts: SplitResult, host: str, is_ipv6: bool) -> str:
         """Build netloc with userinfo, host, and port"""
-        userinfo = ''
-        if parts.username:
-            if self.redact_url_usernames:
-                userinfo = 'REDACTED'
-            else:
-                userinfo = parts.username
-            if parts.password:
-                userinfo += ':REDACTED'
-            userinfo += '@'
+        userinfo = self._build_userinfo(parts)
 
         # Wrap IPv6 in brackets
-        if is_ipv6 or (':' in host and not host.startswith('[')):
+        if self._needs_ipv6_brackets(host, is_ipv6):
             host = f"[{host}]"
 
         netloc = f"{userinfo}{host}"
@@ -1421,7 +1521,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         out = []
         for name, value in pairs:
             name_l = name.lower()
-            if value and name_l not in SECRET_TAG_DENYLIST and SECRET_TAG_PATTERN.search(name_l):
+            if _is_secret_query_param(name_l, value):
                 out.append((name, '[REDACTED]'))
                 changed = True
             else:
@@ -1599,31 +1699,43 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         'user:password@host' intact while the query secret next to it showed as
         [REDACTED], which reads as sanitised when it is not.
         """
-        def replacer(match):
-            url = match.group(0)
-            if len(url) > self.MAX_URL_LENGTH:
-                return url
+        return self.URL_RE.sub(self._redact_url_secrets_in_match, text)
 
-            parts = self._parse_url_safely(url)
-            if parts is None or not parts.netloc:
-                return url
+    def _redact_url_secrets_in_match(self, match) -> str:
+        """Redact credentials in one matched URL, leaving the host alone
 
-            netloc, netloc_changed = self._redact_netloc_userinfo(parts)
-            path = self._redact_path_secrets(parts.path) if self.aggressive else parts.path
-            query = self._redact_query_secrets(parts.query)
+        A method rather than a closure, for the same reason as
+        _mask_one_ip_token: it needs only self and the match.
+        """
+        url = match.group(0)
+        if len(url) > self.MAX_URL_LENGTH:
+            return url
 
-            # netloc_changed must be part of this test: a URL carrying
-            # credentials but no secret-named query parameter would otherwise
-            # never be rewritten at all.
-            if not netloc_changed and path == parts.path and query == parts.query:
-                return url
+        parts = self._parse_url_safely(url)
+        if parts is None or not parts.netloc:
+            return url
 
-            if netloc_changed:
-                self.stats['url_secrets_redacted'] += 1
+        netloc, netloc_changed = self._redact_netloc_userinfo(parts)
+        path = self._redact_path_secrets(parts.path) if self.aggressive else parts.path
+        query = self._redact_query_secrets(parts.query)
 
-            return urlunsplit((parts.scheme, netloc, path, query, parts.fragment))
+        if self._url_parts_unchanged(parts, netloc_changed, path, query):
+            return url
 
-        return self.URL_RE.sub(replacer, text)
+        if netloc_changed:
+            self.stats['url_secrets_redacted'] += 1
+
+        return urlunsplit((parts.scheme, netloc, path, query, parts.fragment))
+
+    @staticmethod
+    def _url_parts_unchanged(parts: SplitResult, netloc_changed: bool,
+                             path: str, query: str) -> bool:
+        """Whether redaction left the URL identical, so it can be returned as-is
+
+        netloc_changed must be part of this test: a URL carrying credentials but
+        no secret-named query parameter would otherwise never be rewritten.
+        """
+        return not netloc_changed and path == parts.path and query == parts.query
 
     def _redact_urls_safe(self, text: str) -> str:
         """Redact URLs with ReDoS protection via length pre-filtering"""
@@ -1890,7 +2002,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # ordinary prose ("This is a fairly long note") into an unbroken
         # alphanumeric run that looks exactly like base64.
         compact = text.replace('\n', '').replace('\r', '')
-        if len(compact) < BLOB_MIN_SCAN_LENGTH or ' ' in compact or '\t' in compact:
+        if _disqualified_as_blob(compact):
             return False
 
         if not (BASE64ISH_RE.match(compact) or HEXISH_RE.match(compact)):
@@ -2041,14 +2153,23 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return True
 
+    def _looks_like_cert_material(self, text: str | None) -> bool:
+        """Whether an element's text is a certificate or key rather than a reference
+
+        Short values in cert-named elements are references (a certref, a key
+        id), not the material itself, so length is what separates them absent a
+        PEM header.
+        """
+        if not text:
+            return False
+        return bool(self.PEM_MARKER.search(text)) or len(text.strip()) > self.CERT_MIN_LENGTH
+
     def _redact_cert_key_element(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Redact certificate/key elements. Returns True if this is a cert/key element."""
         if not self._is_cert_tag(tag, tag_base):
             return False
 
-        # Use class constant for minimum certificate length
-        if element.text and (self.PEM_MARKER.search(element.text) or
-                            len(element.text.strip()) > self.CERT_MIN_LENGTH):
+        if self._looks_like_cert_material(element.text):
             self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
 
         return True
@@ -2095,6 +2216,15 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                     element.attrib[attr], redact_ips, redact_domains
                 )
 
+    @staticmethod
+    def _carries_unhandled_url(text: str | None, handled: bool) -> bool:
+        """Whether text still needs the URL-credential pass
+
+        'handled' means an earlier, more specific pass already rewrote this
+        element, so running the URL pass over it again would double-process it.
+        """
+        return bool(text) and not handled and '://' in text
+
     def _redact_element_text(
         self, tag: str, tag_base: str, element: ET.Element,
         redact_ips: bool, redact_domains: bool
@@ -2124,7 +2254,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # carriers (e.g. <updateurl>, <webhook_url>). Previously these were
         # only touched under --aggressive, so the token survived by default.
         # Host anonymisation deliberately stays out of the default path here.
-        if element.text and not handled and '://' in element.text:
+        if self._carries_unhandled_url(element.text, handled):
             element.text = self._redact_url_secrets_only(element.text)
 
         return handled
@@ -2259,12 +2389,12 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 return False
             root = tree.getroot()
 
+            # Both lines are progress reporting under the same condition, and
+            # nothing runs between them, so they share one guard.
             if not dry_run and not stdout_mode:
                 self.logger.info("[+] Parsing XML configuration from: %s", input_file)
-
-            # Redact the configuration
-            if not dry_run and not stdout_mode:
                 self.logger.info("[+] Redacting sensitive information...")
+
             self.redact_element(root, redact_ips, redact_domains)
 
             # Dry run mode: just print stats
@@ -2702,6 +2832,19 @@ def validate_file_path(
         return False, f"Error validating path: {e}", None
 
 
+def _is_disallowed_absolute(is_absolute_form: bool, allow_absolute: bool,
+                            resolved_str: str) -> bool:
+    """Whether an absolute path is refused for being absolute
+
+    Only the reason is named here, not the ordering: this check must still run
+    *after* the sensitive-directory check in _resolved_path_error, so that
+    --allow-absolute-paths cannot reach a protected directory.
+    """
+    return (is_absolute_form
+            and not allow_absolute
+            and not _is_safe_absolute_location(resolved_str))
+
+
 def _resolved_path_error(
     file_path: str, resolved: Path, is_absolute_form: bool, allow_absolute: bool,
     is_output: bool, sensitive_dirs: frozenset[str]
@@ -2719,7 +2862,7 @@ def _resolved_path_error(
     if is_output and _is_in_sensitive_directory(resolved_str, sensitive_dirs):
         return f"Cannot write to sensitive system directory: {resolved}"
 
-    if is_absolute_form and not allow_absolute and not _is_safe_absolute_location(resolved_str):
+    if _is_disallowed_absolute(is_absolute_form, allow_absolute, resolved_str):
         return f"Absolute paths not allowed (use --allow-absolute-paths): {file_path}"
 
     if is_output and resolved_str in DANGEROUS_OUTPUT_FILES:
@@ -2885,20 +3028,42 @@ def _resolve_input_path(
         sys.exit(1)
 
 
+def _output_path_will_be_used(args: argparse.Namespace) -> bool:
+    """Whether args.output is worth validating
+
+    The only skipped case is --stdout without --dry-run, where args.output is
+    never written.
+    """
+    return bool(args.output) and (args.dry_run or not args.stdout)
+
+
+def _would_overwrite_without_force(args: argparse.Namespace, resolved: Path) -> bool:
+    """Whether writing would destroy an existing file the user did not consent to
+
+    Overwrite protection applies only when a write will actually happen, so the
+    modes that write nothing are excluded first, then explicit consent.
+    """
+    if args.dry_run or args.stdout:
+        return False
+    if args.force:
+        return False
+    return resolved.exists()
+
+
 def _resolve_output_path(
     args: argparse.Namespace, sensitive_dirs: frozenset[str], logger: logging.Logger
 ) -> None:
     """Validate the output path, including the extra --inplace checks"""
     # Validated whenever the path will be used. The only skipped case is
     # --stdout without --dry-run, where args.output is never written.
-    if args.output and (args.dry_run or not args.stdout):
+    if _output_path_will_be_used(args):
         resolved = _validate_as_output_target(
             args.output, args, sensitive_dirs, logger,
             "[!] Error: Invalid output path: %s"
         )
 
         # Overwrite protection applies only when a write will actually happen
-        if not args.dry_run and not args.stdout and not args.force and resolved.exists():
+        if _would_overwrite_without_force(args, resolved):
             logger.error("[!] Error: Output file '%s' already exists. Use --force to overwrite.", args.output)
             sys.exit(1)
 
@@ -3043,6 +3208,19 @@ def _configure_logging_from_args(args: argparse.Namespace) -> None:
     setup_logging(log_level, use_stderr=args.stdout)
 
 
+def _needs_generated_output_name(args: argparse.Namespace) -> bool:
+    """Whether a destination has to be invented because none was given
+
+    Every mode that writes somewhere else - stdout, in place, or nowhere at all
+    under --dry-run - supplies its own destination.
+    """
+    if args.stdout or args.inplace:
+        return False
+    if args.dry_run:
+        return False
+    return not args.output
+
+
 def _apply_argument_defaults(args: argparse.Namespace) -> None:
     """Fill in values implied by other flags, before any validation"""
     # --dry-run-verbose is a louder --dry-run
@@ -3050,7 +3228,7 @@ def _apply_argument_defaults(args: argparse.Namespace) -> None:
         args.dry_run = True
 
     # Auto-generate output filename when one is needed but not given
-    if not args.stdout and not args.inplace and not args.dry_run and not args.output:
+    if _needs_generated_output_name(args):
         input_path = Path(args.input)
         args.output = str(input_path.parent / f"{input_path.stem}-redacted{input_path.suffix}")
 
