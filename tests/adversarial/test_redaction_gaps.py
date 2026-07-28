@@ -29,6 +29,14 @@ CANARY_PEM = (
     "-----END RSA PRIVATE KEY-----"
 )
 
+# Synthetic: HS256 header, a payload naming a canary subject, and a signature
+# segment that is not a signature of anything.
+JWT = (
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+    ".eyJzdWIiOiJDQU5BUllfSldUIn0"
+    ".dBjftJeZ4CVPmB92K27uhbUJU1p1r6wW1gFWFOEjXk"
+)
+
 
 def redact(xml: str, **kwargs) -> str:
     """Run a full redaction over `xml` and return the serialised result
@@ -54,11 +62,6 @@ def wrap(inner: str) -> str:
 class TestKeyMaterialSurvival:
     """A private key must not survive, whatever element or attribute holds it"""
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-01: a PEM private key in an unrecognised element is "
-               "reported as high-entropy but retained in default mode",
-    )
     def test_pem_in_unknown_element_is_redacted(self):
         """Key material must not depend on the element being recognised"""
         out = redact(wrap(f"<vendorblob>{CANARY_PEM}</vendorblob>"))
@@ -70,21 +73,21 @@ class TestKeyMaterialSurvival:
         out = redact(wrap(f"<vendorblob>{CANARY_PEM}</vendorblob>"), aggressive=True)
         assert "BEGIN RSA PRIVATE KEY" not in out
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-02: a PEM private key in an attribute whose name is not "
-               "matched by SENSITIVE_ATTR_PATTERN is reported but retained",
-    )
     def test_pem_in_attribute_is_redacted(self):
         """Nor on the attribute name being recognised"""
         out = redact(wrap(f'<endpoint privkey="{CANARY_PEM}"/>'))
         assert "BEGIN RSA PRIVATE KEY" not in out
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-03: no decoding layer - base64-wrapped key material is "
-               "never decoded, so the PEM marker is never seen",
-    )
+    def test_pem_in_wholly_unremarkable_attribute_is_redacted(self):
+        """Not even a name-pattern match: the value alone must be enough
+
+        'privkey' now matches the unified name pattern, so it no longer proves
+        the value path works. 'blob' matches nothing at all.
+        """
+        out = redact(wrap(f'<endpoint blob="{CANARY_PEM}"/>'))
+        assert "BEGIN RSA PRIVATE KEY" not in out
+        assert "CANARYPRIVATEKEY" not in out
+
     def test_base64_wrapped_pem_is_redacted(self):
         """One layer of encoding must not conceal a key"""
         import base64  # pylint: disable=import-outside-toplevel
@@ -92,10 +95,6 @@ class TestKeyMaterialSurvival:
         out = redact(wrap(f"<payload>{encoded}</payload>"))
         assert not find_key_material(out), "key material recoverable by decoding"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-03: double-base64-wrapped key material is not decoded",
-    )
     def test_double_base64_wrapped_pem_is_redacted(self):
         """Nor two"""
         import base64  # pylint: disable=import-outside-toplevel
@@ -103,6 +102,79 @@ class TestKeyMaterialSurvival:
         twice = base64.b64encode(once.encode()).decode()
         out = redact(wrap(f"<blob>{twice}</blob>"))
         assert not find_key_material(out), "key material recoverable by decoding twice"
+
+    def test_base64url_wrapped_pem_is_redacted(self):
+        """The URL-safe alphabet is the same secret in a different spelling"""
+        import base64  # pylint: disable=import-outside-toplevel
+        encoded = base64.urlsafe_b64encode(CANARY_PEM.encode()).decode()
+        out = redact(wrap(f"<payload>{encoded}</payload>"))
+        assert not find_key_material(out)
+
+    def test_unpadded_base64_wrapped_pem_is_redacted(self):
+        """Values stored in attributes and JSON routinely lose their padding"""
+        import base64  # pylint: disable=import-outside-toplevel
+        encoded = base64.b64encode(CANARY_PEM.encode()).decode().rstrip("=")
+        out = redact(wrap(f"<payload>{encoded}</payload>"))
+        assert not find_key_material(out)
+
+    @pytest.mark.parametrize(
+        "label",
+        ["PRIVATE KEY", "RSA PRIVATE KEY", "EC PRIVATE KEY", "DSA PRIVATE KEY",
+         "OPENSSH PRIVATE KEY", "ENCRYPTED PRIVATE KEY", "ED25519 PRIVATE KEY",
+         "PGP PRIVATE KEY BLOCK", "OPENVPN STATIC KEY V1"],
+    )
+    def test_every_private_key_header_is_redacted(self, label):
+        """One container header per supported form, in an unknown element"""
+        pem = (f"-----BEGIN {label}-----\n"
+               "CANARYPRIVATEKEYCANARYPRIVATEKEYCANARYPRIVATEKEYCANARYPRIV0123\n"
+               f"-----END {label}-----")
+        out = redact(wrap(f"<vendorblob>{pem}</vendorblob>"))
+
+        assert f"BEGIN {label}" not in out, label
+        assert "CANARYPRIVATEKEY" not in out, label
+
+    def test_public_key_header_is_not_treated_as_private(self):
+        """Over-redaction is a failure too: a public key is not a private one
+
+        Pins the boundary of the unconditional rule, so widening it later is a
+        deliberate act rather than a regex accident.
+        """
+        from pfsense_redactor.redactor import (  # pylint: disable=import-outside-toplevel
+            contains_private_key_material,
+        )
+        pem = ("-----BEGIN PUBLIC KEY-----\n"
+               "CANARYPUBLICKEYCANARYPUBLICKEYCANARYPUBLIC0123\n"
+               "-----END PUBLIC KEY-----")
+
+        assert not contains_private_key_material(pem)
+        assert not contains_private_key_material("-----BEGIN CERTIFICATE-----\nAAAA\n")
+
+    @pytest.mark.parametrize(
+        "wrapper",
+        ["{pem}", "   {pem}   ", "\n\n{pem}\n\n", "\t{pem}\t"],
+        ids=["bare", "spaces", "newlines", "tabs"],
+    )
+    def test_surrounding_whitespace_does_not_conceal_a_key(self, wrapper):
+        """Leading and trailing whitespace is not a hiding place"""
+        out = redact(wrap(f"<vendorblob>{wrapper.format(pem=CANARY_PEM)}</vendorblob>"))
+        assert "BEGIN RSA PRIVATE KEY" not in out
+
+    def test_pem_is_redacted_in_a_known_field_too(self):
+        """The known path must not regress while the unknown one is fixed"""
+        out = redact(f"<pfsense><cert><refid>abc</refid><prv>{CANARY_PEM}</prv></cert></pfsense>")
+        assert "BEGIN RSA PRIVATE KEY" not in out
+
+    @pytest.mark.parametrize(
+        "flags",
+        [{}, {"aggressive": True}, {"anonymise": True}, {"redact_descriptions": True},
+         {"keep_private_ips": True}],
+        ids=["default", "aggressive", "anonymise", "descriptions", "keep-private"],
+    )
+    def test_pem_dies_in_every_mode(self, flags):
+        """'Every mode' is the claim, so every mode is the test"""
+        out = redact(wrap(f"<vendorblob>{CANARY_PEM}</vendorblob>"), **flags)
+        assert "BEGIN RSA PRIVATE KEY" not in out, flags
+        assert "CANARYPRIVATEKEY" not in out, flags
 
 
 # ==========================================================================
@@ -130,44 +202,73 @@ class TestEntropyDetectorBlindSpots:
         """The case that works today - the control for the three below"""
         assert self._noticed("aGVsbG8gd29ybGQxMjM0NTY3ODkwQUJDREVGRw==")
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-04: _has_mixed_character_classes requires two of "
-               "digit/upper/lower, so an all-lowercase blob is invisible",
-    )
     def test_lowercase_only_blob_is_noticed(self):
         """Character-class uniformity must not confer invisibility"""
         assert self._noticed("canaryadvlowercaseonlysecretvaluehere")
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-04: an all-uppercase blob is invisible for the same reason",
-    )
     def test_uppercase_only_blob_is_noticed(self):
         """The same, in the other direction"""
         assert self._noticed("CANARYADVUPPERCASEONLYSECRETVALUEHERE")
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-04: the hex branch requires a digit, so a hex secret "
-               "made only of a-f is invisible",
-    )
     def test_digitless_hex_blob_is_noticed(self):
         """A hex secret spelled only in a-f is still a secret"""
         assert self._noticed("deadbeefdeadbeefdeadbeefcafefeedcafefeed")
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-05: the '.' separators fail BASE64ISH_RE, so a JWT is "
-               "not seen as high-entropy",
-    )
+    def test_digit_only_blob_is_noticed(self):
+        """Nor does being all digits make a 40-character value ordinary"""
+        assert self._noticed("8163264128256512102420484096819216384327")
+
     def test_jwt_is_noticed(self):
         """A JWT is a credential whatever its separators do to the shape test"""
-        assert self._noticed(
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-            ".eyJzdWIiOiJDQU5BUllfSldUIn0"
-            ".dBjftJeZ4CVPmB92K27uhbUJU1p1r6wW1gFWFOEjXk"
+        assert self._noticed(JWT)
+
+    def test_jwt_is_redacted_not_merely_reported(self):
+        """A JWT is unambiguous, so report-only is not good enough for it"""
+        out = redact(wrap(f"<sometoken_field>{JWT}</sometoken_field>"))
+
+        assert "eyJhbGciOiJIUzI1NiIs" not in out
+        assert "[REDACTED]" in out
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "host.internal.example",
+            "1.2.3",
+            "10.20.30.40",
+            "one.two.three",
+            "archive.tar.gz",
+            "backup-2026-07-28.config.xml",
+            "org.freedesktop.systemd1",
+            "com.example.someverylongreversedpackagename",
+        ],
+    )
+    def test_ordinary_dotted_strings_are_not_jwts(self, value):
+        """The cost of a JWT detector is what else it decides is a JWT"""
+        from pfsense_redactor.redactor import (  # pylint: disable=import-outside-toplevel
+            contains_jwt,
         )
+        assert not contains_jwt(value), value
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            "deadbeef",                                # short hex
+            "550e8400-e29b-41d4-a716-446655440000",    # UUID
+            "ac:de:48:00:11:22",                       # MAC
+            "2001:0db8:85a3:0000:0000:8a2e:0370:7334",  # IPv6
+            "This is an ordinary operator note about the WAN link",
+            "https://feeds.example.net/lists/blocklist.txt",
+            "<rule><descr>allow web</descr></rule>",
+            "3",                                       # certificate serial
+            "00a3f1",                                  # short certificate serial
+            "1234567890",                              # short numeric identifier
+            "0000000000000000000000000000000000000000",  # all-zero field
+            "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",  # padding
+        ],
+    )
+    def test_benign_values_are_not_opaque_secrets(self, value):
+        """Every one of these appears in a real config and none is a secret"""
+        assert not self._noticed(value), value
 
 
 # ==========================================================================
@@ -237,32 +338,72 @@ class TestNameCoverage:
         redactor = PfSenseRedactor()
         assert redactor._is_secret_tag(tag, tag)  # pylint: disable=protected-access
 
+    # Names that match the pattern but denote a choice, a length or a
+    # reference. Each was observed in a real pfSense or package config.
+    NOT_SECRETS = ["keylen", "certref", "caref", "keyid", "publickey",
+                   "pass_order", "password_type", "sendcommunity",
+                   "source_hash_key", "hash-algorithm", "hashalgo",
+                   "digestalgo", "auth-retry-none"]
+
+    # Innocent names that contain a secret-ish word as a substring. These are
+    # what the word-anchored half of the pattern exists to protect.
+    INNOCENT = ["author", "bypass", "compass_heading", "monkeys_allowed",
+                "authserver", "authdomain", "proxy_authtype",
+                "authentication_method", "enable_cookie", "normalize_cookies",
+                "signature_algorithm"]
+
     @pytest.mark.parametrize("tag", UNMATCHED)
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-09: SECRET_TAG_PATTERN does not cover these credential-"
-               "bearing element names",
-    )
     def test_unmatched_secret_tags_are_matched(self, tag):
-        """Credential-bearing element names the pattern misses"""
+        """Credential-bearing element names the pattern used to miss"""
         redactor = PfSenseRedactor()
         assert redactor._is_secret_tag(tag, tag)  # pylint: disable=protected-access
+
+    @pytest.mark.parametrize("tag", NOT_SECRETS)
+    def test_deny_listed_names_stay_deny_listed(self, tag):
+        """Widening the pattern must not consume the deny-list"""
+        redactor = PfSenseRedactor()
+        assert not redactor._is_secret_tag(tag, tag)  # pylint: disable=protected-access
+
+    @pytest.mark.parametrize("name", INNOCENT)
+    def test_innocent_names_are_not_classified_as_secrets(self, name):
+        """A substring is not a meaning: 'author' is not 'auth'"""
+        redactor = PfSenseRedactor()
+        assert not redactor._is_secret_name(name), name  # pylint: disable=protected-access
+
+    def test_digest_element_keeps_an_algorithm_name(self):
+        """<digest>SHA384</digest> selects an algorithm and is not a secret"""
+        out = redact("<pfsense><ipsec><phase1><digest>SHA384</digest></phase1></ipsec></pfsense>")
+        assert "SHA384" in out
+
+    def test_digest_element_loses_anything_else(self):
+        """The same element holding a digest, rather than naming one, is a secret"""
+        out = redact("<pfsense><pkg><digest>CANARY_DIGEST_VALUE</digest></pkg></pfsense>")
+        assert "CANARY_DIGEST_VALUE" not in out
 
     @pytest.mark.parametrize(
         "name", ["bearer", "cookie", "signature", "credentials", "privkey",
                  "licensekey", "psk", "passphrase", "community"]
-    )
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-10: SECRET_TAG_PATTERN and SENSITIVE_ATTR_PATTERN "
-               "disagree, so an element and an attribute of the same name get "
-               "different treatment",
     )
     def test_element_and_attribute_patterns_agree(self, name):
         """The same name must mean the same thing either side"""
         denied = name in SECRET_TAG_DENYLIST
         as_element = bool(SECRET_TAG_PATTERN.search(name)) and not denied
         as_attribute = bool(SENSITIVE_ATTR_PATTERN.search(name))
+        assert as_element == as_attribute, (
+            f"'{name}': element={as_element} attribute={as_attribute}"
+        )
+
+    @pytest.mark.parametrize("name", ALREADY_MATCHED + UNMATCHED + NOT_SECRETS + INNOCENT)
+    def test_the_same_name_decides_the_same_way_in_both_positions(self, name):
+        """The parity law, stated over every name this file knows about
+
+        Asserted through the predicate rather than the raw pattern, so the
+        deny-list is part of the law rather than an exception to it.
+        """
+        redactor = PfSenseRedactor()
+        as_element = redactor._is_secret_tag(name, name)  # pylint: disable=protected-access
+        as_attribute = redactor._should_redact_attribute(name)  # pylint: disable=protected-access
+
         assert as_element == as_attribute, (
             f"'{name}': element={as_element} attribute={as_attribute}"
         )
@@ -385,15 +526,21 @@ class TestAdversarialCorpusEndToEnd:
         run_redactor(adversarial_canary, "--dry-run-verbose")
         assert adversarial_canary.read_bytes() == before
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-01/02/03: private key material survives default-mode "
-               "redaction of the adversarial corpus",
-    )
     def test_no_key_material_survives_default_mode(self, adversarial_canary, run_redactor):
         """The mode the README leads with must not emit a private key"""
         result = run_redactor(adversarial_canary, "--stdout")
         assert not find_key_material(result.stdout)
+
+    def test_no_key_material_reaches_stderr_either(self, adversarial_canary, run_redactor):
+        """A key printed in a diagnostic is still a key that left the machine"""
+        for flags in ([], ["--aggressive"], ["--verbose"], ["--dry-run-verbose"],
+                      ["--fail-on-warn"]):
+            result = run_redactor(adversarial_canary, "--stdout", *flags)
+            combined = result.stdout + result.stderr
+
+            assert not find_key_material(combined), flags
+            assert "CANARYADV02PRIVATEKEY" not in combined, flags
+            assert "CANARYADV03PRIVATEKEY" not in combined, flags
 
     def test_no_key_material_survives_aggressive_mode(self, adversarial_canary, run_redactor):
         """--aggressive does clear these, but by shape rather than by decoding

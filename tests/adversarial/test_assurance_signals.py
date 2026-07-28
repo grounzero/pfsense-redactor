@@ -192,11 +192,35 @@ class TestMachineReadableAssurance:
         assert "retained" in data or "high_entropy_retained" in data
 
     def test_retained_paths_are_named_on_stderr(self, adversarial_canary, run_redactor):
-        """What exists today: prose, but at least specific prose"""
+        """What exists today: prose, but at least specific prose
+
+        The two paths this asserted on - telemetryagent/config/vendorblob and
+        endpoint[@privkey] - both held private-key material and are now
+        redacted rather than retained, so naming them as retained would be
+        false. The invariant is unchanged and is what is asserted here: a value
+        the tool decided to keep is located precisely enough to audit, not just
+        counted. The paths below are values the tool still deliberately keeps.
+        """
         result = run_redactor(adversarial_canary, "--stdout")
+
         assert "high-entropy value(s) retained" in result.stderr
-        assert "telemetryagent/config/vendorblob" in result.stderr
-        assert "endpoint[@privkey]" in result.stderr
+        assert "entropyagent/config/mixedblob" in result.stderr
+        assert "entropyagent/config/hexblob" in result.stderr
+
+    def test_redacted_key_material_is_not_reported_as_retained(
+        self, adversarial_canary, run_redactor
+    ):
+        """The counterpart: what was removed must not be listed as kept
+
+        A retained-value list that names something already redacted sends the
+        operator to audit a value that is no longer there, and inflates the
+        count --fail-on-warn reads.
+        """
+        result = run_redactor(adversarial_canary, "--stdout")
+
+        assert "telemetryagent/config/vendorblob" not in result.stderr
+        assert "endpoint[@privkey]" not in result.stderr
+        assert "entropyagent/config/jwt" not in result.stderr
 
     def test_summary_does_not_claim_more_than_it_did(self, adversarial_canary, run_redactor):
         """The summary must not read as a clean bill of health when it is not"""
