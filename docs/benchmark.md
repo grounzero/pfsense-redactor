@@ -15,7 +15,7 @@ than take them on trust.
 
 | Tool | Caught | Date tested |
 | --- | --- | --- |
-| **pfsense-redactor 1.1.1** | **42 / 46** | 2026-07-28 |
+| **pfsense-redactor** | **42 / 46** (43 / 46 with `--redact-descriptions`) | 2026-07-28 |
 | ForesightCyber pfSense Config Anonymizer | 17 / 46 | 2026-07-28 |
 | netgate-xlsx | 11 / 46 | 2026-07-28 |
 
@@ -51,7 +51,7 @@ gaps, which matters when comparing the columns:
 | `CANARY_HAPROXYCERTS` | `config/ha_certificates` | **Corpus artefact.** The value is a short literal. Short values in certificate-named elements are deliberately preserved as *references* (a `certref`, a key id), because they help a reader understand config structure and are not key material. With real PEM or base64 content the same element redacts to `[REDACTED_CERT_OR_KEY]`. |
 | `CANARY_SSLOFFLOAD` | `config/ssloffloadcert` | Same. |
 | `CANARY_WGPUB` | `item/publickey` | **Deliberate.** A WireGuard *public* key is not a secret; it is in `SECRET_TAG_DENYLIST`. It is identifying, so redact it with `--aggressive` if that matters to you. |
-| `CANARY_ATTR_PLAIN` | `config_note[@note]` | **Known limitation.** Free text in an XML attribute whose *name* is not sensitive. Attribute matching is name-driven, and pfSense barely uses attributes. No tool in this comparison caught it. |
+| `CANARY_ATTR_PLAIN` | `config_note[@note]` | **Caught with `--redact-descriptions`** (since 1.1.2), which now covers free-text attributes as well as elements. Not caught by default, because a note is often the most useful thing in a config to whoever is reading it. No other tool in this comparison caught it in any mode. |
 
 `netgate-xlsx` scores a pass on the two HAProxy rows because it redacts by
 element name regardless of content, which also removes the short references.
@@ -85,6 +85,8 @@ CANARY_HAPROXYCERTS
 CANARY_SSLOFFLOAD
 CANARY_WGPUB
 ```
+
+Add `--redact-descriptions` and `CANARY_ATTR_PLAIN` goes too, leaving three.
 
 Run the same file through any other tool and count its survivors the same way.
 

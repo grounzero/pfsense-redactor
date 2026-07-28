@@ -109,7 +109,7 @@ pfsense-redactor config.xml --inplace --force
 | `--no-redact-ips`        | Do not redact IP addresses                                                                                                                         |
 | `--no-redact-domains`    | Do not redact domain names                                                                                                                         |
 | `--redact-url-usernames` | Redact usernames in URLs (default: preserve usernames, always redact passwords)                                                                    |
-| `--redact-descriptions`  | Redact free-text descriptions and identifiers (`descr`, `detail`, `hostname`, `ssid`). Off by default as these aid troubleshooting                  |
+| `--redact-descriptions`  | Redact free-text descriptions and identifiers (`descr`, `detail`, `hostname`, `ssid`) and free-text **attributes** (`note`, `comment`, `label`, …). Off by default as these aid troubleshooting |
 
 <details>
 <summary>Allow-lists</summary>
@@ -132,7 +132,7 @@ pfsense-redactor config.xml --inplace --force
 | ------------------- | ----------------------------------------------------------------------- |
 | `--dry-run`         | Show statistics only, do not write output file                          |
 | `--dry-run-verbose` | Show statistics with sample redactions (safely masked to prevent leaks) |
-| `--fail-on-warn`    | Exit with non-zero code if root tag is not 'pfsense' (useful in CI)     |
+| `--fail-on-warn`    | Exit non-zero if the root tag is not 'pfsense', **or** if high-entropy values were retained for review. Works with `--dry-run`, so CI can check without writing |
 
 </details>
 

@@ -44,11 +44,18 @@ redacted in every mode:
 | Slack | `hooks.slack.com` + `/services/` |
 | Discord | `discord.com`, `discordapp.com`, `ptb.`/`canary.` variants + `/api/webhooks/` |
 | Telegram | `api.telegram.org` + `/bot` |
+| Teams | `outlook.office.com`/`outlook.office365.com` + `/webhook/` |
+| Teams (per-tenant) | any `*.webhook.office.com` + `/webhookb2/` |
 
-Hosts are matched **exactly, never by suffix**, so `hooks.slack.com.example.net`
-does not inherit the rule; and the path prefix must match too, so an ordinary
-`discord.com/channels/…` link is untouched. Everything else still needs
-`--aggressive`.
+Hosts are matched **exactly** apart from Teams, which puts the tenant in a
+subdomain and so is matched on the suffix `.webhook.office.com` — the leading
+dot is what stops `notwebhook.office.com` qualifying. Either way the path
+prefix must match too, so an ordinary `discord.com/channels/…` link is
+untouched. Everything else still needs `--aggressive`.
+
+Self-hosted tools such as Mattermost are deliberately absent: their webhooks
+sit at `/hooks/<token>` on whatever host the operator chose, so there is no
+host to match on.
 
 Recognised credential formats in path segments include AWS access key IDs
 (exactly 20 characters), Telegram bot tokens (`bot<id>:<secret>`, where the

@@ -93,7 +93,7 @@ Measured against a 46-secret canary corpus that ships with the repository:
 
 | Tool | Caught |
 | --- | --- |
-| **pfsense-redactor 1.1.1** | **42 / 46** |
+| **pfsense-redactor** | **42 / 46** (43 with `--redact-descriptions`) |
 | ForesightCyber Config Anonymizer | 17 / 46 |
 | netgate-xlsx | 11 / 46 |
 

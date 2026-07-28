@@ -230,3 +230,75 @@ class TestSensitiveAttributeAnchoring:
 
         assert root.find('message').get('signature') == '[REDACTED]'
         assert redactor.stats['secrets_redacted'] == 1
+
+
+class TestDescriptionAttributes:
+    """Free-prose attributes, redacted only under --redact-descriptions
+
+    SENSITIVE_ATTR_PATTERN catches attributes *named* for a secret. These are
+    the ones whose name says nothing about the contents - a note, a label - and
+    where the value has to go wholesale because no pattern picks a PIN or a
+    circuit reference out of a sentence.
+
+    Opt-in for the same reason description elements are: notes are often the
+    most useful part of a config to whoever is reading it.
+    """
+
+    NOTE_XML = '<config><config_note note="ISP pin 4815" secret="s3cret">x</config_note></config>'
+
+    def test_free_text_attribute_kept_by_default(self):
+        """Default runs keep notes, which is what makes a config readable"""
+        root = ET.fromstring(self.NOTE_XML)
+
+        PfSenseRedactor().redact_element(root)
+
+        assert root.find('config_note').get('note') == 'ISP pin 4815'
+
+    def test_free_text_attribute_kept_under_aggressive_alone(self):
+        """--aggressive is about identifiers, not about discarding prose"""
+        root = ET.fromstring(self.NOTE_XML)
+
+        PfSenseRedactor(aggressive=True).redact_element(root)
+
+        assert root.find('config_note').get('note') == 'ISP pin 4815'
+
+    def test_free_text_attribute_redacted_with_the_flag(self):
+        """--redact-descriptions covers attributes as well as elements"""
+        root = ET.fromstring(self.NOTE_XML)
+
+        PfSenseRedactor(redact_descriptions=True).redact_element(root)
+
+        assert root.find('config_note').get('note') == '[REDACTED]'
+
+    def test_secret_named_attribute_redacted_regardless(self):
+        """The existing name-based rule is unchanged by any of this"""
+        root = ET.fromstring(self.NOTE_XML)
+
+        PfSenseRedactor().redact_element(root)
+
+        assert root.find('config_note').get('secret') == '[REDACTED]'
+
+    def test_structural_attributes_survive_the_flag(self):
+        """--redact-descriptions must not strip attributes that carry meaning
+
+        Redacting a version or an interface name would break the reader's
+        ability to follow the config, which is the thing this tool exists to
+        preserve.
+        """
+        xml = '<config><rule version="1.0" interface="wan" type="pass"/></config>'
+        root = ET.fromstring(xml)
+
+        PfSenseRedactor(redact_descriptions=True).redact_element(root)
+
+        rule = root.find('rule')
+        assert rule.get('version') == '1.0'
+        assert rule.get('interface') == 'wan'
+        assert rule.get('type') == 'pass'
+
+    def test_attribute_name_match_is_case_insensitive(self):
+        """Configs are written by hand, and Note is as likely as note"""
+        root = ET.fromstring('<config><x Note="private remark"/></config>')
+
+        PfSenseRedactor(redact_descriptions=True).redact_element(root)
+
+        assert root.find('x').get('Note') == '[REDACTED]'

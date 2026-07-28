@@ -29,6 +29,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Found by scanning redacted output with gitleaks: of six realistic secrets in a
   test config it flagged exactly one, and this was it. Running an independent
   scanner over the output catches what a name-driven redactor cannot.
+- **FIX**: `--fail-on-warn` covered the root-tag check and nothing else, so a
+  config carrying a value the tool declined to redact printed "Review before
+  sharing" and still exited 0. An automated check passed on a file its own
+  output said to look at, and `docs/use-cases.md` recommends the flag for
+  exactly that job.
+
+  It now also fails when high-entropy values are retained, under `--dry-run`
+  as well — checking without writing is the natural shape for CI, and it was
+  the one mode that could not report a problem. The message names the count
+  and points at `--aggressive`. Redacted output is still written when the gate
+  fails, since the retained values were reported rather than leaked and the
+  operator needs the file to review them.
+- **ADD**: Microsoft Teams webhook endpoints are recognised, so their path
+  tokens are redacted in every mode alongside Slack, Discord and Telegram.
+  Teams puts the tenant in a subdomain, so `*.webhook.office.com` is matched as
+  a suffix — including the leading dot, which is what stops
+  `notwebhook.office.com` qualifying. Suffix matching is the looser rule, so it
+  applies only to domains listed for it rather than to the whole set. The
+  legacy `outlook.office.com` connector stays an exact match.
+
+  Self-hosted tools such as Mattermost are deliberately absent: their webhooks
+  sit at `/hooks/<token>` on whatever host the operator chose, so there is no
+  host to match, and treating every `/hooks/` path as a credential would redact
+  ordinary paths on unrelated servers. Those still need `--aggressive`.
+
+### Added
+- `--redact-descriptions` now covers free-text **attributes** as well as
+  elements — `note`, `comment`, `label`, `title` and similar. Attributes named
+  for a secret were already redacted; these are the ones whose name says
+  nothing about the contents, where a PIN or a circuit reference ends up inside
+  a sentence and no pattern reliably finds it.
+
+  This closes the last genuine miss in the canary corpus, taking it from 42/46
+  to **43/46**. The remaining three are two corpus artefacts and one deliberate
+  choice. Structural attributes are untouched: redacting `version` or
+  `interface` would break the reader's ability to follow the config.
 
 ## [1.1.1][] - 2026-07-28
 
