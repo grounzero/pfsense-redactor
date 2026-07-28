@@ -81,9 +81,29 @@ needs to check a sharing decision without reading prose on stderr.
   independent verification and third-party scanning, and separates default,
   `--aggressive` and `--strict` by what each refuses.
 
+- **A document too deep to traverse fully now fails closed in every mode.**
+  `redact_element` stops descending at 400 elements and counted that it had;
+  nothing read the counter. The structural check normally refuses such a
+  document first, so this was not reachable through the CLI — but a run that
+  stopped early would have emitted elements it never examined, and reported
+  success. Refused with exit code 2, no output, in every mode rather than only
+  under a gate.
+
+- **The JSON report distinguishes a failed run from a dirty configuration.**
+  `verdict` was `"findings"` for I/O and internal failures as well as for
+  retained material, so a pipeline reading it concluded the configuration
+  still held secrets when the disk was full. Those now report `"error"`.
+  Values are `clean`, `rejected`, `findings`, `error`.
+
+- **The tool's own usage errors exit 1, as documented.** `--inplace` without
+  `--force`, `--strict` with `--inplace`, and `--quiet` with `--verbose` went
+  through `argparse.error` and exited 2. `argparse` still exits 2 for a command
+  line it cannot parse itself, such as an unknown flag.
+
 **Action required:** none for existing invocations. `--strict` and
-`--report-json` are new; scripts that test only for a non-zero exit are
-unaffected by the new codes.
+`--report-json` are new. Scripts testing only for a non-zero exit are
+unaffected; a script matching the exact value **2** for a usage error should
+match **1** instead.
 
 ## [1.3.0][] - 2026-08-05
 

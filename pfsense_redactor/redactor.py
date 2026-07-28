@@ -3685,13 +3685,21 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         )
 
     def _no_data_was_discarded(self) -> bool:
-        """Whether any element was too large to process
+        """Whether the whole document was actually processed
 
-        Refused in every mode, not only under a gate. The alternative is
-        producing a file that silently lacks part of the operator's
-        configuration while reporting success, which misrepresents the output
-        rather than redacting it.
+        Two ways it might not have been: an element too large to scan, and a
+        subtree too deep to reach. Both are refused in every mode, not only
+        under a gate, because the alternative is producing a file that silently
+        lacks part of the operator's configuration - or worse, silently lacks
+        part of the *redaction* - while reporting success.
+
+        Not short-circuited: a document that trips both is told about both.
         """
+        checks = (self._all_text_was_scanned(), self._whole_tree_was_traversed())
+        return all(checks)
+
+    def _all_text_was_scanned(self) -> bool:
+        """Whether every text element was small enough to process"""
         if not self.stats['oversized_text']:
             return True
 
@@ -3702,6 +3710,29 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             "be missing part of the configuration, which is not something to "
             "report as success.",
             self.stats['oversized_text'], self.MAX_TEXT_CHUNK
+        )
+
+    def _whole_tree_was_traversed(self) -> bool:
+        """Whether the traversal reached every element
+
+        redact_element stops descending at MAX_XML_DEPTH. _check_structural_limits
+        normally refuses such a document before the traversal starts, so this
+        should be unreachable through the CLI - but "should be unreachable" is
+        not a property to rest output on when the two limits could ever
+        disagree, and redact_element is also callable directly.
+
+        The elements below the cut were never examined. Anything in them is
+        unredacted, and the run knows only that it stopped, not what it missed.
+        """
+        if not self.stats['depth_limit_hits']:
+            return True
+
+        return self._fail_with(
+            ExitCode.INPUT_REJECTED,
+            "[!] Refusing to produce output: the traversal stopped at %d "
+            "element(s) nested deeper than %d, so their contents were never "
+            "examined and would be emitted unredacted.",
+            self.stats['depth_limit_hits'], MAX_XML_DEPTH
         )
 
     def _verification_permits_output(self) -> bool:
@@ -4845,10 +4876,28 @@ def _add_cli_allowlist_ip(
     sys.exit(1)
 
 
+def _exit_usage(parser: argparse.ArgumentParser, message: str) -> NoReturn:
+    """Report a usage error and exit with ExitCode.USAGE
+
+    argparse's own parser.error exits 2, which is its convention for a command
+    line it could not parse. This tool's usage errors are different: the
+    command line parsed fine and asks for something incoherent. They exit 1,
+    which is what the documented scheme has always said and what the path
+    validation in _resolve_input_path already did.
+
+    argparse still exits 2 for what it rejects before this code runs - an
+    unknown flag, a missing positional it handles itself - and that overlap
+    with INPUT_REJECTED is documented rather than papered over.
+    """
+    parser.print_usage(sys.stderr)
+    logging.getLogger('pfsense_redactor').error("[!] Error: %s", message)
+    sys.exit(ExitCode.USAGE)
+
+
 def _handle_early_exit_flags(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     """Handle argument combinations that exit before any redaction happens"""
     if not args.check_version and not args.input:
-        parser.error("the following arguments are required: input")
+        _exit_usage(parser, "the following arguments are required: input")
 
     if args.check_version:
         from .version_checker import print_version_check  # pylint: disable=import-outside-toplevel
@@ -4858,7 +4907,7 @@ def _handle_early_exit_flags(args: argparse.Namespace, parser: argparse.Argument
         sys.exit(0 if success else 1)
 
     if args.quiet and args.verbose:
-        parser.error("--quiet and --verbose are mutually exclusive")
+        _exit_usage(parser, "--quiet and --verbose are mutually exclusive")
 
     _require_consent_for_inplace(args, parser)
     _reject_strict_inplace(args, parser)
@@ -4876,7 +4925,8 @@ def _require_consent_for_inplace(
     unredacted copy with no confirmation.
     """
     if args.inplace and not args.force:
-        parser.error(
+        _exit_usage(
+            parser,
             "--inplace overwrites the input file, destroying the only "
             "unredacted copy of the configuration. Add --force to confirm."
         )
@@ -4894,7 +4944,8 @@ def _reject_strict_inplace(
     rather than a mode with a subtle failure.
     """
     if args.strict and args.inplace:
-        parser.error(
+        _exit_usage(
+            parser,
             "--strict cannot be combined with --inplace. Strict mode "
             "withholds output when it finds anything, and in-place operation "
             "has nowhere to withhold it to. Write to a separate file."
@@ -5007,11 +5058,19 @@ REPORT_SCHEMA_VERSION: int = 1
 
 
 def _report_verdict(exit_code: int) -> str:
-    """One word for what happened, for a caller that does not want the codes"""
+    """One word for what happened, for a caller that does not want the codes
+
+    'findings' is a statement about the configuration: something sensitive was
+    retained or detected in it. An I/O or internal failure is a statement about
+    the run, and reporting it as 'findings' tells a pipeline the config still
+    holds secrets when actually the disk was full. Those get 'error'.
+    """
     if exit_code == ExitCode.CLEAN:
         return 'clean'
     if exit_code == ExitCode.INPUT_REJECTED:
         return 'rejected'
+    if exit_code in (ExitCode.IO_FAILURE, ExitCode.INTERNAL_FAILURE):
+        return 'error'
     return 'findings'
 
 

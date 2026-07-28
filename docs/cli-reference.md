@@ -142,18 +142,20 @@ success is unaffected.
 | Code | Meaning                                                                    |
 | ---- | -------------------------------------------------------------------------- |
 | 0    | Clean output produced                                                      |
-| 1    | Usage error — the command line asks for something incoherent               |
+| 1    | Usage error — the command line parsed, and asks for something incoherent    |
 | 2    | Input rejected: unparseable, unsupported schema, too deeply nested, oversized |
 | 3    | A sensitive value was retained (under `--fail-on-warn` or `--strict`)      |
 | 4    | Independent verification found something, or could not run                 |
 | 5    | Reading or writing a file failed                                           |
 | 6    | Internal processing failure                                                |
 
-`argparse` exits **2** of its own accord for a malformed command line — an
-unknown flag, a missing positional — which is the same value as *input
-rejected*. Both mean "what you gave me cannot be used", they are
-distinguishable from stderr, and suppressing argparse's convention would be
-worse than the overlap.
+The tool's own usage errors — `--inplace` without `--force`, `--strict` with
+`--inplace`, `--quiet` with `--verbose` — exit **1**.
+
+`argparse` exits **2** of its own accord for a command line it cannot parse at
+all, such as an unknown flag. That is the same value as *input rejected*. Both
+mean "what you gave me cannot be used", they are distinguishable from stderr,
+and overriding argparse's convention would be worse than the overlap.
 
 ### Report schema
 
@@ -166,7 +168,7 @@ worse than the overlap.
   "mode": {"strict": true, "aggressive": true, "redact_descriptions": true,
            "anonymise": false, "fail_on_warn": false, "dry_run": false,
            "allowlist_files": []},
-  "verdict": "clean",
+  "verdict": "clean",           // clean | rejected | findings | error
   "verification": {"available": true, "clean": true},
   "counts": {"secrets_redacted": 42, "certificates_redacted": 6,
              "ips_redacted": 18, "domains_redacted": 9,
@@ -186,6 +188,18 @@ A finding looks like:
  "kind": "pem-private-key",
  "length": 1679}
 ```
+
+`verdict` distinguishes what the run concluded from how it ended:
+
+| Verdict | Means |
+| --- | --- |
+| `clean` | Output was produced and nothing was withheld |
+| `rejected` | The input was unsupported or structurally unsafe (exit 2) |
+| `findings` | Something sensitive was retained or detected **in the configuration** (exit 3 or 4) |
+| `error` | The **run** failed — I/O or an internal fault (exit 5 or 6). Says nothing about the configuration |
+
+The distinction matters to a pipeline: reading `findings` when the disk was
+full would report the configuration as still holding secrets.
 
 The report never contains a retained value, a prefix of one, decoded content, a
 full credential-bearing URL, or a hash of a secret. A short secret's hash is
