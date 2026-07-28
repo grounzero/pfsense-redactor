@@ -236,10 +236,28 @@ class TestSupplementaryCorpus:
         assert 'telemetry[@endpoint_id]' in result.stderr
 
     def test_aggressive_catches_everything_here(self):
-        """No known survivors in this corpus, so any survivor is a regression"""
-        left = survivors(redact_file(SUPPLEMENTARY, '--aggressive'))
+        """No known survivors in this corpus, so any survivor is a regression
+
+        CANARY_ZONEADDR is excluded: it marks an interface name, which is
+        structure rather than address and is meant to survive. What must not
+        survive is the address beside it, checked below.
+        """
+        left = survivors(redact_file(SUPPLEMENTARY, '--aggressive')) - {'CANARY_ZONEADDR'}
 
         assert not left, 'survived --aggressive: ' + ', '.join(sorted(left))
+
+    @pytest.mark.parametrize('flags', [(), ('--aggressive',)])
+    def test_bracketed_address_with_a_zone_is_redacted(self, flags):
+        """The address in '[addr%zone]:port', which used to pass through whole
+
+        Asserted on the address rather than on the marker, because the marker
+        is the zone and the zone is supposed to survive. A test that checked
+        only the zone passed for years while the address leaked.
+        """
+        stdout = redact_file(SUPPLEMENTARY, *flags).stdout
+
+        assert '2001:db8::99' not in stdout, 'bracketed address with a zone leaked'
+        assert 'CANARY_ZONEADDR' in stdout, 'the interface name should survive'
 
 
 class TestRetainedValuesAreReported:

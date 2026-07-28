@@ -511,18 +511,14 @@ class TestZoneAndBracketsSurviveRedaction:
         assert result.startswith('[')
         assert result.endswith(']:8080')
 
-    def test_both_together_through_the_masker(self, basic_redactor):
+    def test_both_together(self, basic_redactor):
         """Brackets, zone and port at once, which is the WireGuard peer shape
 
-        Driven through _mask_one_ip_token rather than redact_text on purpose.
-        redact_text does not currently reach this shape at all - the token
-        pattern in _mask_ip_like_tokens does not match a bracketed address
-        carrying a zone identifier, so the value passes through untouched. That
-        is a redaction gap rather than a masking one, and it predates the split
-        of this function; asserting it here through redact_text would pass
-        while proving nothing.
+        This shape used to pass through redact_text untouched, because '%' was
+        a token separator and the closing bracket was severed from the address.
+        See tests/unit/test_ipv6_zone_identifiers.py for the full case.
         """
-        result = basic_redactor._mask_one_ip_token('[fe80::1%igb0]:51820')
+        result = basic_redactor.redact_text('[fe80::1%igb0]:51820')
 
         assert 'fe80::1' not in result
         assert '%igb0' in result
