@@ -790,17 +790,19 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # Compute IDNA form using cached function
         host_idna = _idna_encode(host_l)
 
-        # Check exact match or suffix match against Unicode forms
-        for allow_domain in self.allowlist_domains:
-            if host_l == allow_domain or host_l.endswith('.' + allow_domain):
-                return True
+        # Both forms are checked so a host written either way matches the
+        # same allow-list entry.
+        return (self._matches_allowed_domain(host_l, self.allowlist_domains)
+                or self._matches_allowed_domain(host_idna, self.allowlist_domains_idna))
 
-        # Check exact match or suffix match against IDNA forms
-        for allow_domain_idna in self.allowlist_domains_idna:
-            if host_idna == allow_domain_idna or host_idna.endswith('.' + allow_domain_idna):
-                return True
+    @staticmethod
+    def _matches_allowed_domain(host: str, allowed: set[str]) -> bool:
+        """Whether host equals, or is a subdomain of, any allowed domain
 
-        return False
+        The leading dot on the suffix test matters: without it 'notexample.com'
+        would match an allow-list entry of 'example.com'.
+        """
+        return any(host == domain or host.endswith('.' + domain) for domain in allowed)
 
     def _is_ip_allowed(self, ip: IPAddress) -> bool:
         """Check if an IP address is in the allow-list (including CIDR networks)"""
@@ -1455,17 +1457,23 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         """
         return is_ipv6 or (':' in host and not host.startswith('['))
 
+    def _build_userinfo(self, parts: SplitResult) -> str:
+        """Build the 'user:pass@' prefix of a netloc, redacting as configured
+
+        The password is always replaced; the username only under
+        --redact-url-usernames, since it is often an ordinary account name that
+        is more useful left readable.
+        """
+        if not parts.username:
+            return ''
+
+        username = 'REDACTED' if self.redact_url_usernames else parts.username
+        password = ':REDACTED' if parts.password else ''
+        return f"{username}{password}@"
+
     def _build_netloc(self, parts: SplitResult, host: str, is_ipv6: bool) -> str:
         """Build netloc with userinfo, host, and port"""
-        userinfo = ''
-        if parts.username:
-            if self.redact_url_usernames:
-                userinfo = 'REDACTED'
-            else:
-                userinfo = parts.username
-            if parts.password:
-                userinfo += ':REDACTED'
-            userinfo += '@'
+        userinfo = self._build_userinfo(parts)
 
         # Wrap IPv6 in brackets
         if self._needs_ipv6_brackets(host, is_ipv6):

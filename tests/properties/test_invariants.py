@@ -9,22 +9,31 @@ import random
 import ipaddress
 
 
+def _random_private_ips(count):
+    """RFC1918 addresses, one from each of the three blocks per iteration"""
+    ips = []
+    for _ in range(count // 3):
+        ips.append(f"192.168.{random.randint(0, 255)}.{random.randint(1, 254)}")
+        ips.append(f"10.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 254)}")
+        ips.append(f"172.{random.randint(16, 31)}.{random.randint(0, 255)}.{random.randint(1, 254)}")
+    return ips
+
+
+def _random_public_ips(count):
+    """Globally routable addresses, avoiding reserved ranges"""
+    return [
+        f"{random.randint(1, 223)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 254)}"
+        for _ in range(count // 3)
+    ]
+
+
 def generate_random_ips(count=10, include_private=True, include_public=True):
     """Generate random IP addresses for testing"""
     ips = []
-
     if include_private:
-        # RFC1918
-        for _ in range(count // 3):
-            ips.append(f"192.168.{random.randint(0, 255)}.{random.randint(1, 254)}")
-            ips.append(f"10.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 254)}")
-            ips.append(f"172.{random.randint(16, 31)}.{random.randint(0, 255)}.{random.randint(1, 254)}")
-
+        ips += _random_private_ips(count)
     if include_public:
-        # Public IPs (avoiding reserved ranges)
-        for _ in range(count // 3):
-            ips.append(f"{random.randint(1, 223)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 254)}")
-
+        ips += _random_public_ips(count)
     return ips
 
 
