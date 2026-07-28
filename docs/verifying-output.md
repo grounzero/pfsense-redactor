@@ -31,7 +31,75 @@ attribute named in brackets:
 This warning is the direct answer to "what did you leave behind". Do not ignore
 it, and re-run with `--aggressive` if any path looks like it holds a secret.
 
-## 2. Let CI check it for you
+## 2. Read the independent verification
+
+Since 1.4.0 a second component re-reads the **serialised output** — the exact
+text that gets written — and reports material that should not be in it:
+
+```
+[!] Independent verification found 2 issue(s) in the output:
+    - retained-private-key: document (pem-private-key, 1704 chars) - private-key PEM header in candidate output
+    - retained-input-value: pfsense/installedpackages/vendor/blob (element, 44 chars) - input value present verbatim in candidate output
+```
+
+This is not the summary restated. The summary is the transformer reporting what
+it chose to keep, so a class of secret the transformer cannot see is equally
+invisible to it. The verifier is a separate module with its own rules, and it
+looks at the output rather than at the transformer's record of it.
+
+Two checks, deliberately different in kind:
+
+- **Shape scan.** Private-key PEM headers, compact JWTs, credential-bearing
+  URLs, and long hexadecimal or Base64 runs — including through up to three
+  layers of Base64 decoding. Patterns written and maintained separately from
+  the transformer's, so a mistake in one is not automatically a mistake in the
+  other.
+- **Input-value retention.** Every input leaf and attribute value of 16
+  characters or more is checked for verbatim survival. This is the check that
+  cannot inherit the transformer's blind spots, because it classifies nothing:
+  it does not need to know what a value means to notice that it came out
+  unchanged.
+
+Findings carry a path, a category, a length and a reason. They never carry the
+value, a prefix of it, or a hash of it — a short secret's hash is
+brute-forceable and a token's prefix names its issuer — so the whole block is
+safe to paste into a ticket.
+
+### What it does not see
+
+The retention check only reports values made entirely of `A-Za-z0-9+/=_-`, the
+alphabet Base64, Base64URL, hex and API keys all live in. Without that
+restriction every rule description, cron command and package metadata field in a
+real config is reported, and a report nobody reads is not a control. A secret
+containing a dot, a colon or a space is invisible to *this* check — JWTs and
+credential-bearing URLs are covered by the shape scan instead, and free prose by
+`--redact-descriptions`.
+
+Absolute paths, the tool's own placeholders, allow-listed entries and a short
+list of structural element names (`refid`, `uuid`, `interface`, package
+metadata) are excluded, each by a rule asserted individually in
+`tests/unit/test_output_verification.py`.
+
+### Advisory in 1.4.0
+
+The result is reported; it does not yet decide whether output is written. Do
+not read "no findings" as "safe to publish" — read it as "a second pass found
+nothing", which is a weaker and more useful statement.
+
+### If verification is unavailable
+
+`redactor.py` can be copied out and run as a single file. Done that way, without
+`verifier.py` beside it, the run says so:
+
+```
+[!] Independent verification unavailable: verifier.py is not importable.
+    Redaction ran, but nothing re-read the output.
+```
+
+That is deliberately not silence, and deliberately not a pass. Copy `verifier.py`
+alongside `redactor.py` to keep the check.
+
+## 3. Let CI check it for you
 
 The same warning drives an exit code, so a pipeline can gate on it:
 
@@ -44,7 +112,7 @@ review. Nothing is written, so this is safe to run on every commit. Adding
 `--aggressive` redacts those values instead of retaining them, which makes the
 gate pass.
 
-## 3. Preview before you share
+## 4. Preview before you share
 
 ```bash
 pfsense-redactor config.xml --dry-run-verbose
@@ -54,7 +122,7 @@ Shows counts plus masked before/after examples, so you can confirm the right
 things are being caught without writing a file. Samples are masked, so the
 preview never prints a live secret to your terminal or CI log.
 
-## 4. Get a second opinion
+## 5. Get a second opinion
 
 An independent secret scanner such as [gitleaks](https://github.com/gitleaks/gitleaks)
 is worth running over the output, because it fails in the opposite direction to
@@ -115,7 +183,7 @@ A scanner that finds nothing may mean the file is clean, or that the secrets do
 not look like secrets. Use it to catch what this tool missed, never to certify
 that nothing was missed.
 
-## 5. Diff the two files
+## 6. Diff the two files
 
 For a config small enough to read, nothing beats looking:
 
