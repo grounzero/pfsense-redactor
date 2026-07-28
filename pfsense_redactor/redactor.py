@@ -1182,53 +1182,63 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         # multicast, reserved and unspecified
         return self.keep_private_ips and not ip.is_global
 
+    def _mask_one_ip_token(self, token: str) -> str:
+        """Mask a single IP-like token, or return it unchanged
+
+        A method rather than a closure inside _mask_ip_like_tokens: it uses
+        nothing but self and its argument, and analysers that fold nested
+        functions into their parent counted the whole thing as one oversized
+        unit.
+        """
+        # Skip already-masked tokens
+        if token in ('XXX.XXX.XXX.XXX', 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX', '[XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX]'):
+            return token
+        original_token = token
+
+        token, port_suffix = self._strip_ip_token_port(token)
+
+        ip, bracketed, zone = self._parse_ip_token(token)
+        if ip is None:
+            return original_token
+
+        if self._should_preserve_ip(ip):
+            return original_token
+
+        # Anonymisation mode
+        if self.anonymise:
+            rep = self._anonymise_ip(str(ip))
+        else:
+            # Standard redaction
+            rep = 'XXX.XXX.XXX.XXX' if ip.version == 4 else 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX'
+
+        # Preserve zone identifier if present
+        if zone:
+            rep = f"{rep}%{zone}"
+        if bracketed:
+            rep = f"[{rep}]"
+
+        result = rep + port_suffix
+
+        # Only count if actually changed
+        if result != original_token:
+            self.stats['ips_redacted'] += 1
+            # Collect sample for dry-run-verbose
+            self._add_sample('IP', str(ip), rep)
+
+        return result
+
     def _mask_ip_like_tokens(self, text: str) -> str:
         """IP address masking using ipaddress module"""
-        def repl(token: str) -> str:
-            # Skip already-masked tokens
-            if token in ('XXX.XXX.XXX.XXX', 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX', '[XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX]'):
-                return token
-            original_token = token
-
-            token, port_suffix = self._strip_ip_token_port(token)
-
-            ip, bracketed, zone = self._parse_ip_token(token)
-            if ip is None:
-                return original_token
-
-            if self._should_preserve_ip(ip):
-                return original_token
-
-            # Anonymisation mode
-            if self.anonymise:
-                rep = self._anonymise_ip(str(ip))
-            else:
-                # Standard redaction
-                rep = 'XXX.XXX.XXX.XXX' if ip.version == 4 else 'XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX'
-
-            # Preserve zone identifier if present
-            if zone:
-                rep = f"{rep}%{zone}"
-            if bracketed:
-                rep = f"[{rep}]"
-
-            result = rep + port_suffix
-
-            # Only count if actually changed
-            if result != original_token:
-                self.stats['ips_redacted'] += 1
-                # Collect sample for dry-run-verbose
-                self._add_sample('IP', str(ip), rep)
-
-            return result
-
         # Split conservatively - matches IP-like tokens including zone IDs and ports
         # Pattern matches: IPs with optional brackets, zone identifiers, and ports
         # Examples: [fe80::1%eth0]:51820, [fe80::1%eth0], fe80::1%eth0, 192.168.1.1
         parts = self._ip_token_splitter.split(text)
         # Match tokens that look like IPs (with or without brackets/zones/ports)
         # Use pre-compiled pattern for consistency and performance
-        return ''.join(repl(p) if self.IP_PATTERN.match(p) else p for p in parts)
+        return ''.join(
+            self._mask_one_ip_token(p) if self.IP_PATTERN.match(p) else p
+            for p in parts
+        )
 
     def _anonymise_domain(self, domain: str) -> str:
         """Generate a consistent alias for a domain
@@ -1599,31 +1609,43 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         'user:password@host' intact while the query secret next to it showed as
         [REDACTED], which reads as sanitised when it is not.
         """
-        def replacer(match):
-            url = match.group(0)
-            if len(url) > self.MAX_URL_LENGTH:
-                return url
+        return self.URL_RE.sub(self._redact_url_secrets_in_match, text)
 
-            parts = self._parse_url_safely(url)
-            if parts is None or not parts.netloc:
-                return url
+    def _redact_url_secrets_in_match(self, match) -> str:
+        """Redact credentials in one matched URL, leaving the host alone
 
-            netloc, netloc_changed = self._redact_netloc_userinfo(parts)
-            path = self._redact_path_secrets(parts.path) if self.aggressive else parts.path
-            query = self._redact_query_secrets(parts.query)
+        A method rather than a closure, for the same reason as
+        _mask_one_ip_token: it needs only self and the match.
+        """
+        url = match.group(0)
+        if len(url) > self.MAX_URL_LENGTH:
+            return url
 
-            # netloc_changed must be part of this test: a URL carrying
-            # credentials but no secret-named query parameter would otherwise
-            # never be rewritten at all.
-            if not netloc_changed and path == parts.path and query == parts.query:
-                return url
+        parts = self._parse_url_safely(url)
+        if parts is None or not parts.netloc:
+            return url
 
-            if netloc_changed:
-                self.stats['url_secrets_redacted'] += 1
+        netloc, netloc_changed = self._redact_netloc_userinfo(parts)
+        path = self._redact_path_secrets(parts.path) if self.aggressive else parts.path
+        query = self._redact_query_secrets(parts.query)
 
-            return urlunsplit((parts.scheme, netloc, path, query, parts.fragment))
+        if self._url_parts_unchanged(parts, netloc_changed, path, query):
+            return url
 
-        return self.URL_RE.sub(replacer, text)
+        if netloc_changed:
+            self.stats['url_secrets_redacted'] += 1
+
+        return urlunsplit((parts.scheme, netloc, path, query, parts.fragment))
+
+    @staticmethod
+    def _url_parts_unchanged(parts: SplitResult, netloc_changed: bool,
+                             path: str, query: str) -> bool:
+        """Whether redaction left the URL identical, so it can be returned as-is
+
+        netloc_changed must be part of this test: a URL carrying credentials but
+        no secret-named query parameter would otherwise never be rewritten.
+        """
+        return not netloc_changed and path == parts.path and query == parts.query
 
     def _redact_urls_safe(self, text: str) -> str:
         """Redact URLs with ReDoS protection via length pre-filtering"""
