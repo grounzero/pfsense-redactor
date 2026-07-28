@@ -79,6 +79,7 @@ class TestAggressiveRedacts:
     """The documented remedy works for attributes as it does for elements"""
 
     def test_value_is_replaced(self):
+        """The blob does not survive the mode that exists to remove it"""
         _, out = redact(aggressive=True)
 
         assert BLOB not in out
@@ -96,6 +97,7 @@ class TestAggressiveRedacts:
         assert redactor.stats['high_entropy_retained'] == 0
 
     def test_it_is_counted_as_a_redaction(self):
+        """A redaction missing from the summary is invisible to whoever reads it"""
         redactor, _ = redact(aggressive=True)
 
         assert redactor.stats['certs_redacted'] >= 1
