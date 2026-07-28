@@ -217,7 +217,7 @@ parse -> transform in memory -> serialise candidate
       -> verify candidate -> decide -> write
 ```
 
-Nothing reaches a file or stdout before the verdict. Until 1.5.0 the write
+Nothing reaches a file or stdout before the verdict. Until 1.3.0 the write
 happened first and the verdict was returned afterwards, so `--fail-on-warn`
 exited non-zero *after* `_write_output` had already produced the file — the gate
 reported the problem and did not prevent the artefact. A CI job that failed the
@@ -255,7 +255,7 @@ only controls the read-only bit, so the restrictive mode is not claimed there.
 | A file with more than one name | Atomic replacement creates a new inode, so the other name would keep the previous — unredacted — content |
 
 `--inplace` is the deliberate exception to the first, and requires `--force`. It
-is refused on a hard-linked file for the third reason: before 1.5.0 the write
+is refused on a hard-linked file for the third reason: before 1.3.0 the write
 went through the link and every name saw the redacted content; it now cannot,
 and a silently stale copy of an unredacted config is worse than a refusal.
 

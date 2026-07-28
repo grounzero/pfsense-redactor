@@ -138,7 +138,7 @@ class TestSymlinkSecurity:
 
     @pytest.mark.skipif(os.name == 'nt', reason="Hardlinks work differently on Windows")
     def test_hardlink_inplace_refused(self, sample_config, temp_dir):
-        """Test 4: --inplace on a hardlink is refused since 1.5.0
+        """Test 4: --inplace on a hardlink is refused since 1.3.0
 
         This asserted that the operation succeeded and that both names ended up
         holding the redacted content. That was true while the write went
