@@ -432,20 +432,36 @@ class TestVerifierNeedsNoXmlParser:
 
         assert "ET" not in vars(verifier)
 
-    def test_the_module_parses_no_xml(self):
-        """The reason the import is unnecessary, asserted against the source
+    def test_the_module_imports_no_xml_library_at_all(self):
+        """Not even for annotations
 
-        If a parse call is ever added here, the annotation-only justification
-        stops holding and this fails - which is the point at which the
-        defusedxml question genuinely needs answering rather than dismissing.
+        The verifier is handed an already-parsed tree and walks it. Depending
+        on the parser that produced it - in code or in types - would tie the
+        one component meant not to share the transformer's assumptions to the
+        transformer's library.
         """
+        assert "import xml" not in self._source()
+
+    def test_the_module_parses_no_xml(self):
+        """The reason no XML library is needed, asserted against the source
+
+        If a parse call is ever added here, the justification stops holding
+        and this fails - which is the point at which the defusedxml question
+        genuinely needs answering rather than dismissing.
+        """
+        source = self._source()
+
+        for parser in ("ET.parse(", "ET.fromstring(", "ET.XML(", "XMLParser(",
+                       "parse(", "fromstring("):
+            assert parser not in source, f"verifier.py now parses XML via {parser}"
+
+    @staticmethod
+    def _source():
+        """verifier.py's source text"""
         from pathlib import Path  # pylint: disable=import-outside-toplevel
 
-        source = (Path(__file__).resolve().parents[2]
-                  / "pfsense_redactor" / "verifier.py").read_text(encoding="utf-8")
-
-        for parser in ("ET.parse(", "ET.fromstring(", "ET.XML(", "XMLParser("):
-            assert parser not in source, f"verifier.py now parses XML via {parser}"
+        return (Path(__file__).resolve().parents[2]
+                / "pfsense_redactor" / "verifier.py").read_text(encoding="utf-8")
 
     def test_it_still_walks_a_tree_it_is_given(self):
         """The control: dropping the import must not have dropped the feature"""

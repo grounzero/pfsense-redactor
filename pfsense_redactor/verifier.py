@@ -43,20 +43,35 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Iterable, Iterator
+from typing import Iterable, Iterator, Protocol
 
-if TYPE_CHECKING:  # pragma: no cover - imported for type checking only
-    # Annotation-only, and it must stay that way. This module never parses
-    # XML: it receives an already-parsed tree from redactor.py and walks it,
-    # so there is no ET.parse or ET.fromstring here and no input for an
-    # entity-expansion or external-entity attack to arrive through.
-    #
-    # `from __future__ import annotations` above makes every annotation a
-    # string, so nothing needs this at runtime. Importing it anyway would add
-    # a module that static scanners flag on sight - correctly in general, and
-    # not here - for no benefit. tests/unit/test_output_verification.py
-    # asserts the runtime namespace does not carry it.
-    import xml.etree.ElementTree as ET
+
+class XmlElement(Protocol):
+    """The part of an XML element this module actually uses
+
+    Four things: a tag, text, attributes and children. Declared structurally
+    rather than as xml.etree.ElementTree.Element, for two reasons.
+
+    The honest one: this module never parses XML. It is handed an
+    already-parsed tree by redactor.py and walks it, so it has no business
+    depending on the parser that produced it - a verifier whose value is that
+    it does not share the transformer's assumptions should not share its
+    imports either. redactor.py passes an ElementTree Element, which satisfies
+    this; so would anything shaped the same way.
+
+    The practical one: it removes the last mention of an XML library from a
+    module that does no XML work. Import-matching scanners flag
+    `xml.etree.ElementTree` on sight - correctly in general, and not here - and
+    an annotation is a poor reason to carry a finding that has to be explained
+    every time someone reads the report.
+    """
+
+    tag: str
+    text: str | None
+    attrib: dict[str, str]
+
+    def __iter__(self) -> Iterator['XmlElement']:
+        ...  # pragma: no cover - structural declaration, never called
 
 # ==========================================================================
 # Bounds
@@ -436,7 +451,7 @@ def _is_excluded(tag: str, value: str, allowlisted: frozenset[str]) -> bool:
 
 
 def collect_input_values(
-    root: ET.Element,
+    root: XmlElement,
     allowlisted: frozenset[str] = frozenset(),
     min_length: int = MIN_RETENTION_LENGTH,
 ) -> list[TrackedValue]:
@@ -452,7 +467,7 @@ def collect_input_values(
 
 
 def _walk_for_values(
-    element: ET.Element,
+    element: XmlElement,
     stack: list[str],
     tracked: dict[str, TrackedValue],
     allowlisted: frozenset[str],
@@ -479,7 +494,7 @@ def _walk_for_values(
 
 
 def _track_element_value(
-    element: ET.Element, stack: list[str], tag: str,
+    element: XmlElement, stack: list[str], tag: str,
     tracked: dict[str, TrackedValue], allowlisted: frozenset[str], min_length: int,
 ) -> None:
     """Record this element's own text if it is worth checking"""
@@ -494,7 +509,7 @@ def _track_element_value(
 
 
 def _track_attribute_values(
-    element: ET.Element, stack: list[str], tag: str,
+    element: XmlElement, stack: list[str], tag: str,
     tracked: dict[str, TrackedValue], allowlisted: frozenset[str], min_length: int,
 ) -> None:
     """Record this element's attribute values if they are worth checking"""
@@ -545,7 +560,7 @@ def _collapse(text: str) -> str:
 # ==========================================================================
 def verify_candidate(
     candidate: str,
-    input_root: ET.Element | None = None,
+    input_root: XmlElement | None = None,
     allowlisted: frozenset[str] = frozenset(),
 ) -> VerificationResult:
     """Verify one serialised candidate document
