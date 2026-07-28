@@ -6,711 +6,146 @@
 [![Tests](https://github.com/grounzero/pfsense-redactor/actions/workflows/tests.yml/badge.svg)](https://github.com/grounzero/pfsense-redactor/actions/workflows/tests.yml)
 [![Downloads](https://pepy.tech/badge/pfsense-redactor)](https://pepy.tech/project/pfsense-redactor)
 
-Safely redact sensitive fields in a pfSense `config.xml` export so you can share it without exposing passwords, keys, or network identifiers.
-
-**Keywords:** pfSense config.xml redactor, pfSense sanitiser, firewall config sanitisation, VPN config anonymisation, OpenVPN redaction, WireGuard key redaction, IPsec secret removal, network topology anonymiser, Netgate TAC sharing
-
-**pfsense-redactor** redacts secrets and optionally anonymises identifiers in pfSense `config.xml` exports—so you can share them safely with support, vendors, auditors, forums, or AI tools.
-
-Unlike generic XML redaction tools, pfsense-redactor understands pfSense-specific configuration structures and VPN formats.
-
-## Why pfsense-redactor?
-
-- ✅ **pfSense-native** – Understands pfSense XML structures (IPsec, OpenVPN, WireGuard, packages)
-- ✅ **Zero dependencies** – Pure Python stdlib, runs anywhere (Windows, macOS, Linux)
-- ✅ **Well-tested** – Extensively tested across multiple OSes and Python versions
-- ✅ **Topology-preserving** – Anonymise without breaking routing logic or firewall rules
-- ✅ **Security-first** – Built-in protections against path traversal and symlink attacks
-- ✅ **CI/CD ready** – Suitable for automated compliance workflows and GitOps
-
----
-
-## When should I use pfsense-redactor?
-
-Use pfsense-redactor when you need to share a pfSense `config.xml` file
-outside the firewall (for example with vendors, consultants, forums, or AI tools)
-and want to remove secrets and/or anonymise network identifiers without
-breaking topology or routing logic.
-
-### Quick start (recommended)
-
-#### 1) Preserve private IPs (best for support / troubleshooting)
-
-```bash
-pfsense-redactor config.xml redacted.xml --keep-private-ips
-```
-
-Keeps internal addressing visible while removing secrets and redacting public identifiers.
-
-#### 2) Topology-preserving anonymisation (best for vendors / forums / AI)
-
-```bash
-pfsense-redactor config.xml redacted.xml --anonymise
-```
-
-Replaces identifiers with consistent placeholders so relationships remain clear while reducing disclosure.
-
-For pfSense on-firewall sanitisation, see `diag_sanitize.php` below; pfsense-redactor is intended for off-box use and anonymisation.
-
-See the [Usage](#usage) section and the [Command-Line Flags Reference](#command-line-flags-reference) below for all available options.
-
----
-
-## Use Cases
-
-Common command patterns depending on who you’re sharing with.
-
-### Sharing with Netgate TAC Support
-
-```bash
-# On the firewall (recommended for TAC)
-/usr/local/sbin/diag_sanitize.php /conf/config.xml > /conf/config_sanitised.xml
-
-# Off-box: additional anonymisation before sharing further
-pfsense-redactor config_sanitised.xml support-safe.xml --keep-private-ips --no-redact-domains
-```
-
-### Sharing with AI tools
-
-Use `--aggressive` if you have third-party packages or aren’t sure where secrets live.
-
-```bash
-# Topology-preserving anonymisation (private IPs are kept visible by default with --anonymise)
-pfsense-redactor config.xml ai-ready.xml --anonymise --aggressive
-# Now safe to upload to AI tools for configuration analysis
-```
-
-```bash
-# Anonymise everything (including private IPs)
-pfsense-redactor config.xml ai-ready.xml --anonymise --no-keep-private-ips --aggressive
-# Now safe to upload to AI tools for configuration analysis
-```
-
-### Vendor/MSP Handoffs
-
-```bash
-# Option A: Preserve private IPs for troubleshooting context
-pfsense-redactor config.xml vendor-share.xml --anonymise
-```
-
-```bash
-# Option B: Anonymise everything (including private IPs) for stricter privacy
-pfsense-redactor config.xml vendor-share.xml --anonymise --no-keep-private-ips
-```
-
-### Security Audits
-
-```bash
-# Preview what will be redacted before sharing
-pfsense-redactor config.xml --dry-run-verbose
-```
-
-### Automated Compliance Workflows
-
-```bash
-# CI/CD integration for automated sanitisation
-pfsense-redactor $INPUT_CONFIG $OUTPUT_CONFIG --aggressive --fail-on-warn
-```
-
----
-
-## Relationship to pfSense built-in sanitisation
-
-pfSense includes a built-in configuration sanitisation script:
-
-```bash
-/usr/local/sbin/diag_sanitize.php /conf/config.xml > /conf/config_sanitised.xml
-```
-
-This official tool runs **on the firewall itself** and is primarily intended for safely sharing configurations with Netgate support. It removes high-value secrets (password hashes, pre-shared keys, certificates, etc.) while preserving the original network topology.
-
-**pfsense-redactor is complementary, not a replacement.**
-
-| Built-in `diag_sanitize.php`         | pfsense-redactor                                                  |
-| ------------------------------------ | ----------------------------------------------------------------- |
-| Runs on pfSense only                 | Runs anywhere (workstation, CI, automation)                       |
-| PHP, internal to pfSense             | Python, standalone, MIT-licensed                                  |
-| Fixed sanitisation behaviour         | Configurable redaction and anonymisation                          |
-| Removes secrets                      | Removes secrets **and** can anonymise IPs, domains, MACs and URLs |
-| Best suited to Netgate support (TAC) | Best suited to vendors, consultants, AI tools and forums          |
-
-pfsense-redactor exists to cover use cases where:
-
-- the configuration has already been exported,
-- you do not wish to run additional tooling on the firewall,
-- or you require **privacy-preserving anonymisation** in addition to basic secret removal.
-
-Both tools share the same goal: preventing accidental disclosure of sensitive information when sharing pfSense configurations.
-
----
-
-## Comparison with Alternatives
-
-<details>
-<summary>Comparison with Alternatives</summary>
-
-| Feature                 | pfsense-redactor  | Generic XML Tools | Manual Redaction | Built-in diag_sanitize.php |
-| ----------------------- | ----------------- | ----------------- | ---------------- | -------------------------- |
-| pfSense-aware structure | ✅                | ❌                | ⚠️ Manual        | ✅                         |
-| Runs off-firewall       | ✅                | ✅                | ✅               | ❌ (pfSense only)          |
-| Network anonymisation   | ✅                | ❌                | ⚠️ Error-prone   | ❌                         |
-| Topology preservation   | ✅                | ❌                | ⚠️ Error-prone   | ✅                         |
-| Configurable modes      | ✅ multiple modes | ❌                | N/A              | ❌ Fixed                   |
-| CIDR allow-lists        | ✅                | ❌                | ⚠️ Error-prone   | ❌                         |
-| CI/CD integration       | ✅                | ⚠️                | ⚠️ Error-prone   | ❌                         |
-| Cross-platform          | ✅                | ⚠️                | ✅               | ❌                         |
-| WireGuard/IPsec aware   | ✅                | ❌                | ⚠️               | ✅                         |
-| Zero dependencies       | ✅                | ⚠️ Varies         | ✅               | ✅                         |
-
-</details>
-
----
-
-## FAQ
-
-### What does pfsense-redactor redact by default?
-
-pfsense-redactor removes secrets such as passwords, private keys, certificates, tokens, and shared secrets.  
-It also redacts public IP addresses, domains, MAC addresses, and URLs unless explicitly preserved.
-
-### Does pfsense-redactor anonymise or just remove data?
-
-It supports both. Redaction removes sensitive values entirely, while anonymisation replaces identifiers with consistent placeholders so topology and relationships remain clear.
-
-### Will anonymisation break troubleshooting or topology analysis?
-
-No. Deterministic anonymisation ensures the same identifier is always replaced with the same alias, preserving logical relationships and routing flow.
-
-### Can I safely share the output with vendors or AI tools?
-
-Yes. pfsense-redactor is designed for sharing configurations externally without exposing secrets or identifiable network information.  
-Redacted output is for analysis only and must not be restored to pfSense.
-
-### Does this understand pfSense-specific configuration structures?
-
-Yes. Unlike generic XML redaction tools, pfsense-redactor understands pfSense configuration layouts, including VPNs, interfaces, gateways, and common package XML structures.
-
-### When should I use aggressive mode?
-
-Use `--aggressive` when sharing configurations publicly or when third-party packages may include unknown sensitive fields.
-
-Aggressive mode broadens both secret detection and identifier rewriting. On top of the default behaviour it will:
-
-- Redact unrecognised high-entropy values (base64/hex/PEM-shaped) in any element, rather than reporting them
-- Redact free-text option blocks (`custom_options`, `userparams`, `upsd_users`, `advanced`, …) wholesale
-- Redact credential-shaped URL **path** segments, such as Slack/Discord webhook tokens
-- Apply IP/domain redaction to all element text, not just known fields
-
-### Can I restore the redacted file to pfSense?
-
-No. Redacted output is for analysis/sharing only and must never be imported back into pfSense.
-
----
-
-## Installation
-
-### From PyPI (recommended)
+Redact secrets from a pfSense `config.xml` so you can share it — with Netgate
+support, a vendor, a forum, or an AI tool — without handing over your passwords,
+keys and network layout.
+
+Unlike generic XML redaction, it understands pfSense structures: IPsec, OpenVPN,
+WireGuard, captive portal, and the package configs where credentials actually
+hide.
+
+## Install
 
 ```bash
 pip install pfsense-redactor
 ```
 
-> **Note:** If you encounter an `externally-managed-environment` error (common on macOS and modern Linux distributions), use one of these alternatives:
->
-> **Option 1: Install with pipx (recommended for CLI tools)**
->
-> ```bash
-> brew install pipx
-> pipx install pfsense-redactor
-> ```
->
-> **Option 2: Use a virtual environment**
->
-> ```bash
-> python3 -m venv venv
-> source venv/bin/activate
-> pip install pfsense-redactor
-> ```
->
-> **Option 3: Install in user space**
->
-> ```bash
-> pip install --user pfsense-redactor
-> ```
+Pure Python standard library, no dependencies, Python 3.9+.
 
-### From Source
+<details>
+<summary>If pip reports <code>externally-managed-environment</code></summary>
+
+Common on macOS and recent Linux distributions. Any of these work:
+
+```bash
+pipx install pfsense-redactor          # recommended for CLI tools
+```
+
+```bash
+python3 -m venv venv && source venv/bin/activate
+pip install pfsense-redactor
+```
+
+```bash
+pip install --user pfsense-redactor
+```
+
+</details>
+
+<details>
+<summary>From source</summary>
 
 ```bash
 git clone https://github.com/grounzero/pfsense-redactor.git
 cd pfsense-redactor
-```
-
-**Option 1: Development mode (recommended for contributing)**
-
-```bash
 pip install -e .
 ```
 
-**Option 2: With virtual environment**
+</details>
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -e .
-```
+## Quick start
 
-The tool preserves **network architecture and routing logic** whilst sanitising **secrets and identifiers** allowing safe troubleshooting and topology review without disclosing private data.
-
-> Keeps firewall and routing context  
-> Removes passwords, keys, public IPs (optional), tokens, certs  
-> Supports anonymisation for consistent placeholder mapping  
-> Understands pfSense config structures, namespaces, VPNs, WireGuard, XML attributes, IPv6 zone IDs
-
----
-
-## Features
-
-### Protects real secrets
-
-- Passwords & encrypted passwords
-- Pre-shared keys (IPSec, OpenVPN, WireGuard)
-- TLS/OpenVPN static keys & certs
-- SNMP community strings
-- LDAP / RADIUS secrets
-- API keys & tokens
-- PEM blocks (RSA / EC / OpenSSH)
-
-### Preserves network logic
-
-- Subnets & masks (255.x.x.x always preserved)
-- Router topology
-- VLAN and VPN interfaces
-- Firewall rules and gateways
-
-### Smart redaction
-
-| Data            | Behaviour                            |
-| --------------- | ------------------------------------ |
-| Internal IPs    | Preserve with `--keep-private-ips`   |
-| Public IPs      | Mask or anonymise                    |
-| Email addresses | Mask or anonymise                    |
-| URLs            | Preserve structure, mask hostname    |
-| MAC addresses   | Mask format-preserving               |
-| Certificates    | Collapse to `[REDACTED_CERT_OR_KEY]` |
-
-### Operational modes
-
-| Mode                 | Purpose                                                                      |
-| -------------------- | ---------------------------------------------------------------------------- |
-| Default              | Safe redaction for sharing logs                                              |
-| `--keep-private-ips` | Preserve private IPs (best for support/AI)                                   |
-| `--anonymise`        | Replace identifiers with consistent placeholders (`IP_1`, `domain3.example`) |
-| `--aggressive`       | Scrub **all** fields (plugins/custom XML)                                    |
-| `--redact-descriptions` | Also redact descriptions, hostnames and SSIDs (may contain personal names) |
-
----
-
-## Requirements
-
-- **Python 3.9+**
-
----
-
-## Usage
-
-### Basic usage
-
-```bash
-# Output filename auto-generated as config-redacted.xml
-pfsense-redactor config.xml
-
-# Or specify output filename explicitly
-pfsense-redactor config.xml redacted.xml
-```
-
-### Preserve private IPs (recommended)
+**Sharing with support — keep internal addressing readable:**
 
 ```bash
 pfsense-redactor config.xml redacted.xml --keep-private-ips
 ```
 
-### Allow-list specific IPs and domains
+Removes secrets and public identifiers, leaves RFC 1918 addressing intact so
+whoever is helping can still follow your topology.
 
-```bash
-# Preserve specific public services (never redact)
-pfsense-redactor config.xml --allowlist-ip 8.8.8.8 --allowlist-domain time.nist.gov
-
-# Preserve entire CIDR ranges
-pfsense-redactor config.xml --allowlist-ip 203.0.113.0/24
-
-# Use an allow-list file (supports IPs, CIDRs, and domains)
-pfsense-redactor config.xml --allowlist-file my-allowlist.txt
-```
-
-### Topology-safe anonymisation
+**Sharing with a vendor, forum or AI tool — anonymise identifiers:**
 
 ```bash
 pfsense-redactor config.xml redacted.xml --anonymise
 ```
 
-### Allow internal DNS names
+Replaces addresses and domains with consistent placeholders, so relationships
+between rules and interfaces survive while the real values do not.
+
+**Check before you commit to it:**
 
 ```bash
-pfsense-redactor config.xml redacted.xml --no-redact-domains --keep-private-ips
-```
-
-### Aggressive mode
-
-```bash
-pfsense-redactor config.xml redacted.xml --aggressive
-```
-
-### Dry run
-
-```bash
-# Show statistics only
-pfsense-redactor config.xml --dry-run
-
-# Show statistics with sample redactions (safely masked)
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
-### Output to STDOUT
+Prints what would change, with samples safely masked.
+
+**Using an unusual package?** Add `--aggressive`. Webhook tokens live in URL
+paths, and paths are otherwise preserved so package feed URLs are not destroyed.
+Slack, Discord and Telegram are recognised and redacted without it; anything
+else needs the flag. See
+[security](https://github.com/grounzero/pfsense-redactor/blob/main/docs/security.md#what-gets-redacted).
+
+## How well does it work?
+
+Measured against a 46-secret canary corpus that ships with the repository:
+
+| Tool | Caught |
+| --- | --- |
+| **pfsense-redactor 1.1.1** | **42 / 46** |
+| ForesightCyber Config Anonymizer | 17 / 46 |
+| netgate-xlsx | 11 / 46 |
+
+The corpus was built alongside this tool, which biases it — and the four misses
+are documented rather than hidden. Run it yourself:
 
 ```bash
-pfsense-redactor config.xml --stdout > redacted.xml
+pfsense-redactor tests/corpus/canary-corpus.xml --stdout --aggressive \
+  | grep -oE 'CANARY_[A-Z0-9_]+' | sort -u
 ```
 
-### In-place (danger)
-
-```bash
-pfsense-redactor config.xml --inplace --force
-```
-
----
-
-## Command-Line Flags Reference
-
-### Version & Help
-
-| Flag              | Description                   |
-| ----------------- | ----------------------------- |
-| `--version`       | Show program version and exit |
-| `--check-version` | Check for updates from PyPI   |
-| `-h, --help`      | Show help message and exit    |
-
-### Input/Output
-
-| Flag                     | Description                                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------------------------- |
-| `input`                  | Input pfSense config.xml file (positional argument)                                                     |
-| `output`                 | Output redacted config.xml file (positional argument, optional with `--stdout`/`--dry-run`/`--inplace`) |
-| `--stdout`               | Write redacted XML to stdout instead of file                                                            |
-| `--inplace`              | Overwrite input file with redacted output (use with caution)                                            |
-| `--force`                | Overwrite output file if it already exists                                                              |
-| `--allow-absolute-paths` | Allow absolute file paths (relative paths only by default for security)                                 |
-
-### Redaction Modes
-
-| Flag                     | Description                                                                                                                                        |
-| ------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `--keep-private-ips`     | Keep non-global IP addresses visible (RFC1918/ULA/loopback/link-local). Netmasks and unspecified addresses (0.0.0.0, ::) always preserved          |
-| `--no-keep-private-ips`  | When used with `--anonymise`, do NOT keep private IPs visible (mask all IPs)                                                                       |
-| `--anonymise`            | Use consistent aliases (IP_1, domain1.example) to preserve network topology. Implies `--keep-private-ips` unless `--no-keep-private-ips` specified |
-| `--aggressive`           | Broaden secret detection (high-entropy values, free-text option blocks, URL path tokens) and apply IP/domain redaction to all element text          |
-| `--no-redact-ips`        | Do not redact IP addresses                                                                                                                         |
-| `--no-redact-domains`    | Do not redact domain names                                                                                                                         |
-| `--redact-url-usernames` | Redact usernames in URLs (default: preserve usernames, always redact passwords)                                                                    |
-| `--redact-descriptions`  | Redact free-text descriptions and identifiers (`descr`, `detail`, `hostname`, `ssid`). Off by default as these aid troubleshooting                  |
-
-<details>
-<summary>Allow-lists</summary>
-
-- Allow-lists let you preserve specific well-known IPs and domains that don't leak private information.
-
-| Flag                        | Description                                                                                                              |
-| --------------------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `--allowlist-ip IP_OR_CIDR` | IP address or CIDR network to never redact (repeatable). Applies to text and URLs                                        |
-| `--allowlist-domain DOMAIN` | Domain to never redact (repeatable, case-insensitive, supports suffix matching). Applies to bare FQDNs and URL hostnames |
-| `--allowlist-file PATH`     | File containing IPs, CIDR networks, and domains to never redact (one per line)                                           |
-| `--no-default-allowlist`    | Do not load default allow-list files (.pfsense-allowlist in current dir or ~/.pfsense-allowlist)                         |
-
-</details>
-
-<details>
-<summary>Testing & Diagnostics</summary>
-
-| Flag                | Description                                                             |
-| ------------------- | ----------------------------------------------------------------------- |
-| `--dry-run`         | Show statistics only, do not write output file                          |
-| `--dry-run-verbose` | Show statistics with sample redactions (safely masked to prevent leaks) |
-| `--fail-on-warn`    | Exit with non-zero code if root tag is not 'pfsense' (useful in CI)     |
-
-</details>
-
-### Output Control
-
-| Flag            | Description                                                |
-| --------------- | ---------------------------------------------------------- |
-| `-q, --quiet`   | Suppress progress messages (show only warnings and errors) |
-| `-v, --verbose` | Show detailed debug information                            |
-
----
-
-## Allow-lists
-
-Allow-lists let you preserve specific well-known IPs and domains that don't leak private information.
-
-### Default allow-list files
-
-The tool automatically loads allow-lists from these locations (if they exist):
-
-1. `.pfsense-allowlist` in current directory
-2. `~/.pfsense-allowlist` in home directory
-
-To disable: use `--no-default-allowlist`
-
-### Allow-list file format
-
-Create `.pfsense-allowlist` or use `--allowlist-file`:
-
-```
-# Comments start with #
-# One item per line (IP, CIDR, or domain)
-
-# Public DNS servers
-8.8.8.8
-1.1.1.1
-
-# Cloud provider ranges
-203.0.113.0/24
-198.51.100.0/24
-
-# NTP servers (suffix matching: preserves time.nist.gov and *.time.nist.gov)
-time.nist.gov
-pool.ntp.org
-
-# Wildcard domains (*.example.org preserves all subdomains)
-*.pfsense.org
-```
-
-See [`allowlist.example`](allowlist.example) for a complete template.
-
-### CLI allow-list flags
-
-```bash
-# Add specific IPs or CIDR ranges (repeatable)
---allowlist-ip 8.8.8.8 --allowlist-ip 203.0.113.0/24
-
-# Add specific domains (repeatable, case-insensitive, supports suffix matching)
---allowlist-domain time.nist.gov --allowlist-domain pool.ntp.org
-
-# Load from file (supports IPs, CIDRs, and domains)
---allowlist-file /path/to/allowlist.txt
-
-# Disable default file loading
---no-default-allowlist
-```
-
-**Features:**
-
-- **CIDR support**: `203.0.113.0/24` preserves all IPs in that range
-- **Suffix matching**: `example.org` preserves `sub.example.org`, `db.corp.example.org`, etc.
-- **Wildcard domains**: `*.example.org` is equivalent to suffix matching on `example.org`
-- **IDNA/punycode**: Automatically handles internationalised domains (e.g., `bücher.example` ↔ `xn--bcher-kva.example`)
-- **Merged sources**: All CLI flags, files, and default files are combined
-
-**Note:** Items in allow-lists are never redacted in:
-
-- Raw text IP/domain references
-- URL hostnames
-- Bare FQDNs
-
----
-
-## Example
-
-### Input
-
-```xml
-<openvpn>
-  <server>
-    <local>192.168.10.1</local>
-    <tlsauth>-----BEGIN OpenVPN Static key-----ABC123...</tlsauth>
-    <remote>198.51.100.10</remote>
-    <remote_port>443</remote_port>
-  </server>
-</openvpn>
-```
-
-### Output (`--keep-private-ips`)
-
-```xml
-<openvpn>
-  <server>
-    <local>192.168.10.1</local>
-    <tlsauth>[REDACTED]</tlsauth>
-    <remote>XXX.XXX.XXX.XXX</remote>
-    <remote_port>443</remote_port>
-  </server>
-</openvpn>
-```
-
-### Output (`--anonymise`)
-
-```xml
-<openvpn>
-  <server>
-    <local>IP_1</local>
-    <tlsauth>[REDACTED]</tlsauth>
-    <remote>IP_2</remote>
-    <remote_port>443</remote_port>
-  </server>
-</openvpn>
-```
-
----
-
-## Security Notes
-
-> **Never restore the redacted file to pfSense.**
-
-Redacted output is for **analysis only**, because:
-
-- CDATA and comments are removed by XML parser
-- PEM blocks and binary data are collapsed
-- Some optional metadata fields may be stripped
-
-Always keep the **original secure copy**.
-
-### Path Security
-
-The tool includes built-in protections against malicious file path operations:
-
-**Default behaviour (secure):**
-
-- Only relative paths are allowed by default
-- Directory traversal (`../../../etc/passwd`) is blocked
-- Paths with null bytes are rejected
-- Writing to system directories (`/etc`, `/sys`, `/proc`, `/Windows/System32`, etc.) is blocked
-- Safe locations (home directory, current working directory, temp directories) are automatically allowed
-
-**Using `--allow-absolute-paths`:**
-
-- Enables absolute paths for intentional use cases
-- Still blocks writes to sensitive system directories
-- Still blocks directory traversal attempts
-- Useful when you need to specify full paths explicitly
-
-**Examples:**
-
-```bash
-# Safe: relative path (default)
-pfsense-redactor config.xml output.xml
-
-# Blocked: absolute path without flag
-pfsense-redactor /etc/config.xml output.xml
-# Error: Absolute paths not allowed (use --allow-absolute-paths)
-
-# Blocked: directory traversal
-pfsense-redactor ../../../etc/passwd output.xml
-# Error: Path contains directory traversal components (..)
-
-# Blocked: writing to system directory (even with flag)
-pfsense-redactor config.xml /etc/output.xml --allow-absolute-paths
-# Error: Cannot write to sensitive system directory
-
-# Allowed: absolute path to safe location with flag
-pfsense-redactor ~/config.xml ~/output.xml --allow-absolute-paths
-
-# Blocked: in-place editing of system files
-pfsense-redactor /etc/hosts --inplace --force --allow-absolute-paths
-# Error: Cannot use --inplace with this file
-```
-
-**Protected system directories:**
-
-- Unix/Linux: `/etc`, `/sys`, `/proc`, `/dev`, `/boot`, `/root`, `/bin`, `/sbin`, `/usr/bin`, `/usr/sbin`, `/lib`, `/lib64`, `/var/log`, `/var/run`, `/tmp`, `/run`
-- Windows: `C:\Windows`, `C:\Windows\System32`, `C:\Program Files`, `C:\ProgramData`
-- Critical files: `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, etc.
-
----
-
-## Testing
-
-### Dry run summary
-
-```bash
-# Statistics only
-pfsense-redactor config.xml --dry-run
-
-# Statistics with sample redactions (safely masked to avoid leaks)
-pfsense-redactor config.xml --dry-run-verbose
-```
-
-**Sample output with `--dry-run-verbose`:**
-
-```
-[+] Redaction summary:
-    - Passwords/keys/secrets: 10
-    - Certificates: 6
-    - IP addresses: 26
-    - Domain names: 47
-
-[+] Samples of changes (limit N=5):
-    IP: 198.51.***.42 → XXX.XXX.XXX.XXX
-    IP: 2001:db8:*:****::1 → XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX
-    URL: https://198.51.***.42/admin → https://XXX.XXX.XXX.XXX/admin
-    FQDN: db.***.example.org → example.com
-    MAC: aa:bb:**:**:ee:ff → XX:XX:XX:XX:XX:XX
-    Secret: p****************d (len=18) → [REDACTED]
-    Cert/Key: PEM blob (len≈2048) → [REDACTED_CERT_OR_KEY]
-```
-
-**Sample masking policy** (prevents leaks in dry-run output):
-
-- **IP**: Keep first and last octet/segment, mask middle (e.g., `198.51.***.42`)
-- **URL**: Show full URL but mask host as above
-- **FQDN**: Keep TLD and one left label, mask rest (e.g., `db.***.example.org`)
-- **MAC**: Mask middle octets (e.g., `aa:bb:**:**:ee:ff`)
-- **Secret**: Show length and first/last 2 chars only (e.g., `p****************d (len=18)`)
-- **Cert/Key**: Just show placeholder with length (e.g., `PEM blob (len≈2048)`)
-
-### Recommended test flags
-
-| Purpose                      | Command                                  |
-| ---------------------------- | ---------------------------------------- |
-| Support & AI review          | `--keep-private-ips --no-redact-domains` |
-| Topology map w/o identifiers | `--anonymise`                            |
-| Nuke everything              | `--aggressive`                           |
-
----
-
-## Stats example
-
-```
-[+] Redaction summary:
-    - Passwords/keys/secrets: 4
-    - Certificates: 2
-    - IP addresses: 11
-    - MAC addresses: 3
-    - Domain names: 5
-    - Email addresses: 1
-    - URLs: 2
-```
-
----
+Full method, caveats and per-secret results in
+[the benchmark](https://github.com/grounzero/pfsense-redactor/blob/main/docs/benchmark.md).
+
+## Before you share the output
+
+> **Never restore a redacted file to pfSense.** Comments, CDATA and some
+> metadata do not survive the round trip. Keep your original.
+
+Read the run summary — it reports high-entropy values it deliberately *kept*,
+with their element paths, so you can audit them. For a second opinion from a
+scanner that fails differently, see
+[verifying output](https://github.com/grounzero/pfsense-redactor/blob/main/docs/verifying-output.md).
+
+## Documentation
+
+| Guide | Covers |
+| --- | --- |
+| [CLI reference](https://github.com/grounzero/pfsense-redactor/blob/main/docs/cli-reference.md) | Every flag, with examples |
+| [Use cases](https://github.com/grounzero/pfsense-redactor/blob/main/docs/use-cases.md) | Netgate TAC, AI tools, MSP handoff, audits — and how this relates to `diag_sanitize.php` |
+| [Allow-lists](https://github.com/grounzero/pfsense-redactor/blob/main/docs/allow-lists.md) | Keep specific IPs, CIDRs and domains readable |
+| [Security](https://github.com/grounzero/pfsense-redactor/blob/main/docs/security.md) | Threat model, what gets redacted, path safety |
+| [Verifying output](https://github.com/grounzero/pfsense-redactor/blob/main/docs/verifying-output.md) | Checking the result, and using gitleaks alongside |
+| [Benchmark](https://github.com/grounzero/pfsense-redactor/blob/main/docs/benchmark.md) | Canary corpus results and known gaps |
+| [Examples](https://github.com/grounzero/pfsense-redactor/blob/main/docs/examples.md) | Before/after output, statistics, testing |
+| [FAQ](https://github.com/grounzero/pfsense-redactor/blob/main/docs/faq.md) | Common questions |
+| [Changelog](https://github.com/grounzero/pfsense-redactor/blob/main/CHANGELOG.md) | Release history |
 
 ## Contributing
 
-Pull requests welcome. Particularly:
+Issues and pull requests are welcome. If you find a secret that survives
+redaction, that is the most valuable report there is — a minimal fragment with
+the value replaced by a `CANARY_*` marker can go straight into the corpus so the
+miss stays fixed.
 
-- Additional pfSense element coverage
-- Plugin XML tag packs (WireGuard, pfBlockerNG, HAProxy, Snort, ACME, FRR)
-- Unit test configs
+Run the tests with:
 
----
+```bash
+pip install -e ".[dev]"
+pytest
+```
 
 ## Licence
 
-MIT
+MIT — see [LICENSE](https://github.com/grounzero/pfsense-redactor/blob/main/LICENSE).

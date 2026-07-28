@@ -1,0 +1,113 @@
+<?xml version="1.0"?>
+<!--
+  Canary corpus: 46 planted secrets, each a unique CANARY_* marker.
+
+  Every value here is synthetic. Domains use the reserved .example TLD
+  (RFC 2606), addresses are RFC 1918 or RFC 5737 documentation ranges, and MAC
+  addresses come from the IANA documentation block. Nothing in this file is or
+  ever was real.
+
+  A marker surviving redaction is a leak, so the count of survivors is the
+  score. tests/integration/test_canary_corpus.py pins which four survive and
+  why; docs/benchmark.md explains each, and records the results for other tools
+  measured against this same file.
+
+  docs/benchmark.md carries the exact command to score it yourself. It cannot
+  be repeated here: an XML comment may not contain a double hyphen, which every
+  flag in it starts with.
+-->
+<pfsense>
+  <version>23.09.1</version>
+  <system>
+    <hostname>fw-hq-01</hostname>
+    <domain>internal.acme-corp.example</domain>
+    <user>
+      <name>jsmith</name>
+      <bcrypt-hash>CANARY_BCRYPT</bcrypt-hash>
+      <md5-hash>CANARY_MD5</md5-hash>
+      <nt-hash>CANARY_NTHASH</nt-hash>
+      <authorizedkeys>CANARY_AUTHORIZEDKEYS</authorizedkeys>
+      <ipsecpsk>CANARY_USERIPSECPSK</ipsecpsk>
+    </user>
+    <authserver>
+      <type>ldap</type>
+      <ldap_binddn>cn=svc,dc=acme</ldap_binddn>
+      <ldap_bindpw>CANARY_LDAPBINDPW</ldap_bindpw>
+      <radius_secret>CANARY_RADIUSSECRET</radius_secret>
+    </authserver>
+    <ssh><sshdkeyonly>enabled</sshdkeyonly></ssh>
+  </system>
+  <snmpd>
+    <rocommunity>CANARY_ROCOMMUNITY</rocommunity>
+    <rwcommunity>CANARY_RWCOMMUNITY</rwcommunity>
+  </snmpd>
+  <interfaces>
+    <wan><if>igb0</if><ipaddr>203.0.113.142</ipaddr><subnet>29</subnet><gateway>203.0.113.129</gateway><mac>00:1b:44:11:3a:b7</mac></wan>
+    <opt1><if>ath0</if><wireless>
+      <ssid>ACME-Corp-WiFi</ssid>
+      <wpa><passphrase>CANARY_WPAPASSPHRASE</passphrase><wpa_mode>2</wpa_mode></wpa>
+    </wireless></opt1>
+  </interfaces>
+  <openvpn>
+    <openvpn-client>
+      <auth_user>vpnsvc</auth_user>
+      <auth_pass>CANARY_OVPNAUTHPASS</auth_pass>
+      <tls>CANARY_OVPNTLS</tls>
+      <custom_options>askpass CANARY_INLINE_CUSTOMOPT</custom_options>
+    </openvpn-client>
+  </openvpn>
+  <wireguard>
+    <tunnels><item>
+      <privatekey>CANARY_WGPRIV</privatekey>
+      <peers><item><presharedkey>CANARY_WGPRESHARED</presharedkey><publickey>CANARY_WGPUB</publickey></item></peers>
+    </item></tunnels>
+  </wireguard>
+  <ipsec>
+    <phase1><pre-shared-key>CANARY_IPSECPSK</pre-shared-key><eap_password>CANARY_EAPPASS</eap_password></phase1>
+    <mobilekey><ident>road</ident><pre-shared-key>CANARY_MOBILEPSK</pre-shared-key></mobilekey>
+  </ipsec>
+  <captiveportal><zone><radiussecret>CANARY_CPRADIUSSECRET</radiussecret></zone></captiveportal>
+  <dyndnses><dyndns>
+    <username>acct12345</username>
+    <password>CANARY_DYNDNSPASS</password>
+    <updateurl>https://api.dnsprov.example/update?token=CANARY_URLTOKEN&amp;host=fw</updateurl>
+  </dyndns></dyndnses>
+  <notifications>
+    <smtp><password>CANARY_SMTPPASS</password><passwordagain>CANARY_SMTPPASS2</passwordagain></smtp>
+    <telegram><api_key>CANARY_TELEGRAMKEY</api_key><chatid>-100123456</chatid></telegram>
+    <pushover><apikey>CANARY_PUSHOVERKEY</apikey><userkey>CANARY_PUSHOVERUSER</userkey></pushover>
+  </notifications>
+  <aliases>
+    <alias><name>badips</name><url>https://feeds.example.net/list.txt?license=CANARY_FEEDLICENSE</url>
+    <detail>ISP account 998877, portal login admin/CANARY_INDESCR</detail></alias>
+  </aliases>
+  <installedpackages>
+    <pfblockerng><config>
+      <maxmind_key>CANARY_MAXMINDKEY</maxmind_key>
+      <dnsbl_webpage>x</dnsbl_webpage>
+    </config></pfblockerng>
+    <acme>
+      <accountkeys><item><name>le-prod</name><accountkey>CANARY_ACMEACCOUNTKEY</accountkey></item></accountkeys>
+      <certificates><item><a_dnsprovider><dns_cf_token>CANARY_CFTOKEN</dns_cf_token><dns_cf_email>dns@acme-corp.example</dns_cf_email></a_dnsprovider></item></certificates>
+    </acme>
+    <haproxy><config>
+      <ha_certificates>CANARY_HAPROXYCERTS</ha_certificates>
+      <ssloffloadcert>CANARY_SSLOFFLOAD</ssloffloadcert>
+      <advanced>Zm9vYmFy</advanced>
+    </config></haproxy>
+    <telegraf><config><influx_token>CANARY_INFLUXTOKEN</influx_token><token>CANARY_BARETOKEN</token></config></telegraf>
+    <zabbixagentlts><config><tlspskvalue>CANARY_ZABBIXPSK</tlspskvalue><userparams>UserParameter=x,cat /root/CANARY_PATH</userparams></config></zabbixagentlts>
+    <nut><config><upsd_users>[admin] password=CANARY_NUTPASS</upsd_users></config></nut>
+    <backup><config><secret_access_key>CANARY_S3SECRET</secret_access_key><access_key>CANARY_S3ACCESS</access_key></config></backup>
+    <mycustompkg><config>
+      <webhook_url>https://hooks.slack.example/services/T00/B00/CANARY_SLACKPATHTOKEN</webhook_url>
+      <bearer_token>CANARY_BEARER</bearer_token>
+      <blob>Q0FOQVJZX0JBU0U2NEJMT0JfQ0FOQVJZX0JBU0U2NEJMT0JfQ0FOQVJZ</blob>
+      <config_note secret="CANARY_ATTR_SECRET" note="ISP pin CANARY_ATTR_PLAIN">x</config_note>
+    </config></mycustompkg>
+  </installedpackages>
+  <dhcpd><lan><staticmap><mac>ac:de:48:00:11:22</mac><hostname>ceo-laptop</hostname><ipaddr>192.168.10.55</ipaddr><descr>CEO Jane Doe personal MBP</descr></staticmap></lan></dhcpd>
+  <ppps><ppp><username>isp-acct-99887@isp.example</username><password>CANARY_PPPOEPASS</password></ppp></ppps>
+  <syslog><remoteserver>logs.acme-corp.example</remoteserver></syslog>
+  <revision><description>admin@203.0.113.142 (Local Database)</description></revision>
+</pfsense>
