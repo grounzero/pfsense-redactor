@@ -353,6 +353,36 @@ def is_rfc_documentation_ip(ip: IPAddress) -> bool:
         return any(ip in net for net in RFC_DOC_NETWORKS_V4)
     return ip in RFC_DOC_NETWORK_V6
 
+# Endpoints whose credential lives in the URL path rather than a query string.
+# For these the path token *is* the authorisation - anyone holding the URL can
+# post as that integration - so it is redacted in every mode, not only under
+# --aggressive.
+#
+# Path redaction is otherwise gated behind --aggressive because feed URLs
+# (pfBlockerNG and similar) legitimately carry long path segments that
+# redaction would destroy. These entries are narrow enough not to catch those:
+# each is an exact host plus the path prefix its webhook API actually uses.
+#
+# Matched on the exact host, never a suffix. 'hooks.slack.com.example.net' is a
+# different host and must not inherit the rule.
+WEBHOOK_URL_PREFIXES: tuple[tuple[str, str], ...] = (
+    ('hooks.slack.com', '/services/'),
+    ('discord.com', '/api/webhooks/'),
+    ('discordapp.com', '/api/webhooks/'),
+    ('ptb.discord.com', '/api/webhooks/'),
+    ('canary.discord.com', '/api/webhooks/'),
+    # Telegram puts 'bot<id>:<token>' in the first path segment.
+    ('api.telegram.org', '/bot'),
+)
+
+
+def _is_webhook_url(host: str, path: str) -> bool:
+    """Whether a URL is a known webhook endpoint carrying its token in the path"""
+    host_lower = host.lower()
+    return any(host_lower == known and path.startswith(prefix)
+               for known, prefix in WEBHOOK_URL_PREFIXES)
+
+
 # URL path segment credential detection.
 # 20 because AWS access key IDs (AKIA...) are exactly 20 characters.
 SECRETISH_SEGMENT_MIN_LENGTH: int = 20
@@ -1602,25 +1632,41 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         return '/'.join(segments), True
 
     def _redact_path_secrets(self, path: str) -> str:
-        """Redact long high-entropy path segments (aggressive mode only)
+        """Redact long high-entropy path segments
 
         Slack/Discord-style webhooks carry the credential as a path segment
-        rather than a query parameter. Gated behind --aggressive because feed
-        URLs legitimately carry long path segments.
+        rather than a query parameter. Callers decide when to apply this - see
+        _should_redact_path.
         """
         redacted, changed = self._build_redacted_path(path)
         if changed:
             self.stats['url_secrets_redacted'] += 1
         return redacted
 
+    def _should_redact_path(self, parts: SplitResult) -> bool:
+        """Whether this URL's path should be scanned for embedded credentials
+
+        Aggressive mode scans every path. Otherwise only known webhook
+        endpoints, where the path token is the whole authorisation and the host
+        identifies it unambiguously - so it is worth redacting without waiting
+        for an opt-in flag.
+        """
+        if self.aggressive:
+            return True
+        return _is_webhook_url(parts.hostname or '', parts.path)
+
+    def _redact_path_if_needed(self, parts: SplitResult) -> str:
+        """Return the path, credential segments redacted where that applies"""
+        if self._should_redact_path(parts):
+            return self._redact_path_secrets(parts.path)
+        return parts.path
+
     def _rebuild_url(self, parts: SplitResult, masked_host: str, is_ipv6: bool) -> str:
         """Rebuild URL from parts with masked host"""
         netloc = self._build_netloc(parts, masked_host, is_ipv6)
 
-        path = parts.path
+        path = self._redact_path_if_needed(parts)
         query = self._redact_query_secrets(parts.query)
-        if self.aggressive:
-            path = self._redact_path_secrets(path)
 
         # Manual construction for masked IPv6 (urlunsplit doesn't like invalid IPv6)
         if is_ipv6 and 'XXXX:XXXX' in masked_host:
@@ -1716,7 +1762,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             return url
 
         netloc, netloc_changed = self._redact_netloc_userinfo(parts)
-        path = self._redact_path_secrets(parts.path) if self.aggressive else parts.path
+        path = self._redact_path_if_needed(parts)
         query = self._redact_query_secrets(parts.query)
 
         if self._url_parts_unchanged(parts, netloc_changed, path, query):
