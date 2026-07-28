@@ -103,6 +103,21 @@ def _as_block(body: list) -> ast.AST:
     return ast.Module(body=body, type_ignores=[])
 
 
+def _try_branches(stmt: ast.Try) -> list:
+    """Every statement list a try can carry: body, each handler, else, finally"""
+    branches = [stmt.body, stmt.orelse, stmt.finalbody]
+    branches.extend(handler.body for handler in stmt.handlers)
+    return [b for b in branches if b]
+
+
+def _try_blocks(stmt: ast.Try):
+    """The blocks inside a try, from whichever branch they sit in"""
+    for branch in _try_branches(stmt):
+        for inner in branch:
+            if isinstance(inner, NESTING_NODES):
+                yield from blocks(inner)
+
+
 def blocks(stmt: ast.AST):
     """Yield each separately-reachable block of logic within a statement
 
@@ -116,12 +131,14 @@ def blocks(stmt: ast.AST):
     - A `try` wrapping the real work contributes only itself, so everything
       inside it is invisible.
 
+    Every branch of a `try` counts, not just its body. A handler is where the
+    awkward logic tends to accumulate, so measuring `try:` while ignoring
+    `except:` would leave the easiest place to hide a hump unmeasured.
+
     Anything else is its own single block.
     """
     if isinstance(stmt, ast.Try):
-        for inner in stmt.body:
-            if isinstance(inner, NESTING_NODES):
-                yield from blocks(inner)
+        yield from _try_blocks(stmt)
         return
 
     if not isinstance(stmt, ast.If):

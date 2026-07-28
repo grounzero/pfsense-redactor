@@ -175,6 +175,57 @@ class TestBumps:
 
         assert any('blocks of nested logic' in r for r in reasons(tool, src))
 
+    HUMP = (
+        "        for {var} in {seq}:\n"
+        "            if {var}:\n"
+        "                print({var})\n"
+    )
+
+    @pytest.mark.parametrize('second_branch', ['except ValueError:', 'finally:'])
+    def test_humps_hiding_in_a_try_branch_are_counted(self, tool, second_branch):
+        """A handler is the easiest place to hide one
+
+        Measuring `try:` while ignoring `except:` would leave error handling,
+        where awkward logic tends to accumulate, entirely unmeasured.
+        """
+        src = (
+            "def f(items, other):\n"
+            "    try:\n"
+            + self.HUMP.format(var='i', seq='items')
+            + f"    {second_branch}\n"
+            + self.HUMP.format(var='j', seq='other')
+        )
+
+        assert any('blocks of nested logic' in r for r in reasons(tool, src))
+
+    def test_a_hump_in_the_else_branch_is_counted(self, tool):
+        """try/except/else, where the else is the interesting half"""
+        src = (
+            "def f(items, other):\n"
+            "    try:\n"
+            "        risky()\n"
+            "    except ValueError:\n"
+            + self.HUMP.format(var='i', seq='items')
+            + "    else:\n"
+            + self.HUMP.format(var='j', seq='other')
+        )
+
+        assert any('blocks of nested logic' in r for r in reasons(tool, src))
+
+    def test_a_plain_handler_is_not_a_hump(self, tool):
+        """try/except around one block stays within budget"""
+        src = (
+            "def f(items):\n"
+            "    try:\n"
+            "        for i in items:\n"
+            "            if i:\n"
+            "                print(i)\n"
+            "    except ValueError:\n"
+            "        pass\n"
+        )
+
+        assert not [r for r in reasons(tool, src) if 'blocks' in r]
+
     def test_dispatching_to_named_helpers_is_clean(self, tool):
         """The shape the two rules above push you toward"""
         src = (
