@@ -33,7 +33,7 @@ it, and re-run with `--aggressive` if any path looks like it holds a secret.
 
 ## 2. Read the independent verification
 
-Since 1.4.0 a second component re-reads the **serialised output** — the exact
+Since 1.2.2 a second component re-reads the **serialised output** — the exact
 text that gets written — and reports material that should not be in it:
 
 ```
@@ -80,7 +80,7 @@ list of structural element names (`refid`, `uuid`, `interface`, package
 metadata) are excluded, each by a rule asserted individually in
 `tests/unit/test_output_verification.py`.
 
-### Advisory in 1.4.0
+### Advisory in 1.2.2
 
 The result is reported; it does not yet decide whether output is written. Do
 not read "no findings" as "safe to publish" — read it as "a second pass found
