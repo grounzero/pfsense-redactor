@@ -21,6 +21,13 @@ These are values that look like key material in elements the tool does not
 recognise, typically third-party package fields. It reports the element path
 rather than the value, so the warning is safe to paste into a ticket.
 
+Since 1.2.0 attribute values are checked the same way, and appear with the
+attribute named in brackets:
+
+```
+    - pfsense/installedpackages/mycustompkg/config/telemetry[@endpoint_id]
+```
+
 This warning is the direct answer to "what did you leave behind". Do not ignore
 it, and re-run with `--aggressive` if any path looks like it holds a secret.
 

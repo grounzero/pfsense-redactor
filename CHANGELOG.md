@@ -5,6 +5,82 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0][] - 2026-07-28
+
+Three changes to how coverage is decided and measured. Two close gaps the canary
+corpus had been reporting since it was published; the third replaces the
+benchmark's written admission of bias with a measurement of it.
+
+Against the 46-secret canary corpus, `--aggressive` now catches 44 where 1.1.2
+caught 42, and 45 with `--redact-descriptions` where 1.1.2 caught 43.
+
+### Security
+- **FIX**: A short value in a certificate-named element was kept on the strength
+  of its length alone. Under 50 characters and without a PEM header, it was
+  assumed to be a `refid` reference rather than key material.
+
+  References are worth keeping: they are not secret, and they let a reader
+  follow the structure of the config. But length is a proxy for meaning, so
+  anything short enough was kept whatever it actually was. `<ha_certificates>`
+  and `<ssloffloadcert>` were the two canary markers this let through.
+
+  The config already declares which references exist. Every `<refid>` in the
+  file is now collected before redaction starts, and a short value in a
+  certificate-named element is kept only if it resolves against that list.
+  Values resolving to nothing are redacted as secrets. Where a value carries
+  several references, as HAProxy's can, all of them must resolve: a partial
+  match means the value is not purely a reference list.
+
+  A config declaring no `<refid>` at all therefore loses its short certificate
+  values. That is deliberate, and follows the threat model: absent evidence that
+  a value is a reference, treat it as a secret.
+
+  Elements that hold certificate material directly (`<crt>`, `<cert>`,
+  `<public-key>`) are untouched by this. A short value in one of those is a
+  truncated key, not a reference, so resolving it would answer the wrong
+  question.
+
+- **FIX**: `--fail-on-warn` could not see key material in an XML attribute.
+  `SENSITIVE_ATTR_PATTERN` matches an attribute's *name*, so a blob sitting in
+  an attribute named something unremarkable was neither redacted nor counted
+  among the retained high-entropy values the gate reads. A CI check passed on a
+  file whose own output had never mentioned it.
+
+  Attribute values are now entropy-checked the same way element values have
+  been: reported for review by default, with the attribute named in the path
+  (`telemetry[@endpoint_id]`), and redacted under `--aggressive`.
+
+  Reported rather than redacted by default because no pfSense config examined in
+  testing uses XML attributes at all. This covers third-party packages rather
+  than an observed leak, and rewriting values by default on that evidence would
+  over-redact for everyone.
+
+  This does **not** close the `config_note[@note]` canary, and is not meant to.
+  That marker is prose, and the entropy heuristic requires 32 or more characters
+  with no spaces. `--redact-descriptions` is what covers it, as it has since
+  1.1.2.
+
+### Changed
+- Redacting an already-redacted file is now a no-op for certificate elements.
+  Without the placeholder check added here, `[REDACTED_CERT_OR_KEY]` failed to
+  resolve as a reference on a second pass and degraded to the less informative
+  `[REDACTED]`.
+
+### Documentation
+- `docs/benchmark.md` now reports where the corpus came from as a measurement
+  rather than a caveat. Every released version was re-run against it to find
+  which release first caught each marker: 15 were already caught by 1.0.10, 26
+  document a gap 1.1.0 closed, and one each for 1.1.1 and 1.1.2. **31 of 46
+  markers, 67%, were planted against ground the tool did not yet hold, and none
+  of the 46 came from outside this project.** That second number is the honest
+  limit of the benchmark, and it is now stated as a number rather than a
+  disclaimer.
+- `tests/corpus/canary-corpus.xml` is frozen at 46 markers, enforced by test. It
+  is the file the two comparison tools were scored against, and that table stops
+  meaning anything the moment its denominator moves.
+- New `tests/corpus/canary-corpus-supplementary.xml` for markers added since,
+  scored separately and with no known survivors. Contributed markers go here.
+
 ## [1.1.2][] - 2026-07-28
 
 ### Security
@@ -505,6 +581,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.2.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.2.0
 [1.1.2]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.2
 [1.1.1]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.1
 [1.1.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.1.0

@@ -93,12 +93,14 @@ Measured against a 46-secret canary corpus that ships with the repository:
 
 | Tool | Caught |
 | --- | --- |
-| **pfsense-redactor** | **42 / 46** (43 with `--redact-descriptions`) |
+| **pfsense-redactor** | **44 / 46** (45 with `--redact-descriptions`) |
 | ForesightCyber Config Anonymizer | 17 / 46 |
 | netgate-xlsx | 11 / 46 |
 
-The corpus was built alongside this tool, which biases it. The four misses are
-documented rather than hidden. Run it yourself:
+The corpus was built alongside this tool, which biases it. Every released
+version was re-run against it to measure by how much: 31 of the 46 markers were
+planted against gaps this tool had, and none came from outside the project. Both
+misses are documented rather than hidden. Run it yourself:
 
 ```bash
 pfsense-redactor tests/corpus/canary-corpus.xml --stdout --aggressive \

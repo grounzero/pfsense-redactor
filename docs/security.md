@@ -22,6 +22,46 @@ pfSense and its packages actually emit: `rocommunity`, `radiussecret`,
 `passwordagain`. A deny-list handles the false positives that creates
 (`keylen`, `certref`, `password_type`).
 
+### Certificate references are resolved, not guessed
+
+Elements named for a certificate are a special case, because they hold two quite
+different things. `<crt>` holds the material. `<ssl_ca_cert>` and HAProxy's
+`<ha_certificates>` usually hold a `refid` pointing at a certificate defined
+elsewhere in the same file, and those references are worth keeping: they are not
+secret, and they let whoever reads the config follow its structure.
+
+Telling them apart by length is the obvious approach and the wrong one. Anything
+short enough passes, whatever it actually is.
+
+Since 1.2.0 the file is scanned for every `<refid>` it declares before redaction
+starts, and a short value in a certificate-named element is kept only if it
+resolves against that list. Values that resolve to nothing are redacted. Where a
+value carries several references, as HAProxy's can, all of them have to resolve;
+a partial match means the value is not purely a reference list.
+
+A config with no `<refid>` anywhere therefore loses its short certificate
+values. That is deliberate. Absent evidence that a value is a reference, the
+threat model says treat it as a secret.
+
+### Attribute values
+
+pfSense itself does not use XML attributes, but third-party packages may, and
+the tool accepts whatever XML it is given. Attributes are handled two ways:
+
+- **By name.** An attribute named for a secret is redacted, as an element would
+  be. `--redact-descriptions` extends this to free-prose names such as `note`
+  and `descr`.
+- **By value.** Since 1.2.0, an attribute whose name says nothing but whose
+  *value* looks like key material is reported among the retained high-entropy
+  values, and redacted under `--aggressive`.
+
+The second exists because name matching cannot see a blob in an innocuously
+named attribute, so before 1.2.0 such a value was invisible to `--fail-on-warn`
+as well: a CI gate passed on a file whose own output had never mentioned it. It
+reports rather than redacts by default because no pfSense config examined in
+testing uses attributes at all, and rewriting values on that evidence would
+over-redact for everyone.
+
 Credentials embedded in URLs are handled separately:
 
 | Location | Default | `--aggressive` |
