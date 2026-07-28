@@ -167,7 +167,7 @@ def setup_logging(level: int = logging.INFO, use_stderr: bool = False) -> loggin
 class ExitCode:
     """Process exit statuses, so a caller can tell failures apart
 
-    Before 1.6.0 only 0 and 1 were used, and a CI job could not distinguish
+    Before 1.4.0 only 0 and 1 were used, and a CI job could not distinguish
     "this file is not parseable" from "this file still has secrets" from "the
     disk is full". Every non-zero value below is still non-zero, so a caller
     that only tests for success is unaffected.

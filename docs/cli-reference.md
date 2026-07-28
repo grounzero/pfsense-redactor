@@ -160,7 +160,7 @@ worse than the overlap.
 ```json
 {
   "schema_version": 1,
-  "tool": {"name": "pfsense-redactor", "version": "1.6.0"},
+  "tool": {"name": "pfsense-redactor", "version": "1.4.0"},
   "input": {"sha256": "…", "bytes": 48213, "root_tag": "pfsense",
             "config_version": "23.1", "config_version_supported": true},
   "mode": {"strict": true, "aggressive": true, "redact_descriptions": true,
