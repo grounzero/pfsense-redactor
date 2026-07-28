@@ -36,9 +36,29 @@
     is a different problem, covered by the 'redact-descriptions' flag, and the
     frozen corpus already carries a marker for it.
   -->
+  <!--
+    CANARY_ZONEADDR: a bracketed IPv6 address carrying a zone identifier.
+
+    The marker is the interface name rather than the address, because the
+    address has to be a real one to be redacted at all. If redaction works the
+    marker survives as the zone and the address is masked; if tokenising breaks
+    again the whole value passes through untouched, address included.
+
+    '%' used to be a token separator, so '[2001:db8::99%CANARY_ZONEADDR]:51820'
+    was split into '[2001:db8::99' and 'CANARY_ZONEADDR]:51820'. The first half
+    carried an unbalanced bracket, failed to parse, and was returned as-is.
+    Routable addresses leaked this way, not only link-local ones. This is the
+    shape pfSense writes for a WireGuard peer endpoint.
+
+    Scored by asserting the *address* is gone, in
+    tests/integration/test_canary_corpus.py.
+  -->
   <installedpackages>
     <mycustompkg><config>
       <telemetry endpoint_id="CANARY_ATTR_BLOBaG7kQ2xZpR9vN4tY8wL3mB6dF1sJ0c">enabled</telemetry>
     </config></mycustompkg>
+    <wireguard><tunnels><item>
+      <endpoint>[2001:db8::99%CANARY_ZONEADDR]:51820</endpoint>
+    </item></tunnels></wireguard>
   </installedpackages>
 </pfsense>

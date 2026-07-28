@@ -7,6 +7,8 @@ These tests verify the correctness of targeted bug fixes and improvements.
 import io
 import logging
 
+import pytest
+
 
 class TestIPv6URLReconstruction:
     """Test that IPv6 addresses in URLs are properly wrapped in brackets"""
@@ -431,3 +433,94 @@ class TestSampleMaskingNeverLeaksSecrets:
     def test_unknown_category_returns_value_unchanged(self, basic_redactor):
         """Unknown categories fall through rather than raising"""
         assert basic_redactor._safe_mask_for_sample('plain', 'NoSuchCategory') == 'plain'
+
+
+class TestMaskerFormatBranches:
+    """Each address format the sample maskers dispatch to
+
+    These branches existed before the maskers were split into a helper per
+    format, and were untested then too - inlined in a nested conditional, they
+    were simply harder to see. Covering them here so the split does not leave
+    the same gap behind under a new name.
+    """
+
+    def test_ipv6_sample_keeps_the_ends(self, basic_redactor):
+        """The v6 arm, which the v4 test above never reaches"""
+        masked = basic_redactor._safe_mask_for_sample('2001:db8:1234:5678::abcd', 'IP')
+
+        assert masked.startswith('2001:db8:')
+        assert masked.endswith('abcd')
+        assert '****' in masked
+
+    def test_the_shortest_ipv6_is_still_masked(self, basic_redactor):
+        """'::1' splits into three empty-ish groups, so it takes the normal path"""
+        assert basic_redactor._safe_mask_for_sample('::1', 'IP') == '::*:****::1'
+
+    @pytest.mark.parametrize('masker,value', [
+        ('_mask_v6_sample', 'nocolons'),
+        ('_mask_v4_sample', '1.2.3'),
+    ])
+    def test_group_count_guards_return_the_value(self, basic_redactor, masker, value):
+        """Defensive guards, exercised directly because nothing else reaches them
+
+        _mask_ip_sample only calls these once ipaddress has parsed the value, and
+        no address it accepts can fail the group count: the shortest IPv6 is '::'
+        which still splits into three. The guards stay because the maskers are
+        reachable from _safe_mask_for_sample, which is handed whatever was
+        redacted rather than a known-good address.
+        """
+        assert getattr(basic_redactor, masker)(value) == value
+
+    def test_a_non_address_is_returned_unchanged(self, basic_redactor):
+        """The masker is fed whatever was redacted, so it must not raise"""
+        assert basic_redactor._safe_mask_for_sample('not-an-address', 'IP') == 'not-an-address'
+
+    def test_dotted_cisco_mac(self, basic_redactor):
+        """Three-group Cisco form takes the other branch from aa:bb:cc:dd:ee:ff"""
+        masked = basic_redactor._safe_mask_for_sample('aabb.ccdd.eeff', 'MAC')
+
+        assert masked == 'aabb.****.eeff'
+
+    @pytest.mark.parametrize('value', ['aa:bb:cc', 'aabb.ccdd', 'nothing'])
+    def test_malformed_macs_are_returned_unchanged(self, basic_redactor, value):
+        """Wrong group counts fall through rather than being mangled"""
+        assert basic_redactor._safe_mask_for_sample(value, 'MAC') == value
+
+
+class TestZoneAndBracketsSurviveRedaction:
+    """_restore_token_shape puts back what the token arrived with
+
+    A zone identifier names a local interface and brackets are what make an
+    IPv6 literal parseable inside a netloc, so both are structure rather than
+    address and outlive the address they decorated.
+    """
+
+    def test_zone_identifier_is_preserved(self, basic_redactor):
+        """fe80::1%igb0 keeps %igb0 after the address is masked"""
+        result = basic_redactor.redact_text('fe80::1%igb0')
+
+        assert '2001' not in result
+        assert 'fe80::1' not in result, 'the address itself must go'
+        assert '%igb0' in result, 'the interface name is structure, not address'
+
+    def test_brackets_are_preserved(self, basic_redactor):
+        """A bracketed literal stays bracketed, so the netloc still parses"""
+        result = basic_redactor.redact_text('[2001:db8::1]:8080')
+
+        assert '2001:db8::1' not in result, 'the address itself must go'
+        assert result.startswith('[')
+        assert result.endswith(']:8080')
+
+    def test_both_together(self, basic_redactor):
+        """Brackets, zone and port at once, which is the WireGuard peer shape
+
+        This shape used to pass through redact_text untouched, because '%' was
+        a token separator and the closing bracket was severed from the address.
+        See tests/unit/test_ipv6_zone_identifiers.py for the full case.
+        """
+        result = basic_redactor.redact_text('[fe80::1%igb0]:51820')
+
+        assert 'fe80::1' not in result
+        assert '%igb0' in result
+        assert result.startswith('[')
+        assert result.endswith(']:51820')
