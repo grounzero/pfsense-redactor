@@ -25,6 +25,41 @@ release at the time of testing.
 The corpus file has not changed since those two tools were scored against it.
 This tool's number moved because the tool changed, not because the test did.
 
+## Which mode the score refers to
+
+The published figure is an **`--aggressive`** result. That matters, because the
+survivor count is produced by a literal `CANARY_[A-Z0-9_]+` search over the
+output, and a marker the corpus author encoded is invisible to it.
+
+Under decode-aware scanning — `tests/adversarial/decode_scan.py`, which follows
+Base64 layers — the shipped corpus scores:
+
+```text
+default mode:      5 markers survive
+aggressive mode:   2 markers survive  (the two documented below)
+```
+
+So the headline number is honest: under decode-aware scanning, `--aggressive`
+leaves exactly the two documented survivors. What the literal count cannot
+support is the *default-mode* figure, where an encoded marker survives
+uncounted. Any default-mode number quoted in this project should be read as a
+literal-marker count, not a decode-aware one.
+
+`--strict` closes this differently: it does not count markers at all. Either the
+material is removed, or no output is produced.
+
+Reproduce either measurement:
+
+```bash
+# literal, the published method
+pfsense-redactor tests/corpus/canary-corpus.xml --stdout --aggressive \
+  | grep -oE 'CANARY_[A-Z0-9_]+' | sort -u
+
+# decode-aware
+pfsense-redactor tests/corpus/canary-corpus.xml --stdout --aggressive \
+  | python tests/adversarial/decode_scan.py
+```
+
 ## Read this before quoting the numbers
 
 **The corpus was built alongside pfsense-redactor.** It grew out of bug reports
