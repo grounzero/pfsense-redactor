@@ -513,6 +513,40 @@ def _prolog_scan_is_conclusive(data: bytes, pos: int, at_eof: bool) -> bool:
     return at_eof or len(data) - pos >= len(_DOCTYPE_DECL)
 
 
+# Distinguishes "this buffer cannot decide yet" from "accept" (None), which a
+# bare None would conflate.
+_NEED_MORE_INPUT = object()
+
+
+def _examine_prolog(data: bytes, at_eof: bool) -> str | None | object:
+    """Judge the prolog from the bytes read so far
+
+    Returns a refusal reason, None to accept, or _NEED_MORE_INPUT when the
+    answer still depends on bytes that have not been read.
+    """
+    if len(data) > _PROLOG_MAX:
+        return (f"its XML prolog exceeds {_PROLOG_MAX // 1024} KiB "
+                "without reaching a root element")
+
+    start = len(_UTF8_BOM) if data.startswith(_UTF8_BOM) else 0
+    pos = _skip_prolog_noise(data, start)
+
+    if pos is not None and _prolog_scan_is_conclusive(data, pos, at_eof):
+        # Compared case-insensitively even though XML requires the upper-case
+        # spelling, so that '<!doctype' is refused here rather than relying on
+        # the parser to reject it.
+        if data[pos:pos + len(_DOCTYPE_DECL)].upper() == _DOCTYPE_DECL:
+            return "it declares a DOCTYPE, which pfSense never emits"
+        return None
+
+    if at_eof:
+        # Unterminated comment or PI. The file is malformed, and ET.parse
+        # reports that more precisely than this guard could.
+        return None
+
+    return _NEED_MORE_INPUT
+
+
 def _prolog_refusal_reason(input_file: str) -> str | None:
     """Say why the input's XML prolog is unacceptable, or None if it is fine
 
@@ -535,27 +569,9 @@ def _prolog_refusal_reason(input_file: str) -> str | None:
         while True:
             chunk = handle.read(_PROLOG_CHUNK)
             data += chunk
-
-            at_eof = not chunk
-            if len(data) > _PROLOG_MAX:
-                return (f"its XML prolog exceeds {_PROLOG_MAX // 1024} KiB "
-                        "without reaching a root element")
-
-            start = len(_UTF8_BOM) if data.startswith(_UTF8_BOM) else 0
-            pos = _skip_prolog_noise(data, start)
-
-            if pos is not None and _prolog_scan_is_conclusive(data, pos, at_eof):
-                # Compared case-insensitively even though XML requires the
-                # upper-case spelling, so that '<!doctype' is refused here
-                # rather than relying on the parser to reject it.
-                if data[pos:pos + len(_DOCTYPE_DECL)].upper() == _DOCTYPE_DECL:
-                    return "it declares a DOCTYPE, which pfSense never emits"
-                return None
-
-            if at_eof:
-                # Unterminated comment or PI. The file is malformed, and
-                # ET.parse reports that more precisely than this guard could.
-                return None
+            verdict = _examine_prolog(data, at_eof=not chunk)
+            if verdict is not _NEED_MORE_INPUT:
+                return verdict
 
 
 # ==========================================================================
