@@ -416,6 +416,45 @@ class TestFalsePositiveVolume:
         assert result.count <= 15, [f.path for f in result.findings]
 
 
+class TestVerifierNeedsNoXmlParser:
+    """The verifier never parses XML, and must not import a parser to say so
+
+    Codacy flags `import xml.etree.ElementTree` as XXE-prone wherever it
+    appears. On this module the finding is wrong - there is no ET.parse and no
+    ET.fromstring here, only annotations - but the import was also genuinely
+    unnecessary, so it moved under TYPE_CHECKING rather than being argued with
+    or suppressed. These tests stop it coming back.
+    """
+
+    def test_verifier_does_not_import_elementtree_at_runtime(self):
+        """The assertion the fix has to satisfy"""
+        import pfsense_redactor.verifier as verifier  # pylint: disable=import-outside-toplevel
+
+        assert "ET" not in vars(verifier)
+
+    def test_the_module_parses_no_xml(self):
+        """The reason the import is unnecessary, asserted against the source
+
+        If a parse call is ever added here, the annotation-only justification
+        stops holding and this fails - which is the point at which the
+        defusedxml question genuinely needs answering rather than dismissing.
+        """
+        from pathlib import Path  # pylint: disable=import-outside-toplevel
+
+        source = (Path(__file__).resolve().parents[2]
+                  / "pfsense_redactor" / "verifier.py").read_text(encoding="utf-8")
+
+        for parser in ("ET.parse(", "ET.fromstring(", "ET.XML(", "XMLParser("):
+            assert parser not in source, f"verifier.py now parses XML via {parser}"
+
+    def test_it_still_walks_a_tree_it_is_given(self):
+        """The control: dropping the import must not have dropped the feature"""
+        root = ET.fromstring(config("<pkg><blob>CANARYSTILLWALKSVALUE99</blob></pkg>"))
+
+        tracked = verifier.collect_input_values(root)
+        assert any(item.path == 'pfsense/pkg/blob' for item in tracked)
+
+
 class TestVerifierIntegration:
     """How redactor.py uses it, and what it does when it cannot"""
 

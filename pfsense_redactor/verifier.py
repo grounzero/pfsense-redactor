@@ -41,10 +41,22 @@ import base64
 import binascii
 import math
 import re
-import xml.etree.ElementTree as ET
 from collections import Counter
 from dataclasses import dataclass
-from typing import Iterable, Iterator
+from typing import TYPE_CHECKING, Iterable, Iterator
+
+if TYPE_CHECKING:  # pragma: no cover - imported for type checking only
+    # Annotation-only, and it must stay that way. This module never parses
+    # XML: it receives an already-parsed tree from redactor.py and walks it,
+    # so there is no ET.parse or ET.fromstring here and no input for an
+    # entity-expansion or external-entity attack to arrive through.
+    #
+    # `from __future__ import annotations` above makes every annotation a
+    # string, so nothing needs this at runtime. Importing it anyway would add
+    # a module that static scanners flag on sight - correctly in general, and
+    # not here - for no benefit. tests/unit/test_output_verification.py
+    # asserts the runtime namespace does not carry it.
+    import xml.etree.ElementTree as ET
 
 # ==========================================================================
 # Bounds
@@ -242,7 +254,11 @@ def _decode_run(run: str) -> str | None:
 def _decode_layer(text: str, budget: int) -> tuple[list[str], int]:
     """Decode every encoded run in one layer, spending a shared budget"""
     produced: list[str] = []
-    for run in _ENCODED_RUN_RE.findall(text):
+    # finditer, not findall: the loop normally stops on the operation budget,
+    # so building the whole list first is work discarded on exactly the large
+    # inputs that make it costly.
+    for match in _ENCODED_RUN_RE.finditer(text):
+        run = match.group(0)
         if budget <= 0:
             break
         budget -= 1
@@ -365,11 +381,18 @@ def scan_shapes(candidate: str) -> VerificationResult:
 # ==========================================================================
 @dataclass(frozen=True)
 class TrackedValue:
-    """One input value worth checking for verbatim survival"""
+    """One input value worth checking for verbatim survival
+
+    `collapsed` is the whitespace-free form used for the comparison. Computed
+    once here rather than per call in scan_retention: values are snapshotted
+    before redaction and never change, and a large document has tens of
+    thousands of them.
+    """
 
     path: str
     value: str
     kind: str
+    collapsed: str
 
 
 def _element_path(stack: list[str], tag: str) -> str:
@@ -465,7 +488,9 @@ def _track_element_value(
         return
     if _is_excluded(tag, value, allowlisted):
         return
-    tracked.setdefault(value, TrackedValue(_element_path(stack, tag), value, 'element'))
+    tracked.setdefault(
+        value, TrackedValue(_element_path(stack, tag), value, 'element', _collapse(value))
+    )
 
 
 def _track_attribute_values(
@@ -480,7 +505,7 @@ def _track_attribute_values(
         if _is_excluded(name.lower(), value, allowlisted):
             continue
         path = f'{_element_path(stack, tag)}[@{name.lower()}]'
-        tracked.setdefault(value, TrackedValue(path, value, 'attribute'))
+        tracked.setdefault(value, TrackedValue(path, value, 'attribute', _collapse(value)))
 
 
 def scan_retention(
@@ -505,7 +530,7 @@ def scan_retention(
             reason='input value present verbatim in candidate output',
         )
         for item in tracked
-        if _collapse(item.value) in haystack
+        if item.collapsed in haystack
     ]
     return _result(findings)
 
