@@ -65,20 +65,49 @@ value, a prefix of it, or a hash of it — a short secret's hash is
 brute-forceable and a token's prefix names its issuer — so the whole block is
 safe to paste into a ticket.
 
+### What it compares
+
+A value made entirely of `A-Za-z0-9+/=_-` — the alphabet Base64, Base64URL, hex
+and API keys share — is compared whole.
+
+Anything else is **tokenised** and the parts are compared instead. A secret is
+often not a value but part of one: a key inside `{"api_secret": "…"}`, a token
+in a config line, a word in a note. Comparing only whole values found none of
+them. The separators are not enumerated — every character JSON, URLs, shell and
+config text use to delimit things is outside that alphabet, so a maximal run of
+alphabet characters is exactly one token.
+
+Element **tails** — the mixed-content text between one element's close and the
+next element's open — are collected alongside text and attribute values. pfSense
+does not emit mixed content, so this covers hand-edited and package-generated
+XML, which the check previously could not see at all.
+
+The 16-character floor does most of the false-positive work: `api_secret`,
+`deploy`, `key`, `https`, `index` and essentially every English word are below
+it.
+
 ### What it does not see
 
-The retention check only reports values made entirely of `A-Za-z0-9+/=_-`, the
-alphabet Base64, Base64URL, hex and API keys all live in. Without that
-restriction every rule description, cron command and package metadata field in a
-real config is reported, and a report nobody reads is not a control. A secret
-containing a dot, a colon or a space is invisible to *this* check — JWTs and
-credential-bearing URLs are covered by the shape scan instead, and free prose by
-`--redact-descriptions`.
+A secret shorter than 16 characters, or one broken across a separator, is
+invisible to this check. JWTs and credential-bearing URLs are covered by the
+shape scan instead, and free prose by `--redact-descriptions`.
 
-Absolute paths, the tool's own placeholders, allow-listed entries and a short
-list of structural element names (`refid`, `uuid`, `interface`, package
-metadata) are excluded, each by a rule asserted individually in
-`tests/unit/test_output_verification.py`.
+Excluded, each by a rule asserted individually in
+`tests/unit/test_output_verification.py`:
+
+| Excluded | Why |
+| --- | --- |
+| The tool's own placeholders | Reporting the redaction as the leak is worse than useless |
+| Allow-listed entries | The operator asked to keep them |
+| Structural element names (`refid`, `uuid`, `interface`, package metadata) | References and identifiers a reader needs to follow the config |
+| Absolute paths, whole or as a token | pfSense stores them in quantity and the transformer preserves them deliberately. `/` is in the alphabet because Base64 uses it, so a leading slash is the test — a Base64 token with a slash *inside* it is unaffected |
+| URLs | A credential in one is caught precisely by the shape scan. What is left is the path and query, which are what the transformer preserves on purpose — pfBlockerNG feed URLs carry long path components |
+
+Measured on the shipped sample configurations under the strongest policy, the
+URL and path exclusions accounted for 16 of 25 findings on the largest, and
+none of the 16 was a secret. The remainder are package names, blocklist names
+and rule tags that genuinely do survive verbatim — which is the check working,
+not failing.
 
 ### Advisory in 1.2.2
 
