@@ -280,7 +280,10 @@ class TestStructuredContent:
     @pytest.mark.xfail(
         strict=True,
         reason="FINDING-06: element text is never parsed as JSON, so a "
-               "secret-named JSON key is not reached",
+               "secret-named JSON key is not reached. Still open in the "
+               "transformer; contained since 1.8.0 by the verifier's token "
+               "scan, which makes --strict refuse to emit rather than emit it "
+               "at exit 0 - see TestEmbeddedSecretsFailClosed",
     )
     def test_secret_in_embedded_json_is_redacted(self):
         """A secret-named JSON key must be reached"""
@@ -311,7 +314,9 @@ class TestStructuredContent:
     @pytest.mark.xfail(
         strict=True,
         reason="FINDING-07: CDATA in a non-secret-named element gets no "
-               "treatment beyond the name rules, so free-text secrets survive",
+               "treatment beyond the name rules, so free-text secrets survive. "
+               "Still open in the transformer; contained since 1.8.0 by the "
+               "verifier's token scan - see TestEmbeddedSecretsFailClosed",
     )
     def test_secret_in_cdata_in_unnamed_element_is_redacted(self):
         """CDATA free text must be scanned like any other free text"""
@@ -320,7 +325,10 @@ class TestStructuredContent:
 
     @pytest.mark.xfail(
         strict=True,
-        reason="FINDING-08: element tails are only processed under --aggressive",
+        reason="FINDING-08: element tails are only processed under "
+               "--aggressive. Still open in the transformer; contained since "
+               "1.8.0 by the verifier, which now tracks tails - see "
+               "TestEmbeddedSecretsFailClosed",
     )
     def test_secret_in_element_tail_is_reached(self):
         """Mixed-content tails are text too"""
