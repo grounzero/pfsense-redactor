@@ -252,6 +252,13 @@ following are all still true under it:
 - **Unknown encodings exist.** Base64 and Base64URL are decoded to a depth of
   three. A value encoded some other way — a vendor's own scheme, compression,
   encryption — is opaque to both the transformer and the verifier.
+- **Some material is contained rather than removed.** A secret inside embedded
+  JSON, inside free text or CDATA, or in an element tail is still not
+  *redacted*: the transformer does not reach it, and those gaps remain open.
+  Since 1.8.0 the verifier does see them, so strict mode refuses to produce
+  output rather than emitting a file at exit 0 — which is what it did before.
+  The difference is between a leak and a refusal, not between a leak and a
+  clean file.
 - **Unsupported packages exist.** pfSense packages invent element names freely.
   Coverage of a package this project has never seen rests on the value-shape
   rules and on the retention comparison, not on knowing what the field means.
