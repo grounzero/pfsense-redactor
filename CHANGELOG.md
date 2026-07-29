@@ -5,6 +5,52 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2][] - 2026-07-29
+
+Closes a blind spot shared by three findings: strict mode could produce output,
+at exit 0, containing a secret it had not redacted.
+
+### Security
+
+- **Extend strict-mode verification to detect retained sensitive tokens
+  embedded in structured or free-form element text, and in XML element tails.
+  Withhold output when these retained values are detected.**
+
+  The independent verifier compared whole values against a credential alphabet,
+  so any value containing a space or punctuation was dropped before anything
+  looked inside it. A secret in embedded JSON (`{"api_secret": "…"}`), in free
+  text or CDATA, or in an element tail was therefore invisible to it — and the
+  transformer does not reach those either. Strict mode emitted a file and
+  exited 0. (FINDING-06, FINDING-07, FINDING-08)
+
+  Values that are not alphabet-only are now tokenised and the parts compared.
+  The separators are not enumerated: every character JSON, URLs, shell and
+  config text use to delimit things falls outside the alphabet, so a maximal
+  run of alphabet characters is one token. Element tails are collected
+  alongside text and attribute values.
+
+  Bounded in the text scanned, the token count and the token length. Findings
+  remain metadata only — path, kind, length — and never carry the token, a
+  prefix of it, or a hash.
+
+- These three findings are **contained, not fixed.** The transformer still does
+  not redact them, and their `xfail(strict=True)` markers remain in place with
+  their reasons updated to say so. What changed is that strict mode now refuses
+  to produce output instead of certifying it. That is the difference between a
+  leak and a refusal, not between a leak and a clean file.
+
+### Changed
+
+- Absolute paths are excluded as tokens as well as whole values (`/` is in the
+  credential alphabet because Base64 uses it), and URLs are excluded from the
+  retention comparison — a credential in one is caught precisely by the shape
+  scan, and what remains is the path and query the transformer preserves on
+  purpose. Measured on the shipped samples, these two accounted for 16 of 25
+  findings on the largest and none was a secret.
+
+No action is required. No CLI option, default or exit code changes; runs that
+were clean before are clean now.
+
 ## [1.4.1][] - 2026-07-28
 
 Supply chain and documentation. No change to redaction behaviour: the output of
@@ -978,6 +1024,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.4.2]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.4.2
 [1.4.1]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.4.1
 [1.4.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.4.0
 [1.3.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.3.0
