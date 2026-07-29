@@ -281,7 +281,7 @@ class TestStructuredContent:
         strict=True,
         reason="FINDING-06: element text is never parsed as JSON, so a "
                "secret-named JSON key is not reached. Still open in the "
-               "transformer; contained since 1.8.0 by the verifier's token "
+               "transformer; contained since 1.4.2 by the verifier's token "
                "scan, which makes --strict refuse to emit rather than emit it "
                "at exit 0 - see TestEmbeddedSecretsFailClosed",
     )
@@ -315,7 +315,7 @@ class TestStructuredContent:
         strict=True,
         reason="FINDING-07: CDATA in a non-secret-named element gets no "
                "treatment beyond the name rules, so free-text secrets survive. "
-               "Still open in the transformer; contained since 1.8.0 by the "
+               "Still open in the transformer; contained since 1.4.2 by the "
                "verifier's token scan - see TestEmbeddedSecretsFailClosed",
     )
     def test_secret_in_cdata_in_unnamed_element_is_redacted(self):
@@ -327,7 +327,7 @@ class TestStructuredContent:
         strict=True,
         reason="FINDING-08: element tails are only processed under "
                "--aggressive. Still open in the transformer; contained since "
-               "1.8.0 by the verifier, which now tracks tails - see "
+               "1.4.2 by the verifier, which now tracks tails - see "
                "TestEmbeddedSecretsFailClosed",
     )
     def test_secret_in_element_tail_is_reached(self):

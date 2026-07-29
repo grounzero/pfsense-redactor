@@ -255,7 +255,7 @@ following are all still true under it:
 - **Some material is contained rather than removed.** A secret inside embedded
   JSON, inside free text or CDATA, or in an element tail is still not
   *redacted*: the transformer does not reach it, and those gaps remain open.
-  Since 1.8.0 the verifier does see them, so strict mode refuses to produce
+  Since 1.4.2 the verifier does see them, so strict mode refuses to produce
   output rather than emitting a file at exit 0 — which is what it did before.
   The difference is between a leak and a refusal, not between a leak and a
   clean file.
