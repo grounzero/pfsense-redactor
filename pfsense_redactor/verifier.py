@@ -43,13 +43,14 @@ import math
 import re
 from collections import Counter
 from dataclasses import dataclass
+from itertools import islice
 from typing import Iterable, Iterator, Protocol
 
 
 class XmlElement(Protocol):
     """The part of an XML element this module actually uses
 
-    Four things: a tag, text, attributes and children. Declared structurally
+    Five things: a tag, text, a tail, attributes and children. Declared structurally
     rather than as xml.etree.ElementTree.Element, for two reasons.
 
     The honest one: this module never parses XML. It is handed an
@@ -68,6 +69,7 @@ class XmlElement(Protocol):
 
     tag: str
     text: str | None
+    tail: str | None
     attrib: dict[str, str]
 
     def __iter__(self) -> Iterator['XmlElement']:
@@ -99,6 +101,16 @@ MAX_TRACKED_VALUES: int = 20000
 # Ceiling on findings returned. A run that produces this many has a systemic
 # problem, and the operator needs the first few, not all of them.
 MAX_FINDINGS: int = 200
+
+# Longest token compared on its own. Anything longer is already caught by the
+# whole-value comparison, because a value that long made of credential-alphabet
+# characters *is* the token.
+MAX_TOKEN_LENGTH: int = 512
+
+# Ceilings on the embedded scan, so a large free-text element cannot make the
+# verifier the resource problem it exists to look for.
+MAX_TOKENS_PER_VALUE: int = 64
+MAX_TOKENISED_CHARS: int = 65536
 
 # ==========================================================================
 # Shape patterns - defined here, not imported from the transformer
@@ -170,6 +182,27 @@ URL_USERINFO_PLACEHOLDERS: frozenset[str] = frozenset({
 # dot is invisible to *this* check - and is covered instead by the shape scan,
 # which looks for JWTs and credential-bearing URLs specifically.
 CREDENTIAL_ALPHABET_RE = re.compile(r'\A[A-Za-z0-9+/=_-]+\Z')
+
+# The same alphabet, matched as maximal runs *inside* a larger value.
+#
+# A value that is entirely credential-alphabet is compared whole. One that is
+# not - JSON, a sentence, a URL, a config line - may still contain a secret,
+# and comparing only whole values missed every one of them: a key inside
+# {"api_secret": "..."} is not a value, it is part of one.
+#
+# The separators fall out of the alphabet rather than being enumerated. Every
+# character JSON, URLs, shell text and config files use to delimit things -
+# braces, quotes, colons, commas, slashes-with-context, spaces, equals-in-prose
+# - is outside the alphabet, so a maximal run of alphabet characters is exactly
+# one token.
+#
+# The length floor is the same MIN_RETENTION_LENGTH used for whole values, and
+# it does most of the work: 'api_secret', 'deploy', 'key', 'https', 'index' and
+# every ordinary English word are below it. See tests/unit/test_output_verification.py
+# for the measured false-positive volume on the shipped sample configs.
+EMBEDDED_TOKEN_RE = re.compile(
+    r'[A-Za-z0-9+/=_-]{%d,%d}' % (MIN_RETENTION_LENGTH, MAX_TOKEN_LENGTH)
+)
 
 # Structural values that legitimately appear unchanged in the output and are
 # not secrets. Narrow and testable by design: every entry is a fact about
@@ -433,8 +466,18 @@ def _is_excluded(tag: str, value: str, allowlisted: frozenset[str]) -> bool:
       enumerations: the things a reader needs in order to follow the config
     - absolute filesystem paths, which pfSense stores in quantity and which the
       transformer deliberately preserves - a corrupted path helps nobody
-    - anything outside CREDENTIAL_ALPHABET_RE; see that constant for why, and
-      for what it therefore does not see
+    - URLs. A credential in one is caught precisely by the shape scan, which
+      matches `scheme://user:pass@` whatever the scheme. What is left is the
+      path and query, and those are exactly what the transformer preserves on
+      purpose: pfBlockerNG feed URLs carry long path components that redaction
+      would destroy. Measured on tests/reference and test-configs, tokenising
+      them accounted for 16 of 25 findings on the largest sample and not one
+      was a secret
+
+    What is *not* excluded here any more: a value containing characters outside
+    the credential alphabet. Those used to be dropped whole, which meant a
+    secret inside JSON, prose or a config line was invisible. They are now
+    tokenised instead - see EMBEDDED_TOKEN_RE and _tracked_candidates.
 
     Each of these is asserted individually in
     tests/unit/test_output_verification.py, so the set cannot quietly widen.
@@ -447,7 +490,7 @@ def _is_excluded(tag: str, value: str, allowlisted: frozenset[str]) -> bool:
         return True
     if value.startswith('/'):
         return True
-    return not CREDENTIAL_ALPHABET_RE.match(value)
+    return '://' in value
 
 
 def collect_input_values(
@@ -483,6 +526,7 @@ def _walk_for_values(
 
     tag = _normalise_tag(element.tag)
     _track_element_value(element, stack, tag, tracked, allowlisted, min_length)
+    _track_tail_value(element, stack, tag, tracked, allowlisted, min_length)
     _track_attribute_values(element, stack, tag, tracked, allowlisted, min_length)
 
     stack.append(tag)
@@ -493,18 +537,90 @@ def _walk_for_values(
         stack.pop()
 
 
+def _tracked_candidates(value: str, kind: str) -> list[tuple[str, str]]:
+    """The (text, kind) pairs to compare for this value
+
+    A value made entirely of credential-alphabet characters is compared whole:
+    it is a candidate secret in its own right.
+
+    Anything else is tokenised. The secret may be *inside* it - a key in a JSON
+    object, a token in a config line, a word in a note - and comparing only the
+    whole value found none of them, because the whole value is not what
+    survives, the part is.
+
+    Bounded on three axes: the text scanned, the number of tokens taken from
+    it, and the length of each. A token longer than MAX_TOKEN_LENGTH needs no
+    separate handling; a value that long made of alphabet characters is already
+    the whole-value case above.
+    """
+    if CREDENTIAL_ALPHABET_RE.match(value):
+        return [(value, kind)]
+
+    matches = islice(
+        EMBEDDED_TOKEN_RE.finditer(value[:MAX_TOKENISED_CHARS]), MAX_TOKENS_PER_VALUE
+    )
+    return [(match.group(), f'{kind}-token') for match in matches]
+
+
+def _track_value(
+    value: str, path: str, kind: str, name: str,
+    tracked: dict[str, TrackedValue], allowlisted: frozenset[str], min_length: int,
+) -> None:
+    """Record one value, whole or tokenised, if it is worth checking
+
+    The exclusions are applied to the *containing* value, before tokenising:
+    an absolute path, a structural element or an allow-listed entry is out of
+    scope however its characters happen to group.
+    """
+    if len(value) < min_length:
+        return
+    if _is_excluded(name, value, allowlisted):
+        return
+
+    for text, candidate_kind in _tracked_candidates(value, kind):
+        if len(text) < min_length:
+            continue
+        if text.lower() in allowlisted:
+            continue
+        # '/' is in the credential alphabet because base64 uses it, so an
+        # absolute path inside a larger value tokenises as one run. The same
+        # rule the whole value gets: a leading slash means a path, not a
+        # secret. A base64 token with a slash *inside* it is unaffected.
+        if text.startswith('/'):
+            continue
+        tracked.setdefault(text, TrackedValue(path, text, candidate_kind, _collapse(text)))
+
+
 def _track_element_value(
     element: XmlElement, stack: list[str], tag: str,
     tracked: dict[str, TrackedValue], allowlisted: frozenset[str], min_length: int,
 ) -> None:
     """Record this element's own text if it is worth checking"""
-    value = (element.text or '').strip()
-    if len(value) < min_length:
-        return
-    if _is_excluded(tag, value, allowlisted):
-        return
-    tracked.setdefault(
-        value, TrackedValue(_element_path(stack, tag), value, 'element', _collapse(value))
+    _track_value(
+        (element.text or '').strip(), _element_path(stack, tag), 'element', tag,
+        tracked, allowlisted, min_length
+    )
+
+
+def _track_tail_value(
+    element: XmlElement, stack: list[str], tag: str,
+    tracked: dict[str, TrackedValue], allowlisted: frozenset[str], min_length: int,
+) -> None:
+    """Record the text following this element's closing tag
+
+    A tail is the mixed-content text between one element's end and the next
+    element's start. pfSense does not emit mixed content, so this covers
+    hand-edited and package-generated XML - and it was invisible to the
+    retention comparison entirely, which is worse than the transformer only
+    reaching it under --aggressive: nothing was watching either.
+
+    Reported at the element's own path with '[tail]' appended, because the text
+    belongs to the parent but is positioned by this element, and naming the
+    parent alone would not say which of its children it followed.
+    """
+    _track_value(
+        (element.tail or '').strip(), f'{_element_path(stack, tag)}[tail]', 'tail', tag,
+        tracked, allowlisted, min_length
     )
 
 
@@ -514,13 +630,10 @@ def _track_attribute_values(
 ) -> None:
     """Record this element's attribute values if they are worth checking"""
     for name, raw in element.attrib.items():
-        value = raw.strip()
-        if len(value) < min_length:
-            continue
-        if _is_excluded(name.lower(), value, allowlisted):
-            continue
-        path = f'{_element_path(stack, tag)}[@{name.lower()}]'
-        tracked.setdefault(value, TrackedValue(path, value, 'attribute', _collapse(value)))
+        _track_value(
+            raw.strip(), f'{_element_path(stack, tag)}[@{name.lower()}]', 'attribute',
+            name.lower(), tracked, allowlisted, min_length
+        )
 
 
 def scan_retention(

@@ -11,6 +11,7 @@ the verifier from becoming the resource problem it exists to look for.
 
 Every value here is synthetic.
 """
+import time
 import xml.etree.ElementTree as ET
 
 import pytest
@@ -274,6 +275,161 @@ class TestRetentionScan:
         root = ET.fromstring(config(f"<pkg>{inner}</pkg>"))
 
         assert len(verifier.collect_input_values(root)) <= verifier.MAX_TRACKED_VALUES
+
+
+class TestEmbeddedTokenExtraction:
+    """Secrets that are part of a value rather than the whole of it
+
+    The retention comparison used to drop any value containing a character
+    outside the credential alphabet - which is every JSON object, every
+    sentence, every config line. The secret inside them was invisible.
+    """
+
+    @pytest.mark.parametrize(
+        "value,expected",
+        [
+            ('{"api_secret": "CANARYJSONSECRETVALUE", "n": 3}', 'CANARYJSONSECRETVALUE'),
+            ('deploy key CANARYCDATAFREEVALUE now', 'CANARYCDATAFREEVALUE'),
+            ('askpass=CANARYCONFIGLINEVALUE', 'CANARYCONFIGLINEVALUE'),
+            ('token: CANARYYAMLSTYLEVALUE1', 'CANARYYAMLSTYLEVALUE1'),
+            ('--secret CANARYSHELLARGVALUE1 --verbose', 'CANARYSHELLARGVALUE1'),
+        ],
+        ids=['json', 'prose', 'config-line', 'yaml', 'shell'],
+    )
+    def test_a_secret_inside_a_larger_value_is_tracked(self, tmp_path, value, expected):
+        """Separators fall out of the alphabet rather than being enumerated
+
+        Covered, not necessarily isolated: 'askpass=SECRET' is alphabet-only
+        end to end - '=' is base64 padding - so it is tracked whole rather than
+        split. Either way the secret is compared, which is what matters.
+        """
+        del tmp_path
+        root = ET.fromstring(config(f"<pkg><blob>{value}</blob></pkg>"))
+
+        tracked = {item.value for item in verifier.collect_input_values(root)}
+        assert any(expected in item for item in tracked), tracked
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            'the firewall rule allowing web traffic from the office',
+            '{"enabled": true, "retries": 3, "protocol": "https"}',
+            'collector.internal.example.invalid',
+            'https://doc.example.org/index.php/Setup_Snort_Package',
+            '23.09.1_4',
+            '/usr/local/etc/rc.d/service.sh restart',
+            'WAN||LAN||OPT1||guest',
+        ],
+        ids=['sentence', 'json-property-names', 'hostname', 'url', 'version',
+             'command-path', 'delimited-list'],
+    )
+    def test_ordinary_text_yields_no_tokens(self, value):
+        """The floor does most of the work: ordinary words are under 16 chars"""
+        root = ET.fromstring(config(f"<pkg><blob>{value}</blob></pkg>"))
+
+        tracked = verifier.collect_input_values(root)
+        assert not [t for t in tracked if t.kind.endswith('-token')], (
+            [t.value for t in tracked]
+        )
+
+    def test_a_url_is_not_tokenised(self):
+        """Its path and query are what the transformer preserves on purpose
+
+        A credential *in* a URL is caught precisely by the shape scan, which
+        matches scheme://user:pass@ whatever the scheme.
+        """
+        root = ET.fromstring(config(
+            "<pkg><url>https://feeds.example.net/lists/CANARYFEEDPATHVALUE1.txt</url></pkg>"
+        ))
+
+        assert not verifier.collect_input_values(root)
+
+    def test_an_absolute_path_token_is_not_tracked(self):
+        """'/' is in the alphabet because base64 uses it, so paths tokenise"""
+        root = ET.fromstring(config(
+            "<pkg><cmd>run /usr/local/etc/rc.d/something restart</cmd></pkg>"
+        ))
+
+        assert not [t for t in verifier.collect_input_values(root)
+                    if t.value.startswith('/')]
+
+    def test_a_base64_token_with_a_slash_inside_it_is_tracked(self):
+        """The path rule is a leading slash, not any slash"""
+        root = ET.fromstring(config(
+            '<pkg><cfg>{"k": "abc/def+ghi==jklmnopqrst"}</cfg></pkg>'
+        ))
+
+        assert 'abc/def+ghi==jklmnopqrst' in {
+            t.value for t in verifier.collect_input_values(root)
+        }
+
+    def test_tokenisation_is_bounded(self):
+        """A large free-text element must not make the verifier the problem"""
+        many = ' '.join(f'CANARYTOKENVALUE{n:06d}' for n in range(5000))
+        root = ET.fromstring(config(f"<pkg><blob>{many}</blob></pkg>"))
+
+        started = time.monotonic()
+        tracked = verifier.collect_input_values(root)
+
+        assert time.monotonic() - started < 10
+        assert len(tracked) <= verifier.MAX_TOKENS_PER_VALUE + 1
+
+    def test_a_token_longer_than_the_ceiling_is_left_to_the_whole_value_rule(self):
+        """A value that long made of alphabet characters *is* the token"""
+        huge = 'A' * (verifier.MAX_TOKEN_LENGTH + 50)
+        root = ET.fromstring(config(f'<pkg><cfg>{{"k": "{huge}"}}</cfg></pkg>'))
+
+        tracked = verifier.collect_input_values(root)
+        assert all(len(t.value) <= verifier.MAX_TOKEN_LENGTH for t in tracked)
+
+
+class TestElementTails:
+    """Mixed-content text, which the retention check could not see at all"""
+
+    def test_a_tail_value_is_tracked(self):
+        """pfSense does not emit mixed content; hand-edited XML does"""
+        root = ET.fromstring(config(
+            "<pkg><notes><marker/>CANARYTAILSECRETVALUE</notes></pkg>"
+        ))
+
+        tracked = {t.value: t for t in verifier.collect_input_values(root)}
+        assert 'CANARYTAILSECRETVALUE' in tracked
+        assert tracked['CANARYTAILSECRETVALUE'].kind == 'tail'
+
+    def test_the_path_names_the_element_the_tail_followed(self):
+        """The text belongs to the parent but is positioned by the sibling"""
+        root = ET.fromstring(config(
+            "<pkg><notes><marker/>CANARYTAILSECRETVALUE</notes></pkg>"
+        ))
+
+        tracked = {t.value: t for t in verifier.collect_input_values(root)}
+        assert tracked['CANARYTAILSECRETVALUE'].path.endswith('/marker[tail]')
+
+    def test_a_secret_embedded_in_a_tail_is_tracked(self):
+        """Both new rules at once"""
+        root = ET.fromstring(config(
+            "<pkg><notes><marker/>see CANARYTAILEMBEDDEDVAL for details</notes></pkg>"
+        ))
+
+        assert 'CANARYTAILEMBEDDEDVAL' in {
+            t.value for t in verifier.collect_input_values(root)
+        }
+
+    def test_whitespace_tails_are_not_tracked(self):
+        """Indentation between elements is not a value"""
+        root = ET.fromstring(config("<pkg>\n  <a>x</a>\n  <b>y</b>\n</pkg>"))
+
+        assert not [t for t in verifier.collect_input_values(root) if t.kind == 'tail']
+
+    def test_a_retained_tail_is_reported_with_metadata_only(self):
+        """The finding says where, not what"""
+        xml = config("<pkg><notes><marker/>CANARYTAILSECRETVALUE</notes></pkg>")
+        root = ET.fromstring(xml)
+
+        result = verifier.scan_retention(verifier.collect_input_values(root), xml)
+
+        assert not result.clean
+        assert "CANARYTAIL" not in rendered(result)
 
 
 class TestDefectInjection:

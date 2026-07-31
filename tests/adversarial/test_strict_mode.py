@@ -374,6 +374,141 @@ class TestIncompleteTraversalFailsClosed:
         assert "nested deeper" in result.stderr or "nests more than" in result.stderr
 
 
+# Secrets that are not values in their own right, but part of one. Each was
+# invisible to the retention comparison until it tokenised: the whole value
+# contains spaces or punctuation, so the credential-alphabet rule dropped it
+# before anything looked inside.
+EMBEDDED = {
+    'json': ('<cfg>{"api_secret": "CANARY_JSON_SECRET", "n": 3}</cfg>',
+             'CANARY_JSON_SECRET'),
+    'cdata': ('<freeform><![CDATA[deploy key CANARY_CDATA_FREE]]></freeform>',
+              'CANARY_CDATA_FREE'),
+    'tail': ('<notes><marker/>CANARY_TAIL_SECRET_VALUE</notes>',
+             'CANARY_TAIL_SECRET_VALUE'),
+}
+
+
+class TestEmbeddedSecretsFailClosed:
+    """FINDING-06, FINDING-07 and FINDING-08 - one root cause, one fix
+
+    All three are secrets the transformer does not reach. That alone is a
+    documented gap. What made them worse is that the verifier could not see
+    them either, so strict mode produced a file, exited 0, and the secret was
+    in it - a silent failure path in the mode whose entire claim is not having
+    one.
+
+    The transformer still does not reach them. The difference is that the run
+    now refuses to produce output instead of certifying it.
+    """
+
+    @pytest.mark.parametrize('case', list(EMBEDDED), ids=list(EMBEDDED))
+    def test_it_exits_non_zero(self, tmp_path, run_redactor, case):
+        """A verifier finding, so exit 4"""
+        inner, _ = EMBEDDED[case]
+        result = run_redactor(write(tmp_path, wrap(inner)), tmp_path / "out.xml", "--strict")
+
+        assert result.returncode == ExitCode.VERIFIER_FINDING, result.stderr
+
+    @pytest.mark.parametrize('case', list(EMBEDDED), ids=list(EMBEDDED))
+    def test_it_creates_no_output_file(self, tmp_path, run_redactor, case):
+        """Nothing for anyone to find and share"""
+        inner, _ = EMBEDDED[case]
+        out = tmp_path / "out.xml"
+        run_redactor(write(tmp_path, wrap(inner)), out, "--strict")
+
+        assert not out.exists()
+
+    @pytest.mark.parametrize('case', list(EMBEDDED), ids=list(EMBEDDED))
+    def test_it_preserves_an_existing_output(self, tmp_path, run_redactor, case):
+        """And does not destroy what was already there"""
+        inner, _ = EMBEDDED[case]
+        out = tmp_path / "out.xml"
+        out.write_bytes(b"<pfsense><previous/></pfsense>")
+        before = out.read_bytes()
+
+        run_redactor(write(tmp_path, wrap(inner)), out, "--strict", "--force")
+
+        assert out.read_bytes() == before
+
+    @pytest.mark.parametrize('case', list(EMBEDDED), ids=list(EMBEDDED))
+    def test_it_emits_no_xml_to_stdout(self, tmp_path, run_redactor, case):
+        """A redirected stdout is an artefact like any other"""
+        inner, secret = EMBEDDED[case]
+        result = run_redactor(write(tmp_path, wrap(inner)), "--stdout", "--strict")
+
+        assert result.returncode != 0
+        assert result.stdout.strip() == ""
+        assert secret not in result.stdout
+
+    @pytest.mark.parametrize('case', list(EMBEDDED), ids=list(EMBEDDED))
+    def test_the_report_carries_metadata_only(self, tmp_path, run_redactor, case):
+        """The finding says where, not what"""
+        inner, secret = EMBEDDED[case]
+        report = tmp_path / "report.json"
+        run_redactor(write(tmp_path, wrap(inner)), tmp_path / "out.xml",
+                     "--strict", "--report-json", report)
+
+        text = report.read_text()
+        data = json.loads(text)
+
+        assert data['verdict'] == 'findings'
+        assert data['findings'], "the finding must be recorded, not only counted"
+        for finding in data['findings']:
+            assert set(finding) == {'id', 'path', 'kind', 'length'}
+        assert secret not in text
+        # Not a prefix either - half a canary is still half a secret
+        assert secret[:12] not in text
+
+    @pytest.mark.parametrize('case', list(EMBEDDED), ids=list(EMBEDDED))
+    def test_no_secret_reaches_stderr(self, tmp_path, run_redactor, case):
+        """The reason is printed; the value is not"""
+        inner, secret = EMBEDDED[case]
+        result = run_redactor(write(tmp_path, wrap(inner)), tmp_path / "out.xml", "--strict")
+
+        assert secret not in result.stderr
+        assert secret[:12] not in result.stderr
+
+    def test_the_tail_finding_names_the_element_it_followed(self, tmp_path, run_redactor):
+        """A tail belongs to the parent but is positioned by a sibling
+
+        Naming the parent alone would not say which child it came after, which
+        is the whole value of reporting a path.
+        """
+        report = tmp_path / "report.json"
+        run_redactor(write(tmp_path, wrap(EMBEDDED['tail'][0])), tmp_path / "out.xml",
+                     "--strict", "--report-json", report)
+
+        paths = [f['path'] for f in json.loads(report.read_text())['findings']]
+        assert any(p.endswith('[tail]') for p in paths), paths
+
+
+class TestOrdinaryTextIsNotAFinding:
+    """The cost of looking inside values is what else it decides is a secret"""
+
+    @pytest.mark.parametrize(
+        'inner',
+        [
+            '<descr>the firewall rule allowing web traffic from the office</descr>',
+            '<cfg>{"enabled": true, "retries": 3, "protocol": "https"}</cfg>',
+            '<host>collector.internal.example.invalid</host>',
+            '<url>https://doc.example.org/index.php/Setup_Snort_Package</url>',
+            '<pkgversion>23.09.1_4</pkgversion>',
+            '<notes><marker/>   \n  </notes>',
+            '<cmd>/usr/local/etc/rc.d/service.sh restart</cmd>',
+            '<detail>WAN||LAN||OPT1||guest network segment</detail>',
+        ],
+        ids=['sentence', 'json-property-names', 'hostname', 'url-no-credentials',
+             'version', 'whitespace-tail', 'command-path', 'delimited-list'],
+    )
+    def test_it_still_produces_output(self, tmp_path, run_redactor, inner):
+        """Strict mode is a gate, not a wall"""
+        out = tmp_path / "out.xml"
+        result = run_redactor(write(tmp_path, wrap(inner)), out, "--strict")
+
+        assert result.returncode == ExitCode.CLEAN, result.stderr
+        assert out.exists()
+
+
 class TestStrictModeHasNoImplicitConfiguration:
     """Output must not depend on where the tool was run"""
 
