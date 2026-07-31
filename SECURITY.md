@@ -42,18 +42,18 @@ offered or implied.
 
 | Version | Supported                                     |
 | ------- | --------------------------------------------- |
-| 1.7.x   | ✅ Current release; security fixes land here first |
-| 1.6.x   | ✅ Security fixes                              |
-| < 1.6   | ❌ Upgrade                                     |
+| 1.4.x   | ✅ Current release; security fixes land here first |
+| 1.3.x   | ✅ Security fixes                              |
+| < 1.3   | ❌ Upgrade                                     |
 
 This table said `1.0.x` while the project shipped 1.2.0, which meant it named a
 line that received nothing.
 
-Older versions are not patched. The work in 1.3.0 through 1.4.1 changed
+Older versions are not patched. The work in 1.2.1 through 1.4.1 changed
 detection, output handling and failure behaviour substantially, and backporting
 it to a 1.0 line would amount to shipping it again.
 
-Versions before 1.3.0 have known false negatives documented in
+Versions before 1.2.1 have known false negatives documented in
 [the changelog](CHANGELOG.md): private-key material could survive in an
 unrecognised element or attribute while the run exited 0. If you are on one of
 those, upgrade rather than wait for a patch.
@@ -100,7 +100,7 @@ In short:
 
 ## Security audit history
 
-- **2026-07**: v1.3.0–v1.7.0 — external security review and remediation.
+- **2026-07**: v1.2.1–v1.4.1 — external security review and remediation.
   Detection hardening, an independent verifier, verified atomic output, a
   fail-closed `--strict` mode, and supply-chain pinning. Status per finding in
   [the remediation tracker](docs/security-remediation-tracker.md).
