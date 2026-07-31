@@ -85,7 +85,7 @@ all-zero field, a run of padding and `abababab…` are not reported. UUIDs are
 excluded by shape: they are 36 characters of hex and hyphens, pfSense uses them
 as object identifiers, and none of them is a secret.
 
-Before 1.3.0 all three bands required two of {digit, upper, lower}, so an
+Before 1.2.1 all three bands required two of {digit, upper, lower}, so an
 all-lowercase token, an all-uppercase token and a digest spelled only in `a-f`
 were neither redacted **nor reported** — invisible to `--fail-on-warn` and to the
 summary as well as to the output.
@@ -121,7 +121,7 @@ the tool accepts whatever XML it is given. Attributes are handled two ways:
   and `descr`.
 - **By value.** Since 1.2.0, an attribute whose name says nothing but whose
   *value* looks like key material is reported among the retained high-entropy
-  values, and redacted under `--aggressive`. Since 1.3.0 the two unambiguous
+  values, and redacted under `--aggressive`. Since 1.2.1 the two unambiguous
   cases — private-key PEM and JWTs — are redacted here in every mode, on the
   same reasoning as for elements.
 
