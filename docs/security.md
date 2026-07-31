@@ -368,6 +368,12 @@ pfsense-redactor /etc/hosts --inplace --force --allow-absolute-paths
 
 **Protected system directories:**
 
-- Unix/Linux: `/etc`, `/sys`, `/proc`, `/dev`, `/boot`, `/root`, `/bin`, `/sbin`, `/usr/bin`, `/usr/sbin`, `/lib`, `/lib64`, `/var/log`, `/var/run`, `/tmp`, `/run`
+- Unix/Linux: `/etc`, `/sys`, `/proc`, `/dev`, `/boot`, `/root`, `/bin`, `/sbin`, `/usr/bin`, `/usr/sbin`, `/lib`, `/lib64`, `/var/log`, `/var/run`, `/run`
+
+`/tmp` is **not** in that list and never has been: it is one of the *safe*
+locations an absolute output path is allowed to use without
+`--allow-absolute-paths`, alongside the home and working directories. This
+page listed it among the protected directories until 1.4.1, which was simply
+wrong.
 - Windows: `C:\Windows`, `C:\Windows\System32`, `C:\Program Files`, `C:\ProgramData`
 - Critical files: `/etc/passwd`, `/etc/shadow`, `/etc/sudoers`, etc.

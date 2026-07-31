@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1][] - 2026-07-28
+
+Supply chain and documentation. No change to redaction behaviour: the output of
+this release is byte-identical to 1.4.0 apart from the version comment.
+
+### Security
+
+- **The one workflow that can write to this repository no longer runs any
+  third-party action.** `update-snapshots.yml` used
+  `ad-m/github-push-action@master` - a moving branch, in a job holding
+  `contents: write` and `GITHUB_TOKEN` - so whoever controlled that
+  repository's `master` branch could push arbitrary commits here on the next
+  dispatch. It has been replaced with `git push`, which needs no third party at
+  all. (FINDING-SC-01)
+
+- **Regenerated snapshots are proposed as a pull request, not committed.**
+  Snapshots become the baseline every future comparison is measured against, so
+  a leak baked into them is one every later run then treats as correct. The
+  workflow now runs the full suite before and after regeneration, asserts no
+  private-key marker appears in any snapshot, runs a decode-aware canary scan so
+  an encoded marker cannot pass a literal grep, and runs the independent
+  verifier over every snapshot - then opens a PR for a human to review.
+
+- **Every third-party GitHub Action is pinned to an immutable commit SHA**, with
+  the corresponding release named in a comment beside it. Each SHA was resolved
+  from the tag and verified to belong to the expected repository.
+  `pypa/gh-action-pypi-publish@release/v1` - a moving branch in the job holding
+  `id-token: write` - is now `@ba38be9…` (v1.14.1).
+
+- **`tests/unit/test_workflow_security.py` asserts these properties** rather
+  than leaving them to review: no mutable action refs, every pin annotated, no
+  `PYPI_API_TOKEN` reference, no `password:` input in the publish step,
+  `id-token: write` scoped to the publish job, `contents: write` scoped to the
+  snapshot job, and each of the four pre-commit gates present.
+
+- **PyPI publishing continues to use OIDC Trusted Publishing only.** No
+  workflow references `PYPI_API_TOKEN`, and a test now prevents one from doing
+  so. Revoking the dormant token on PyPI and deleting the repository secret is a
+  settings action that cannot be made from a pull request; it is listed as
+  outstanding in `docs/security-remediation-tracker.md`. (FINDING-SC-02)
+
+### Documentation
+
+- **`SECURITY.md` now has a vulnerability reporting channel.** It had none,
+  which for a redaction tool pushes reporters toward public disclosure of a
+  secret-leak bug. Reports go to GitHub's private advisory form, with explicit
+  instructions not to attach a real configuration. (FINDING-29)
+
+- The supported-version table said `1.0.x` while the project shipped 1.2.0, so
+  it named a line that received nothing. It now names the current release.
+
+- `docs/security.md` listed `/tmp` among the protected system directories.
+  `/tmp` is in the *safe* list - it is a location an absolute output path may
+  use - and never was in the protected one.
+
+- `.codacy.yml` claimed Bandit was "enforced in CI". It is not, and no workflow
+  invokes it. The claim is corrected and the local command given, rather than
+  the engine re-enabled, which would reintroduce the duplicate reporting that
+  file exists to stop.
+
+- `docs/security-remediation-tracker.md` lists the seven repository-settings
+  actions that remain outstanding, including required status checks on `main`,
+  which are absent. (FINDING-SC-03)
+
+**Action required:** repository administrators should work through the manual
+actions listed in the tracker. Nothing changes for users of the tool.
+
 ## [1.4.0][] - 2026-07-28
 
 A mode for output intended to be read by anyone, and the machinery a caller
@@ -911,6 +978,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.4.1]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.4.1
 [1.4.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.4.0
 [1.3.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.3.0
 [1.2.2]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.2.2
