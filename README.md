@@ -132,6 +132,7 @@ scanner that fails differently, see
 | [Benchmark](https://github.com/grounzero/pfsense-redactor/blob/main/docs/benchmark.md) | Canary corpus results and known gaps |
 | [Examples](https://github.com/grounzero/pfsense-redactor/blob/main/docs/examples.md) | Before/after output, statistics, testing |
 | [FAQ](https://github.com/grounzero/pfsense-redactor/blob/main/docs/faq.md) | Common questions |
+| [Security remediation tracker](https://github.com/grounzero/pfsense-redactor/blob/main/docs/security-remediation-tracker.md) | Status of the July 2026 review findings |
 | [Changelog](https://github.com/grounzero/pfsense-redactor/blob/main/CHANGELOG.md) | Release history |
 
 ## Contributing

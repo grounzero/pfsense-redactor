@@ -34,14 +34,18 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 import argparse
+import base64
+import binascii
+import math
 import re
 import sys
 import ipaddress
 import functools
 import logging
 from pathlib import Path
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Callable
+from itertools import islice
 from typing import NoReturn, Union
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode, SplitResult
 import os
@@ -180,14 +184,38 @@ CERT_KEY_ELEMENTS: frozenset[str] = frozenset({
 # concatenated forms are precisely what leaks. False positives are handled by
 # SECRET_TAG_DENYLIST below rather than by narrowing the pattern - consistent
 # with this tool's general stance that over-redaction beats under-redaction.
-SECRET_TAG_PATTERN = re.compile(
-    r'passw(?:or)?d|passphrase|(?:^|[_-])pass(?:$|[_-])'
+#
+# One pattern serves both elements and attributes. They previously disagreed -
+# 'bearer', 'cookie' and 'signature' were secrets as attribute names but not as
+# element names, and 'credentials', 'privkey', 'psk' and 'community' were the
+# reverse - which no threat model justifies. SENSITIVE_ATTR_PATTERN below is an
+# alias of this, so the two cannot drift apart again.
+#
+# Two anchoring styles, deliberately mixed:
+#
+#   substring     for names that only ever mean one thing, however they are
+#                 concatenated ('radiussecret', 'ipsecpsk', 'passwordagain')
+#   \b-anchored   for short names that are common substrings of innocent ones.
+#                 'auth' is a credential; 'author' is not. 'signature' is;
+#                 'signature_algorithm' is not.
+SECRET_NAME_PATTERN = re.compile(
+    r'passw(?:or)?d|passphrase|(?:^|[_-])pass(?:$|[_-])|pwd'
     r'|psk|pre-?shared-?key|shared-?key'
     r'|secret|token|community|credential|bindpw|licen[cs]e|webhook'
     r'|api[_-]?key|account-?key|authorized-?keys'
-    r'|priv(?:ate)?[_-]?key|key(?:s)?$|[_-]key\d*$',
+    r'|priv(?:ate)?[_-]?key|key(?:s)?$|[_-]key\d*$'
+    # Credential-bearing names measured as missed against real package configs
+    r'|key(?:data|store|material|blob)'
+    r'|otpseed|totp|nonce|salt|seed|digest|hash'
+    r'|session[_-]?id|authorization'
+    # Word-anchored: secrets in their own right, substrings of innocent names
+    r'|\b(?:auth(?:[_-]key|[_-]token|entication)?|bearer|cookie|signature)\b',
     re.IGNORECASE
 )
+
+# Retained under its historical name: imported by tests and by anything reading
+# the module as documentation. There is one pattern now, not two.
+SECRET_TAG_PATTERN = SECRET_NAME_PATTERN
 
 # Certificate-ish tags are redacted only when the content actually looks like
 # PEM/blob material, so short certificate *references* (refid-style IDs, which
@@ -219,6 +247,35 @@ SECRET_TAG_DENYLIST: frozenset[str] = frozenset({
     'snortcommunityrules',   # Boolean "use community ruleset" toggle
     'sendcommunity',         # Boolean toggle
     'source_hash_key',       # HAProxy load-balancing algorithm selector
+    # Algorithm selectors admitted by the widened name pattern. Each names a
+    # choice of algorithm; none can hold that algorithm's output.
+    'hash-algorithm', 'hash-algorithm-option', 'hashalgo', 'hashalgorithm',
+    'hash_algorithm', 'hashtype', 'hash_type', 'hashsize',
+    'digestalgo', 'digest_algorithm', 'digest-algorithm', 'digesttype',
+    'saltlen', 'saltlength', 'seedlen',
+    # OpenVPN directives whose names begin with the word 'auth'
+    'auth-retry', 'auth-retry-none', 'auth-nocache',
+})
+
+# Element names whose meaning depends on the value rather than the name.
+# <digest>SHA384</digest> selects an algorithm; <digest>9f86d081…</digest> is
+# one's output. pfSense uses the same spelling for both in IPsec and OpenVPN,
+# so the name alone cannot decide and the value is consulted.
+ALGORITHM_NAMED_ELEMENTS: frozenset[str] = frozenset({
+    'digest', 'hash',
+})
+
+# The complete set of values that keep an ALGORITHM_NAMED_ELEMENTS element. A
+# closed list rather than a shape test: anything outside it in one of those
+# elements is treated as a secret, which is the safe direction.
+ALGORITHM_VALUE_NAMES: frozenset[str] = frozenset({
+    'md5', 'sha1', 'sha-1', 'sha224', 'sha-224', 'sha256', 'sha-256',
+    'sha384', 'sha-384', 'sha512', 'sha-512',
+    'sha3-224', 'sha3-256', 'sha3-384', 'sha3-512',
+    'hmac-md5', 'hmac-sha1', 'hmac-sha256', 'hmac-sha384', 'hmac-sha512',
+    'aesxcbc', 'aes-xcbc', 'aescmac', 'aes-cmac',
+    'bcrypt', 'scrypt', 'argon2', 'argon2i', 'argon2id', 'pbkdf2',
+    'none', 'null', 'auto', 'default',
 })
 
 
@@ -289,6 +346,319 @@ BLOB_SECRET_DIRECTIVES: frozenset[str] = frozenset({
 BLOB_MIN_SCAN_LENGTH: int = 32
 BASE64ISH_RE = re.compile(r'^[A-Za-z0-9+/=_\-]+$')
 HEXISH_RE = re.compile(r'^[0-9A-Fa-f]+$')
+
+# A UUID is 36 characters of hex and hyphens, which satisfies every shape test
+# below. pfSense uses them as interface and object identifiers, and they carry
+# no secret, so they are excluded by shape rather than by tuning a threshold
+# until they happen to fall outside it.
+UUID_RE = re.compile(
+    r'\A[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-'
+    r'[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\Z'
+)
+
+# Opaque-value thresholds.
+#
+# 32 stays the floor at which a value is considered at all.
+#
+# From 32 to OPAQUE_UNIFORM_MIN_LENGTH, a Base64-shaped value must still mix
+# character classes: this is the band where an ordinary word collides with an
+# encoded one, and 'administratorsonlyplease' is not a key.
+#
+# At OPAQUE_UNIFORM_MIN_LENGTH and above, uniformity stops meaning anything. An
+# all-lowercase token, an all-uppercase token and a digest spelled only in a-f
+# are all plausible secrets at that length and none of them mixes classes. 36
+# rather than the 48 the review suggested, because the shortest single-class
+# secrets measured in package configs sit just above 36, and the one structural
+# value at that length - the UUID - is excluded above by shape.
+#
+# Hex-shaped values skip the band entirely: 32 hex characters is a 128-bit key
+# or digest whatever subset of the alphabet it uses, and requiring a digit made
+# a digest spelled only in a-f invisible.
+OPAQUE_UNIFORM_MIN_LENGTH: int = 36
+
+# Shannon entropy floor, in bits per character. Rejects values that satisfy a
+# shape but carry nothing: all-zero fields, repeated fill, and padding. A
+# base64 secret scores around 5; 'deadbeef' repeated scores 2.3; 40 zeroes
+# score 0.
+MIN_OPAQUE_ENTROPY_BITS: float = 2.0
+
+# ==========================================================================
+# Bounded inspection of encoded values
+# ==========================================================================
+# A value that decodes to key material is key material; an encoding is not a
+# protection. Decoding attacker-influenced text is also where a scanner turns
+# into a denial of service, so every dimension is bounded and named here rather
+# than being implicit in the loop.
+MAX_DECODE_DEPTH: int = 3            # single, double and triple wrapping
+MAX_DECODE_SOURCE_CHARS: int = 262144   # encoded text considered per value
+MAX_DECODED_BYTES: int = 65536       # produced per decode; a PEM key is ~3 KiB
+MAX_DECODE_OPERATIONS: int = 32      # total decodes per value, across all depths
+MIN_DECODE_CANDIDATE_CHARS: int = 24  # shorter runs cannot hide a key header
+
+# A run long enough that its decoding could not exceed MAX_DECODED_BYTES.
+MAX_ENCODED_RUN_CHARS: int = (MAX_DECODED_BYTES * 4) // 3 + 4
+
+# Base64 and Base64URL share an alphabet apart from two characters, so one
+# scanner finds both and the decoder tries each mapping.
+ENCODED_RUN_RE = re.compile(
+    r'[A-Za-z0-9+/=_-]{%d,}' % MIN_DECODE_CANDIDATE_CHARS
+)
+_URLSAFE_TO_STANDARD = str.maketrans('-_', '+/')
+
+# PEM headers that denote private key material.
+#
+# Unlike a certificate, there is no configuration in which sharing one of these
+# is intended, so a match is removed in every mode and in every element or
+# attribute. That makes this the one classification in the module with no
+# over-redaction trade-off to weigh.
+#
+# The algorithm qualifier is a bounded repetition rather than '.*' so the
+# pattern cannot backtrack pathologically over attacker-supplied text. It
+# covers PRIVATE KEY, RSA/EC/DSA/ED25519 PRIVATE KEY, ENCRYPTED PRIVATE KEY,
+# OPENSSH PRIVATE KEY, SSH2 ENCRYPTED PRIVATE KEY and PGP PRIVATE KEY BLOCK,
+# plus OpenVPN's static key, which pfSense writes for tls-auth and tls-crypt.
+PRIVATE_KEY_PEM_RE = re.compile(
+    r'-----BEGIN (?:[A-Z0-9]+ ){0,4}PRIVATE KEY(?: BLOCK)?-----'
+    r'|-----BEGIN OPENVPN STATIC KEY(?: V\d)?-----'
+)
+
+# Compact JWT. Anchored on 'eyJ', the Base64 of '{"' with which every compact
+# JOSE header begins, so an ordinary dotted string - a hostname, a version, an
+# IPv4 address, a filename - cannot reach it. Segment lengths are bounded to
+# keep matching linear.
+JWT_PREFIXED_RE = re.compile(
+    r'eyJ[A-Za-z0-9_-]{5,8192}\.[A-Za-z0-9_-]{4,8192}\.[A-Za-z0-9_-]{0,8192}'
+)
+
+# The general three-segment compact-token shape. Matching this alone would flag
+# any sufficiently long dotted string, so a match only counts when the first
+# segment actually decodes to a JOSE header (see _segment_is_jose_header). That
+# catches header encodings the 'eyJ' prefix misses without inventing findings.
+COMPACT_TOKEN_RE = re.compile(
+    r'(?<![A-Za-z0-9_.-])'
+    r'([A-Za-z0-9_-]{12,8192})\.([A-Za-z0-9_-]{8,8192})\.([A-Za-z0-9_-]{0,8192})'
+)
+MAX_TOKEN_CANDIDATES: int = 32
+
+
+def _b64_decode_bounded(candidate: str) -> bytes | None:
+    """Strictly decode one Base64 run, or None if it is not decodable
+
+    Strict validation matters: without it, base64 silently discards characters
+    outside the alphabet and manufactures a decoding for text that was never
+    encoded. Padding is added rather than required, because values stored in
+    attributes and JSON commonly arrive with it stripped.
+    """
+    body = ''.join(candidate.split()).rstrip('=')
+    if not body:
+        return None
+
+    padded = body + '=' * (-len(body) % 4)
+    for alphabet in (padded, padded.translate(_URLSAFE_TO_STANDARD)):
+        decoded = _b64_decode_strict(alphabet)
+        if decoded is not None:
+            return decoded
+    return None
+
+
+def _b64_decode_strict(padded: str) -> bytes | None:
+    """One strict decode attempt, refusing anything over MAX_DECODED_BYTES"""
+    try:
+        decoded = base64.b64decode(padded, validate=True)
+    except (binascii.Error, ValueError):
+        return None
+
+    if len(decoded) > MAX_DECODED_BYTES:
+        return None
+    return decoded or None
+
+
+def _decode_encoded_runs(layer: str, budget: int) -> tuple[list[str], int]:
+    """Decode the encoded runs in one layer, spending a shared operation budget
+
+    The budget is shared across the whole traversal rather than per layer, so
+    the total work for a value is bounded no matter how the runs are
+    distributed between depths.
+    """
+    produced: list[str] = []
+    # finditer, not findall: the loop usually stops on the operation budget
+    # long before the runs are exhausted, so materialising them all first is
+    # work thrown away on exactly the large values that make it expensive.
+    for match in ENCODED_RUN_RE.finditer(layer):
+        run = match.group()
+        if budget <= 0:
+            break
+        if len(run) > MAX_ENCODED_RUN_CHARS:
+            continue
+        budget -= 1
+        decoded = _b64_decode_bounded(run)
+        if decoded is not None:
+            produced.append(decoded.decode('utf-8', errors='replace'))
+    return produced, budget
+
+
+def _next_decode_layer(
+    frontier: list[str], seen: set[str], budget: int
+) -> tuple[list[str], int]:
+    """Decode every layer in the frontier once, dropping what is not new
+
+    A decoding that reproduces something already seen is a dead end - it means
+    the value is not really layered - so it is dropped rather than expanded
+    again.
+    """
+    produced: list[str] = []
+    for layer in frontier:
+        decoded, budget = _decode_encoded_runs(layer, budget)
+        produced.extend(item for item in decoded if item not in seen)
+        seen.update(decoded)
+    return produced, budget
+
+
+def decoded_layers(text: str, max_depth: int = MAX_DECODE_DEPTH) -> list[str]:
+    """Successive decodings of the encoded runs in `text`, bounded throughout
+
+    Stops on decode failure, on a layer that reproduces something already seen,
+    at `max_depth`, at MAX_DECODE_OPERATIONS, and at the size limits. Returns
+    the decoded layers only - never the input - so a caller cannot accidentally
+    re-scan the original and double-count it.
+
+    Decoded content is inspected in memory and discarded. It is never logged,
+    never sampled and never placed in an exception message: it is by definition
+    the plaintext of something someone chose to encode.
+    """
+    if len(text) < MIN_DECODE_CANDIDATE_CHARS:
+        return []
+
+    source = text[:MAX_DECODE_SOURCE_CHARS]
+    layers: list[str] = []
+    frontier = [source]
+    seen = {source}
+    budget = MAX_DECODE_OPERATIONS
+
+    for _ in range(max_depth):
+        frontier, budget = _next_decode_layer(frontier, seen, budget)
+        layers.extend(frontier)
+        if not frontier or budget <= 0:
+            break
+
+    return layers
+
+
+def contains_private_key_material(text: str) -> bool:
+    """Whether `text` holds private-key PEM, directly or through an encoding
+
+    Checked before every heuristic in the module, and acted on in every mode.
+    """
+    if not text:
+        return False
+    if PRIVATE_KEY_PEM_RE.search(text):
+        return True
+    return any(PRIVATE_KEY_PEM_RE.search(layer) for layer in decoded_layers(text))
+
+
+def _segment_is_jose_header(segment: str) -> bool:
+    """Whether a compact-token segment decodes to a JOSE header object
+
+    A JWT header is a JSON object naming an algorithm. Requiring both facts is
+    what keeps the general three-segment shape from matching a long hostname.
+    """
+    decoded = _b64_decode_bounded(segment)
+    if decoded is None:
+        return False
+    return decoded.lstrip()[:1] == b'{' and b'"alg"' in decoded[:512]
+
+
+def contains_jwt(text: str) -> bool:
+    """Whether `text` contains a compact JWT-style token
+
+    Treated as a secret in every mode. The token's own segments are never
+    logged or sampled: a JWT header names the issuer and the payload usually
+    names the subject, so even a prefix is identifying.
+    """
+    if not text or '.' not in text:
+        return False
+    if JWT_PREFIXED_RE.search(text):
+        return True
+
+    candidates = islice(
+        COMPACT_TOKEN_RE.finditer(text[:MAX_DECODE_SOURCE_CHARS]),
+        MAX_TOKEN_CANDIDATES
+    )
+    return any(_segment_is_jose_header(match.group(1)) for match in candidates)
+
+
+# What an unambiguous secret is, and which placeholder replaces it. Ordered:
+# a value is classified by the first entry that matches.
+UNAMBIGUOUS_SECRET_KINDS: tuple[tuple[str, str, str], ...] = (
+    ('private-key', 'Cert/Key', '[REDACTED_CERT_OR_KEY]'),
+    ('jwt', 'Secret', '[REDACTED]'),
+)
+
+
+def unambiguous_secret_kind(text: str) -> str | None:
+    """Classify a value that is a credential whatever contains it
+
+    Returns 'private-key', 'jwt', or None. Both are structural facts about the
+    value rather than inferences from its name or its shape, so neither carries
+    the over-redaction risk that keeps the opaque-value heuristic in
+    report-only mode by default.
+
+    One function rather than a pair of checks at each call site, because there
+    are two call sites - element text and attribute values - and they must not
+    drift. The same reasoning produced one shared predicate for element and
+    attribute *names*; this is that principle applied to values.
+    """
+    if contains_private_key_material(text):
+        return 'private-key'
+    if contains_jwt(text):
+        return 'jwt'
+    return None
+
+
+def _redaction_for(kind: str) -> tuple[str, str]:
+    """The (statistics category, placeholder) pair for a secret kind"""
+    for name, category, placeholder in UNAMBIGUOUS_SECRET_KINDS:
+        if name == kind:
+            return category, placeholder
+    raise ValueError(f'unknown secret kind: {kind}')  # pragma: no cover - unreachable
+
+
+def shannon_entropy_bits(value: str) -> float:
+    """Shannon entropy of `value`, in bits per character
+
+    One bounded pass over a string the caller has already length-capped.
+    """
+    if not value:
+        return 0.0
+
+    total = len(value)
+    return -sum(
+        (count / total) * math.log2(count / total)
+        for count in Counter(value).values()
+    )
+
+
+def _is_opaque_secret_shape(compact: str) -> bool:
+    """Whether a whitespace-free value is shaped like an opaque secret
+
+    See OPAQUE_UNIFORM_MIN_LENGTH for why the bands are where they are. Every
+    band additionally requires entropy above MIN_OPAQUE_ENTROPY_BITS, so a
+    value that satisfies a shape while carrying nothing is not reported.
+    """
+    if UUID_RE.match(compact):
+        return False
+
+    hex_shaped = bool(HEXISH_RE.match(compact))
+    if not (hex_shaped or BASE64ISH_RE.match(compact)):
+        return False
+
+    if shannon_entropy_bits(compact) < MIN_OPAQUE_ENTROPY_BITS:
+        return False
+
+    if hex_shaped or len(compact) >= OPAQUE_UNIFORM_MIN_LENGTH:
+        return True
+
+    return _has_mixed_character_classes(compact, hex_only=False)
 
 # Final labels that are file extensions rather than TLDs. FQDN_RE is
 # deliberately broad, so without this 'list.txt' and 'backup-2026.tar.gz' are
@@ -469,14 +839,14 @@ IP_CONTAINING_ELEMENTS: frozenset[str] = frozenset({
     'mac',  # MAC addresses in <mac> tags
 })
 
-# Compile regex for sensitive attribute matching (anchored patterns to avoid false positives)
-# Use word boundaries (\b) to match whole words or common separators (-, _)
-SENSITIVE_ATTR_PATTERN = re.compile(
-    r'\b(?:password|passwd|pass|key|secret|token|bearer|cookie|'
-    r'client[_-]?secret|client[_-]?key|api[_-]?key|apikey|'
-    r'auth(?:_key|_token|entication)?|signature)\b',
-    re.IGNORECASE
-)
+# Attribute names are classified by the same pattern as element names.
+#
+# These were two separate patterns, and they disagreed: 'bearer', 'cookie' and
+# 'signature' were secrets only as attributes, 'credentials', 'privkey', 'psk',
+# 'passphrase', 'licensekey' and 'community' only as elements. A name means the
+# same thing wherever it appears, so there is one pattern and this is an alias
+# of it. Kept as a name because tests and readers refer to it.
+SENSITIVE_ATTR_PATTERN = SECRET_NAME_PATTERN
 
 
 # ==========================================================================
@@ -2115,9 +2485,29 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
 
         return bool(CERT_TAG_PATTERN.search(tag) or CERT_TAG_PATTERN.search(tag_base))
 
+    @staticmethod
+    def _names_an_algorithm_choice(tag: str, tag_base: str, element: ET.Element) -> bool:
+        """Whether a digest/hash element selects an algorithm rather than holding one's output
+
+        <digest>SHA384</digest> is IPsec choosing an algorithm; the reader needs
+        it and it is not a secret. <digest>CANARY_ADV19_DIGEST</digest> in the
+        same element name is. Only the closed ALGORITHM_VALUE_NAMES list is
+        preserved, so anything unrecognised is still treated as a secret.
+        """
+        if tag not in ALGORITHM_NAMED_ELEMENTS and tag_base not in ALGORITHM_NAMED_ELEMENTS:
+            return False
+        if len(element) > 0:
+            return False
+
+        value = (element.text or '').strip().lower()
+        return not value or value in ALGORITHM_VALUE_NAMES
+
     def _should_redact_completely(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Check if element should be completely redacted and handle it. Returns True if handled."""
         if not self._is_secret_tag(tag, tag_base):
+            return False
+
+        if self._names_an_algorithm_choice(tag, tag_base, element):
             return False
 
         if element.text:
@@ -2155,7 +2545,30 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
     def _is_high_entropy_value(self, text: str) -> bool:
         """Check whether a leaf value looks like an encoded secret
 
-        Stricter than _looks_like_secret_blob: requires the whole value to be
+        Three classes, in descending order of certainty:
+
+        1. private-key material, including through a bounded decode
+        2. a compact JWT
+        3. an opaque shape - the only heuristic of the three
+
+        The first two are structural facts about the value rather than
+        judgements about it, so they are checked before the length floor: a
+        value can be shorter than BLOB_MIN_SCAN_LENGTH and still be a key
+        header or a token.
+
+        The complete predicate, and the one to call when nothing is known about
+        the value. A caller that has *already* ruled out cases 1 and 2 should
+        call _is_opaque_value instead: repeating them here costs a second
+        bounded decode of the same text, which is the expensive half.
+        """
+        if unambiguous_secret_kind(text) is not None:
+            return True
+        return self._is_opaque_value(text)
+
+    def _is_opaque_value(self, text: str) -> bool:
+        """Case 3 alone: whether the value is shaped like an opaque secret
+
+        Stricter than _looks_like_secret_blob: the whole value must be
         base64/hex-shaped, so ordinary long prose is not flagged.
         """
         if len(text) < BLOB_MIN_SCAN_LENGTH:
@@ -2171,10 +2584,7 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         if _disqualified_as_blob(compact):
             return False
 
-        if not (BASE64ISH_RE.match(compact) or HEXISH_RE.match(compact)):
-            return False
-
-        return _has_mixed_character_classes(compact, hex_only=bool(HEXISH_RE.match(compact)))
+        return _is_opaque_secret_shape(compact)
 
     def _redact_blob_text_element(self, tag: str, tag_base: str, element: ET.Element) -> bool:
         """Scan opaque free-text containers for inline credentials
@@ -2271,11 +2681,59 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         self._redact_text_and_track(element, 'Secret')
         return True
 
+    def _redact_unambiguous_secret_element(self, element: ET.Element, text: str) -> bool:
+        """Remove private-key material or a JWT from element text, in every mode
+
+        These do not depend on the element being recognised, and they are not
+        subject to the report-only policy below: a PEM private-key header and a
+        compact JWT are unambiguous evidence, so there is no over-redaction risk
+        to trade against.
+        """
+        kind = unambiguous_secret_kind(text)
+        if kind is None:
+            return False
+
+        category, placeholder = _redaction_for(kind)
+        self._redact_text_and_track(element, category, placeholder)
+        return True
+
+    def _account_for_opaque_element(self, tag: str, element: ET.Element, text: str) -> bool:
+        """Redact or report an opaque value, which is the heuristic half
+
+        Default: record the value's location so users can audit it manually,
+        because the false-positive argument genuinely applies to a shapeless
+        blob. --aggressive: redact it.
+        """
+        # _is_opaque_value, not _is_high_entropy_value: the caller has already
+        # established the value is not private-key material and not a JWT, and
+        # re-checking would decode it a second time.
+        if not self._is_opaque_value(text):
+            return False
+
+        if self.aggressive:
+            self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
+            return True
+
+        # _path_stack holds ancestors only; this element's own tag completes it
+        self._record_retained_path('/'.join([*self._path_stack, tag]))
+        return False
+
+    def _record_retained_path(self, path: str) -> None:
+        """Count a retained high-entropy value and remember where it is"""
+        self.stats['high_entropy_retained'] += 1
+        if path not in self.high_entropy_paths:
+            self.high_entropy_paths.append(path)
+
     def _redact_unknown_blob_element(self, tag: str, element: ET.Element) -> bool:
         """Handle high-entropy values in elements we do not otherwise recognise
 
-        Default: record the value's location so users can audit it manually.
-        --aggressive: redact it.
+        Two policies, in order, split into a method each because they are
+        decided on different grounds:
+
+        1. _redact_unambiguous_secret_element - private-key material and JWTs,
+           removed in every mode because the value itself settles the question
+        2. _account_for_opaque_element - everything else, where the shape is
+           only evidence and report-only remains the default
 
         The <key> handler already covers its own tag; everything else previously
         sailed through regardless of how much it looked like key material.
@@ -2286,20 +2744,9 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
             return False
 
         text = element.text.strip()
-        if not self._is_high_entropy_value(text):
-            return False
-
-        # _path_stack holds ancestors only; this element's own tag completes it
-        path = '/'.join([*self._path_stack, tag])
-
-        if self.aggressive:
-            self._redact_text_and_track(element, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
+        if self._redact_unambiguous_secret_element(element, text):
             return True
-
-        self.stats['high_entropy_retained'] += 1
-        if path not in self.high_entropy_paths:
-            self.high_entropy_paths.append(path)
-        return False
+        return self._account_for_opaque_element(tag, element, text)
 
     def _redact_key_element_if_needed(self, tag: str, element: ET.Element) -> bool:
         """Redact <key> element if needed - can be short secret or PEM blob. Returns True if handled."""
@@ -2425,14 +2872,30 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
                 return True
         return False
 
+    @staticmethod
+    def _is_secret_name(name: str) -> bool:
+        """Whether a name denotes a secret, deny-list applied
+
+        The single classification used for element names, attribute names and
+        key names inside blob text, so the same word cannot mean different
+        things in the three places it can appear.
+        """
+        lowered = name.lower()
+        if lowered in SECRET_TAG_DENYLIST:
+            return False
+        return bool(SECRET_NAME_PATTERN.search(lowered))
+
     def _should_redact_attribute(self, attr: str) -> bool:
         """Whether an attribute's value should be removed on the strength of its name
 
         Two reasons: the name denotes a secret, or the name denotes free prose
         and --redact-descriptions was asked for. The second is opt-in because
         notes and labels are often the most useful part of a config to a reader.
+
+        The deny-list applies here as it does to element names. 'keylen' and
+        'certref' name a length and a reference wherever they appear.
         """
-        if SENSITIVE_ATTR_PATTERN.search(attr):
+        if self._is_secret_name(attr):
             return True
         if not self.redact_descriptions:
             return False
@@ -2459,18 +2922,44 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         packages rather than an observed leak, and rewriting values on that
         basis would over-redact for everyone. Reporting costs nothing and is
         what the element path has always done.
+
+        Private-key material and JWTs are the exceptions, on the same reasoning
+        as _redact_unknown_blob_element: they are removed here rather than
+        reported, in every mode. Both paths classify through
+        unambiguous_secret_kind, so the two cannot decide the same value
+        differently.
         """
-        if not self._is_high_entropy_value(element.attrib[attr]):
+        value = element.attrib[attr]
+
+        if self._redact_unambiguous_secret_attribute(element, attr, value):
+            return
+
+        # As in _account_for_opaque_element: the unambiguous cases are already
+        # ruled out above, so the complete predicate would decode twice.
+        if not self._is_opaque_value(value):
             return
 
         if self.aggressive:
             self._replace_attribute(element, attr, 'Cert/Key', '[REDACTED_CERT_OR_KEY]')
             return
 
-        self.stats['high_entropy_retained'] += 1
-        path = f"{'/'.join([*self._path_stack, tag])}[@{attr}]"
-        if path not in self.high_entropy_paths:
-            self.high_entropy_paths.append(path)
+        self._record_retained_path(f"{'/'.join([*self._path_stack, tag])}[@{attr}]")
+
+    def _redact_unambiguous_secret_attribute(
+        self, element: ET.Element, attr: str, value: str
+    ) -> bool:
+        """The attribute counterpart of _redact_unambiguous_secret_element
+
+        Same classification, same ordering, same placeholders - only the
+        mechanism for replacing the value differs.
+        """
+        kind = unambiguous_secret_kind(value)
+        if kind is None:
+            return False
+
+        category, placeholder = _redaction_for(kind)
+        self._replace_attribute(element, attr, category, placeholder)
+        return True
 
     def _redact_sensitive_attributes(self, element: ET.Element, tag: str) -> None:
         """Handle attribute values: redact by name, and account for blobs in the rest

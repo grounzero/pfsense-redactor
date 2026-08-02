@@ -1,0 +1,191 @@
+<?xml version="1.0"?>
+<!--
+  ADVERSARIAL CANARY CORPUS - security review 2026-07
+
+  EVERY VALUE IN THIS FILE IS SYNTHETIC. There are no real credentials, keys,
+  certificates, hostnames or addresses here. The "PEM" blocks are base64-legal
+  runs of the literal word CANARY; they are not keys and decode to nothing.
+  IP addresses are drawn from RFC 5737 / RFC 3849 / RFC 2544 documentation
+  ranges. Domains use .example and .invalid.
+
+  This file is the counterpart to tests/corpus/canary-corpus.xml. That corpus
+  measures what the tool catches; this one is built to probe where it does
+  not, so most markers here are EXPECTED to survive default-mode redaction
+  today. Each is paired with a test in tests/adversarial/ that either pins the
+  gap (xfail strict) or pins the correct behaviour (plain assertion).
+
+  Marker convention: CANARY_ADVnn_<WHAT>. Encoded markers (ADV04, ADV05, ADV06)
+  are not greppable as literals by design - that is the point they exist to
+  make, and tests/adversarial/decode_scan.py is what finds them.
+-->
+<pfsense>
+  <version>23.1</version>
+
+  <!-- ADV01: a credential in an element name no pattern anticipates.
+       Third-party packages invent field names freely. -->
+  <installedpackages>
+    <mqttbridge>
+      <config>
+        <mqtt_login_string>CANARY_ADV01_UNEXPECTED_TAG</mqtt_login_string>
+      </config>
+    </mqttbridge>
+
+    <!-- ADV02: private key material in an XML attribute whose name is not
+         matched by SENSITIVE_ATTR_PATTERN ('privkey' has no word boundary
+         before 'key'). -->
+    <vendoragent>
+      <config>
+        <endpoint privkey="-----BEGIN RSA PRIVATE KEY-----&#10;CANARYADV02PRIVATEKEYCANARYADV02PRIVATEKEYCANARYADV02PRIVATE0123&#10;-----END RSA PRIVATE KEY-----" host="collector.vendor.invalid"/>
+      </config>
+    </vendoragent>
+
+    <!-- ADV03: an entire PEM private key in an element the tool does not
+         recognise. Reported as high-entropy, retained, exit code 0. -->
+    <telemetryagent>
+      <config>
+        <vendorblob>-----BEGIN RSA PRIVATE KEY-----
+CANARYADV03PRIVATEKEYCANARYADV03PRIVATEKEYCANARYADV03PRIVATE0123
+CANARYADV03PRIVATEKEYCANARYADV03PRIVATEKEYCANARYADV03PRIVATE4567
+-----END RSA PRIVATE KEY-----</vendorblob>
+      </config>
+    </telemetryagent>
+
+    <!-- ADV04: the same private key, base64-encoded once. No decoding layer
+         exists, so the PEM marker is never seen. -->
+    <backupagent>
+      <config>
+        <payload>LS0tLS1CRUdJTiBSU0EgUFJJVkFURSBLRVktLS0tLQpDQU5BUllBRFYwM1BSSVZBVEVLRVlDQU5BUllBRFYwM1BSSVZBVEVLRVlDQU5BUllBRFYwM1BSSVZBVEUwMTIzCkNBTkFSWUFEVjAzUFJJVkFURUtFWUNBTkFSWUFEVjAzUFJJVkFURUtFWUNBTkFSWUFEVjAzUFJJVkFURTQ1NjcKLS0tLS1FTkQgUlNBIFBSSVZBVEUgS0VZLS0tLS0K</payload>
+      </config>
+    </backupagent>
+
+    <!-- ADV05: the same private key, base64-encoded twice. -->
+    <syncagent>
+      <config>
+        <blob>TFMwdExTMUNSVWRKVGlCU1UwRWdVRkpKVmtGVVJTQkxSVmt0TFMwdExRcERRVTVCVWxsQlJGWXdNMUJTU1ZaQlZFVkxSVmxEUVU1QlVsbEJSRll3TTFCU1NWWkJWRVZMUlZsRFFVNUJVbGxCUkZZd00xQlNTVlpCVkVVd01USXpDa05CVGtGU1dVRkVWakF6VUZKSlZrRlVSVXRGV1VOQlRrRlNXVUZFVmpBelVGSkpWa0ZVUlV0RldVTkJUa0ZTV1VGRVZqQXpVRkpKVmtGVVJUUTFOamNLTFMwdExTMUZUa1FnVWxOQklGQlNTVlpCVkVVZ1MwVlpMUzB0TFMwSw==</blob>
+      </config>
+    </syncagent>
+
+    <!-- ADV06: one secret split across lines inside a single element. Each
+         fragment on its own is short; concatenated they are the credential. -->
+    <chunkedagent>
+      <config>
+        <parts>CANARY_ADV06_
+SPLIT_ACROSS_
+LINES_SECRET</parts>
+      </config>
+    </chunkedagent>
+
+    <!-- ADV07: credentials in a URL. This one SHOULD be caught in every mode -
+         it is a regression pin, not a gap. -->
+    <feedagent>
+      <config>
+        <updateurl>https://svcacct:CANARY_ADV07_URLPASS@feeds.vendor.invalid/list?token=CANARY_ADV07_QUERYTOKEN</updateurl>
+      </config>
+    </feedagent>
+
+    <!-- ADV08: a secret inside CDATA. ElementTree flattens CDATA to text, so
+         the value is reachable - but only by the same name-based rules. -->
+    <noteagent>
+      <config>
+        <freeform><![CDATA[deploy key is CANARY_ADV08_INSIDE_CDATA - do not share]]></freeform>
+      </config>
+    </noteagent>
+
+    <!-- ADV09: JSON embedded in element text. No JSON parsing exists, and
+         'cfg' matches nothing, so the whole object survives. -->
+    <jsonagent>
+      <config>
+        <cfg>{"endpoint": "https://api.vendor.invalid", "api_secret": "CANARY_ADV09_JSON_SECRET", "retries": 3}</cfg>
+      </config>
+    </jsonagent>
+
+    <!-- ADV10 / ADV11: mixed case and namespace prefixes. Both SHOULD be
+         caught - regression pins for _normalise_tag. -->
+    <caseagent>
+      <config>
+        <ApiKey>CANARY_ADV10_MIXEDCASE</ApiKey>
+        <PASSWORD>CANARY_ADV10_UPPERCASE</PASSWORD>
+      </config>
+    </caseagent>
+
+    <!-- ADV12: unfamiliar package field holding a bearer token. -->
+    <unknownpkg>
+      <config>
+        <authorization>Bearer CANARY_ADV12_AUTHZ_HEADER</authorization>
+        <sessionid>CANARY_ADV12_SESSIONID</sessionid>
+      </config>
+    </unknownpkg>
+
+    <!-- ADV13/14/15/16: high-entropy blobs of differing character classes.
+         Only the mixed-class ones are seen by _is_high_entropy_value. -->
+    <entropyagent>
+      <config>
+        <mixedblob>aGVsbG8gd29ybGQxMjM0NTY3ODkwQUJDREVGRw==</mixedblob>
+        <lowerblob>canaryadvfourteenlowercaseonlysecretvalue</lowerblob>
+        <upperblob>CANARYADVFIFTEENUPPERCASEONLYSECRETVALUE</upperblob>
+        <hexblob>deadbeefdeadbeefdeadbeefcafefeedcafefeed</hexblob>
+        <jwt>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJDQU5BUllfQURWMTZfSldUIn0.dBjftJeZ4CVPmB92K27uhbUJU1p1r6wW1gFWFOEjXk</jwt>
+      </config>
+    </entropyagent>
+
+    <!-- ADV17/18/19: secret-bearing element names neither pattern matches. -->
+    <namingagent>
+      <config>
+        <pwd>CANARY_ADV17_PWD_TAG</pwd>
+        <bearer>CANARY_ADV18_BEARER_TAG</bearer>
+        <otpseed>CANARY_ADV19_OTPSEED</otpseed>
+        <salt>CANARY_ADV19_SALT</salt>
+        <digest>CANARY_ADV19_DIGEST</digest>
+        <keydata>CANARY_ADV19_KEYDATA</keydata>
+        <keystore>CANARY_ADV19_KEYSTORE</keystore>
+      </config>
+    </namingagent>
+
+    <!-- ADV20: a public routable address in an element outside
+         IP_CONTAINING_ELEMENTS. RFC 2544 benchmarking range, treated as
+         global by the ipaddress module. -->
+    <logagent>
+      <config>
+        <syslogtarget>198.18.51.77</syslogtarget>
+        <collector_fqdn_note>ships to collector.megacorp-holdings.example</collector_fqdn_note>
+      </config>
+    </logagent>
+
+    <!-- ADV22: a filename that looks like a hostname. Must NOT be rewritten
+         to example.com - corrupting a feed name is its own failure. -->
+    <feednames>
+      <config>
+        <path>/var/db/pfblockerng/deny.megacorp-holdings.example.txt</path>
+        <script>/usr/local/bin/haproxy.sh</script>
+      </config>
+    </feednames>
+
+    <!-- ADV23: values shaped exactly like this tool's own anonymised output,
+         present in the INPUT. A second pass must not renumber them into a
+         different identity. -->
+    <preanonymised>
+      <config>
+        <hostname>domain1.example</hostname>
+        <dnsserver>192.0.2.1</dnsserver>
+      </config>
+    </preanonymised>
+  </installedpackages>
+
+  <!-- ADV21: a secret in an element tail (mixed content). Only reached in
+       aggressive mode. -->
+  <notes><marker/>CANARY_ADV21_TAIL_SECRET</notes>
+
+  <!-- Baseline positives: these must always be caught, in every mode. -->
+  <system>
+    <hostname>fw-edge-01</hostname>
+    <domain>corp.megacorp-holdings.example</domain>
+    <user>
+      <name>admin</name>
+      <bcrypt-hash>$2y$10$CANARY_ADV_BCRYPT_BASELINE_HASH_VALUE</bcrypt-hash>
+      <authorizedkeys>CANARY_ADV_AUTHKEYS_BASELINE</authorizedkeys>
+    </user>
+  </system>
+  <snmpd>
+    <rocommunity>CANARY_ADV_ROCOMMUNITY_BASELINE</rocommunity>
+  </snmpd>
+</pfsense>
