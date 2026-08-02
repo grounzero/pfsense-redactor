@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.2.1][] - 2026-07-28
+## [1.2.1][] - 2026-08-02
 
 Secret detection hardening. Five classes of credential that previously survived
 redaction while the run reported success are now removed or reported.
@@ -14,12 +14,12 @@ redaction while the run reported success are now removed or reported.
 
 - **Private-key PEM material is now redacted in every mode, whatever holds it.**
   A private key stored in an element or attribute whose name the tool did not
-  recognise was previously *reported* as a retained high-entropy value and left
+  recognise was previously _reported_ as a retained high-entropy value and left
   in the output, and the run exited 0. A PEM private-key header is unambiguous
   evidence of key material and carries no over-redaction risk, so the
   report-only policy no longer applies to it. Recognised headers: `PRIVATE KEY`,
   `RSA`/`EC`/`DSA`/`ED25519 PRIVATE KEY`, `ENCRYPTED PRIVATE KEY`, `OPENSSH
-  PRIVATE KEY`, `SSH2 ENCRYPTED PRIVATE KEY`, `PGP PRIVATE KEY BLOCK` and
+PRIVATE KEY`, `SSH2 ENCRYPTED PRIVATE KEY`, `PGP PRIVATE KEY BLOCK` and
   OpenVPN's `STATIC KEY`. Public keys and certificates are unaffected.
   (FINDING-01, FINDING-02)
 
@@ -93,6 +93,7 @@ Against the 46-secret canary corpus, `--aggressive` now catches 44 where 1.1.2
 caught 42, and 45 with `--redact-descriptions` where 1.1.2 caught 43.
 
 ### Security
+
 - **FIX**: A bracketed IPv6 address carrying a zone identifier was not redacted
   at all. `%` was a token separator, so `[2001:db8::1%igb0]:51820` split into
   `[2001:db8::1` and `igb0]:51820`; the first half carried an unbalanced
@@ -138,7 +139,7 @@ caught 42, and 45 with `--redact-descriptions` where 1.1.2 caught 43.
   question.
 
 - **FIX**: `--fail-on-warn` could not see key material in an XML attribute.
-  `SENSITIVE_ATTR_PATTERN` matches an attribute's *name*, so a blob sitting in
+  `SENSITIVE_ATTR_PATTERN` matches an attribute's _name_, so a blob sitting in
   an attribute named something unremarkable was neither redacted nor counted
   among the retained high-entropy values the gate reads. A CI check passed on a
   file whose own output had never mentioned it.
@@ -158,12 +159,14 @@ caught 42, and 45 with `--redact-descriptions` where 1.1.2 caught 43.
   1.1.2.
 
 ### Changed
+
 - Redacting an already-redacted file is now a no-op for certificate elements.
   Without the placeholder check added here, `[REDACTED_CERT_OR_KEY]` failed to
   resolve as a reference on a second pass and degraded to the less informative
   `[REDACTED]`.
 
 ### Documentation
+
 - `docs/benchmark.md` now reports where the corpus came from as a measurement
   rather than a caveat. Every released version was re-run against it to find
   which release first caught each marker: 15 were already caught by 1.0.10, 26
@@ -181,9 +184,10 @@ caught 42, and 45 with `--redact-descriptions` where 1.1.2 caught 43.
 ## [1.1.2][] - 2026-07-28
 
 ### Security
+
 - **FIX**: Webhook tokens survived in default mode unless the element happened
   to be named for a secret. 1.1.0 fixed `<webhook_url>` by matching the element
-  *name*, so a Slack URL in `<slack_url>`, `<notifyurl>` or a plain `<url>` kept
+  _name_, so a Slack URL in `<slack_url>`, `<notifyurl>` or a plain `<url>` kept
   its token. The token is the whole authorisation, since anyone holding the
   URL can post as that integration.
 
@@ -202,6 +206,7 @@ caught 42, and 45 with `--redact-descriptions` where 1.1.2 caught 43.
   Found by scanning redacted output with gitleaks: of six realistic secrets in a
   test config it flagged exactly one, and this was it. Running an independent
   scanner over the output catches what a name-driven redactor cannot.
+
 - **FIX**: `--fail-on-warn` covered the root-tag check and nothing else, so a
   config carrying a value the tool declined to redact printed "Review before
   sharing" and still exited 0. An automated check passed on a file its own
@@ -214,6 +219,7 @@ caught 42, and 45 with `--redact-descriptions` where 1.1.2 caught 43.
   and points at `--aggressive`. Redacted output is still written when the gate
   fails, since the retained values were reported rather than leaked and the
   operator needs the file to review them.
+
 - **ADD**: Microsoft Teams webhook endpoints are recognised, so their path
   tokens are redacted in every mode alongside Slack, Discord and Telegram.
   Teams puts the tenant in a subdomain, so `*.webhook.office.com` is matched as
@@ -228,6 +234,7 @@ caught 42, and 45 with `--redact-descriptions` where 1.1.2 caught 43.
   ordinary paths on unrelated servers. Those still need `--aggressive`.
 
 ### Added
+
 - `--redact-descriptions` now covers free-text **attributes** as well as
   elements: `note`, `comment`, `label`, `title` and similar. Attributes named
   for a secret were already redacted; these are the ones whose name says
@@ -248,6 +255,7 @@ confirming them. The second is two long-standing defects surfaced while
 reviewing that work, both older than 1.1.0.
 
 ### Security
+
 - **FIX**: Three credential formats bypassed URL path-segment detection:
   - **AWS access key IDs** (`AKIA...`) are exactly 20 characters, and the
     length test was `<= 20`, so the entire format was excluded by an
@@ -265,10 +273,10 @@ reviewing that work, both older than 1.1.0.
   emits one, so its presence means the file did not come from pfSense
   untouched.
 
-  This is deliberately *not* described as an XXE fix. `xml.etree.ElementTree`
+  This is deliberately _not_ described as an XXE fix. `xml.etree.ElementTree`
   does not resolve external entities. A `SYSTEM` entity raises `ParseError`,
   so there is no file disclosure and no SSRF. What it does do is expand
-  *internal* entities, where a few hundred bytes of nested definitions expand
+  _internal_ entities, where a few hundred bytes of nested definitions expand
   to gigabytes. Severity is low: the input is a file the user supplies, and the
   failure is loud rather than a silent under-redaction.
 
@@ -277,6 +285,7 @@ reviewing that work, both older than 1.1.0.
   the guard reporting success while doing nothing.
 
 ### Fixed
+
 - **FIX**: FQDN substitution rewrote filenames as domains, corrupting output
   rather than redacting it. `list.txt`, `emerging-block.rules`,
   `pfblockerng.php` and `haproxy.sh` all became `example.com`.
@@ -290,6 +299,7 @@ reviewing that work, both older than 1.1.0.
   context. Context is required because extension alone cannot decide it: `.sh`,
   `.pl`, `.io` and `.zip` are all real TLDs, so `haproxy.sh` is preserved
   inside a path but still redacted in prose.
+
 - **FIX** (predates 1.1.0): IPv6 anonymisation produced invalid addresses once
   the RFC 3849 pool was exhausted. The RFC 4193 overflow mapping used
   `((overflow - 1) % 0x10000) + 1`, which ranges `1..0x10000`, one past what a
@@ -301,8 +311,9 @@ reviewing that work, both older than 1.1.0.
   Two existing tests asserted the malformed value, complete with comments
   working through the arithmetic that produced it, which is why the defect
   survived. Both are corrected.
+
 - **FIX** (predates 1.1.0): The sensitive-directory check used a plain string
-  prefix, so paths that merely *begin* with a protected directory's name were
+  prefix, so paths that merely _begin_ with a protected directory's name were
   rejected: `/rootkit`, `/roots`, `/var/logs-archive`, `/bootstrap`,
   `/usr/binaries`, `/libraries` and `/runner` were all refused as output
   locations. Matching is now component-aware, and no longer depends on whether
@@ -320,6 +331,7 @@ reviewing that work, both older than 1.1.0.
   No effect off Windows, where none of these variables are set.
 
 ### Known limitations
+
 - A path segment of 21-23 characters containing no digit is not detected.
   `Open_VM_Tools_package` (a route name that must be preserved) and a
   hypothetical 21-character alphabetic token are the same length and shape, so
@@ -329,6 +341,7 @@ reviewing that work, both older than 1.1.0.
 ## [1.1.0][] - 2026-07-27
 
 ### Security
+
 - **FIX**: Secret detection matched element names exactly, so the concatenated spellings pfSense
   and its packages actually emit were never redacted. `REDACT_ELEMENTS` contained `community`,
   but pfSense writes `<rocommunity>`/`<rwcommunity>`; the entry that existed was the one that
@@ -344,6 +357,7 @@ reviewing that work, both older than 1.1.0.
 
   This also affected this project's own sample configs, where `passwordagain`, `crypto_password`,
   `redis_password`, `auth_pass` and `rocommunity` values were all being emitted in the clear.
+
 - **FIX**: `_get_tag_base()` stripped trailing digits but was only applied to IP-bearing elements,
   so `password` was redacted while `password2` and `passwordagain` were not. It is now applied to
   secret and certificate matching as well.
@@ -364,7 +378,7 @@ reviewing that work, both older than 1.1.0.
   as sanitised when it is not.
   Userinfo redaction now follows the same policy on every URL path, and a URL carrying credentials
   is rewritten even when nothing else in it changes.
-- **FIX**: Free-text blob elements received *less* URL scanning than unrecognised elements, because
+- **FIX**: Free-text blob elements received _less_ URL scanning than unrecognised elements, because
   they reported their text as handled. They are now scanned for URL secrets as well as inline
   `key=value` credentials, and the key=value scanner no longer mistakes a URL scheme for a key.
 - **FIX**: `--dry-run-verbose` printed URL credentials to the console. The sample display masked the
@@ -375,27 +389,30 @@ reviewing that work, both older than 1.1.0.
   before sharing, so it now redacts path and query secrets too.
 
 ### Added
+
 - **NEW**: `--redact-descriptions` flag to redact free-text descriptions and identifiers
   (`descr`, `detail`, `hostname`, `ssid`). DHCP static-map descriptions are a reliable source of
   personal names. Off by default, as these fields aid troubleshooting.
 - Unrecognised high-entropy values are now reported in the summary with their element path, so
-  retained secrets can be reviewed manually. Previously the summary only counted what *was*
+  retained secrets can be reviewed manually. Previously the summary only counted what _was_
   redacted, making retained values impossible to audit. `--aggressive` redacts them outright.
 
 ### Changed
+
 - **BREAKING (output)**: Secret element matching is now pattern-based rather than exact-match, so
   more fields are redacted by default. A deny-list keeps known non-secrets readable
   (`snortcommunityrules`, `pass_order`, `password_type`, `source_hash_key`, `certref`, `keylen`).
   Validated at zero false positives across all 875 unique element names in the sample configs.
-- `--aggressive` now broadens *secret* detection, not just IP/domain rewriting. Previously it
+- `--aggressive` now broadens _secret_ detection, not just IP/domain rewriting. Previously it
   changed none of the 31 leaked canaries, despite users reasonably reading it as "redact more
   secrets".
 - Certificate-shaped elements are redacted only when their content looks like PEM or a long blob,
-  so short certificate *references* stay readable.
+  so short certificate _references_ stay readable.
 
 ## [1.0.10][] - 2025-12-15
 
 ### Changed
+
 - Improved PyPI metadata with additional classifiers
 - Added code quality tool configurations (Black, isort, mypy)
 - Enhanced project URLs (Bug Tracker, Changelog, Source Code)
@@ -404,6 +421,7 @@ reviewing that work, both older than 1.1.0.
 ## [1.0.9][] - 2025-11-08
 
 ### Added
+
 - **NEW**: Version checking functionality with `--version` and `--check-version` flags
   - `--version`: Display current version and exit (instant, no network call)
   - `--check-version`: Check PyPI for latest version with context-aware upgrade instructions
@@ -412,6 +430,7 @@ reviewing that work, both older than 1.1.0.
 ## [1.0.8][] - 2025-11-05
 
 ### Security
+
 - **FIX**: Added symlink security check for `--inplace` mode
   - Prevents following symlinks when using `--inplace` to avoid overwriting sensitive system files
   - Symlink check now occurs before file size validation to handle directory symlinks on Windows
@@ -443,6 +462,7 @@ reviewing that work, both older than 1.1.0.
   - Added 27 tests in `tests/unit/test_port_validation.py`
 
 ### Fixed
+
 - **FIX**: Prevent re-redaction of RFC documentation IPs in anonymisation mode
   - RFC 5737 IPv4 ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24) now recognised as masked values
   - RFC 3849 IPv6 range (2001:db8::/32) now recognised as masked values
@@ -461,6 +481,7 @@ reviewing that work, both older than 1.1.0.
   - Verified no duplicate mappings occur across RFC and overflow ranges
 
 ### Security
+
 - **FIX**: Added file path validation to prevent arbitrary file read/write operations
   - Blocks directory traversal attempts (`../../../etc/passwd`)
   - Blocks paths with null bytes (path traversal attack vector)
@@ -471,6 +492,7 @@ reviewing that work, both older than 1.1.0.
   - By default, only allows relative paths and absolute paths to safe locations (home, CWD, temp directories)
 
 ### Added
+
 - New `--allow-absolute-paths` flag to explicitly enable absolute path usage
   - Required for absolute paths outside safe locations (home, CWD, temp)
   - Still enforces protection against sensitive system directories
@@ -484,6 +506,7 @@ reviewing that work, both older than 1.1.0.
   - Tests cover directory traversal, null bytes, sensitive directories, symbolic links, and edge cases
 
 ### Changed
+
 - Path validation now occurs before file existence checks
 - In-place mode (`--inplace`) now validates paths with stricter output-level checks
 - Dry-run mode now validates output paths for security (even though no write occurs)
@@ -492,6 +515,7 @@ reviewing that work, both older than 1.1.0.
 ## [1.0.7][] - 2025-11-03
 
 ### Fixed
+
 - **CRITICAL FIX**: Fixed whitespace corruption in URL/email/FQDN redaction
   - `_redact_urls_safe`, `_redact_emails_safe`, and `_redact_fqdns_safe` were using `text.split()` and `' '.join()`
   - This collapsed all whitespace (including newlines) into single spaces, corrupting XML text content
@@ -519,6 +543,7 @@ reviewing that work, both older than 1.1.0.
   - Ensures consistent handling of previously redacted configurations
 
 ### Added
+
 - New `--quiet` / `-q` flag: Suppress progress messages (show only warnings and errors)
 - New `--verbose` / `-v` flag: Show detailed debug information
 - Flags are mutually exclusive and validated at runtime
@@ -531,6 +556,7 @@ reviewing that work, both older than 1.1.0.
   - Added 7 tests in `TestURLUsernameRedaction`
 
 ### Changed
+
 - **BREAKING**: Replaced `print()` statements with Python's `logging` module for better integration
   - All output now uses proper log levels (ERROR, WARNING, INFO, DEBUG)
   - Logs route to stdout by default, stderr when using `--stdout` mode
@@ -546,11 +572,13 @@ reviewing that work, both older than 1.1.0.
   - More predictable and maintainable than previous two-hextet approach
 
 ### Removed
+
 - `--stats-stderr` flag (replaced by automatic log routing in `--stdout` mode)
 
 ## [1.0.6][] - 2025-11-02
 
 ### Security
+
 - **CRITICAL FIX**: Extended URL regex to handle non-HTTP protocols (FTP, FTPS, SFTP, SSH, Telnet, File, SMB, NFS)
   - Previously only HTTP/HTTPS URLs were matched, allowing credentials in `ftp://user:pass@host` URLs to bypass redaction
   - Credentials in non-HTTP URLs would have leaked through the bare FQDN redaction path
@@ -560,11 +588,12 @@ reviewing that work, both older than 1.1.0.
   - This changed URL semantics from local filesystem to network file share
   - Added early return in `_mask_url()` when `hostname` is `None` or empty
 - **ENHANCEMENT**: Expanded email regex to support RFC 5322 special characters
-  - Now matches emails with `!#$&'*/=?^`{|}~` in local part (e.g., `user!test@example.com`)
+  - Now matches emails with `!#$&'*/=?^`{|}~`in local part (e.g.,`user!test@example.com`)
   - Maintains ReDoS protection with limited repetitions
   - Previous regex only matched `[A-Za-z0-9._%+-]`, missing many legal email addresses
 
 ### Added
+
 - Module-level exports control via `__all__` (PfSenseRedactor, main, parse_allowlist_file)
 - Python 3.9+ version check at module import time with clear error message
 - Cached IDNA encoding using `@functools.lru_cache(maxsize=256)` for improved performance
@@ -575,13 +604,14 @@ reviewing that work, both older than 1.1.0.
   - 6 tests for hostnameless URL preservation
 
 ### Changed
+
 - Updated version to 1.0.6 in both `__init__.py` and `pyproject.toml`
 - Updated all test reference files to include redaction comment
-
 
 ## [1.0.5][] - 2025-11-02
 
 ### Changed
+
 - Updated installation documentation in README to address `externally-managed-environment` error
 - Added installation alternatives for macOS and modern Linux distributions:
   - pipx installation (recommended for CLI tools)
@@ -592,6 +622,7 @@ reviewing that work, both older than 1.1.0.
 ## [1.0.4][] - 2025-11-02
 
 ### Changed
+
 - Upgraded minimum Python version from 3.8 to 3.9
 - Modernised type hints using `from __future__ import annotations` and PEP 604 union syntax (`X | Y`)
 - Replaced all `typing` module imports with built-in types (`list`, `dict`, `tuple`, etc.)
@@ -599,12 +630,14 @@ reviewing that work, both older than 1.1.0.
 - Removed `ET.indent()` try/except block (now available in Python 3.9+)
 
 ### Added
+
 - Linter configurations:
   - `.pylintrc` for production code (strict)
   - `.pylintrc-tests` for test code (relaxed)
   - `.bandit` for security linting
 
 ### Fixed
+
 - Consistent XML indentation across Python versions
 - All pylint, Prospector, and Bandit warnings resolved
 - CI/CD workflows updated to test Python 3.9-3.13
@@ -612,6 +645,7 @@ reviewing that work, both older than 1.1.0.
 ## [1.0.3][] - 2025-11-02
 
 ### Added
+
 - Initial PyPI release
 - Python package structure with proper packaging configuration
 - Command-line tool `pfsense-redactor` installable via pip
@@ -652,6 +686,7 @@ reviewing that work, both older than 1.1.0.
   - MIT licence
 
 ### Technical Details
+
 - Python 3.8+ support
 - Zero external dependencies (uses only standard library)
 - Format-preserving redaction where possible
@@ -659,11 +694,13 @@ reviewing that work, both older than 1.1.0.
 - Security-first design with comprehensive pattern matching
 
 ### Installation
+
 ```bash
 pip install pfsense-redactor
 ```
 
 ### Usage
+
 ```bash
 # Basic usage
 pfsense-redactor config.xml
