@@ -94,6 +94,13 @@ def fail_at(monkeypatch, name):
 class TestWriteSafety:
     """How the output is written, not where"""
 
+    @pytest.mark.skipif(
+        os.name == "nt",
+        reason="POSIX mode bits only: Windows permissions are ACLs, os.stat "
+               "reports 0666 for any writable file whatever the ACL says, and "
+               "os.chmod can only clear the read-only bit. The 0600 guarantee "
+               "is POSIX-only and documented as such in docs/security.md",
+    )
     def test_output_is_not_world_readable(self, canary_copy, run_redactor, tmp_path):
         """Redacted output can still hold retained values"""
         out = tmp_path / "out.xml"
