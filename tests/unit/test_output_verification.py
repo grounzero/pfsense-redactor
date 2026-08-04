@@ -427,9 +427,13 @@ class TestVerifierNeedsNoXmlParser:
     """
 
     def test_verifier_does_not_import_elementtree_at_runtime(self):
-        """The assertion the fix has to satisfy"""
-        import pfsense_redactor.verifier as verifier  # pylint: disable=import-outside-toplevel
+        """The assertion the fix has to satisfy
 
+        The module-level import is enough. Re-importing inside the test would
+        return the same cached module object, so it would add no freshness -
+        and a module-level `import xml.etree.ElementTree as ET` in verifier.py
+        would put `ET` in this namespace either way, which is what is checked.
+        """
         assert "ET" not in vars(verifier)
 
     def test_the_module_imports_no_xml_library_at_all(self):
