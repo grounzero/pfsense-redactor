@@ -42,8 +42,9 @@ import binascii
 import math
 import re
 from collections import Counter
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import Iterable, Iterator, Protocol
+from typing import Protocol
 
 
 class XmlElement(Protocol):
@@ -70,7 +71,7 @@ class XmlElement(Protocol):
     text: str | None
     attrib: dict[str, str]
 
-    def __iter__(self) -> Iterator['XmlElement']:
+    def __iter__(self) -> Iterator[XmlElement]:
         ...  # pragma: no cover - structural declaration, never called
 
 # ==========================================================================
@@ -127,7 +128,7 @@ VERIFIER_URL_CREDENTIAL_RE = re.compile(
 VERIFIER_HEX_RE = re.compile(r'(?<![0-9A-Fa-f])[0-9A-Fa-f]{40,}(?![0-9A-Fa-f])')
 VERIFIER_BASE64_RE = re.compile(r'(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/=_-]{48,}(?![A-Za-z0-9+/=_-])')
 
-_ENCODED_RUN_RE = re.compile(r'[A-Za-z0-9+/=_-]{%d,}' % MIN_ENCODED_RUN_CHARS)
+_ENCODED_RUN_RE = re.compile(rf'[A-Za-z0-9+/=_-]{{{MIN_ENCODED_RUN_CHARS},}}')
 _URLSAFE_TO_STANDARD = str.maketrans('-_', '+/')
 
 _UUID_RE = re.compile(
