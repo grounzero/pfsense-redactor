@@ -137,30 +137,42 @@ class TestSymlinkSecurity:
         assert current_content == original_content, "Target file should not be modified"
 
     @pytest.mark.skipif(os.name == 'nt', reason="Hardlinks work differently on Windows")
-    def test_hardlink_inplace_allowed(self, sample_config, temp_dir):
-        """Test 4: Hardlink with --inplace should work (different from symlink)"""
-        # Create a hardlink to the config
+    def test_hardlink_inplace_refused(self, sample_config, temp_dir):
+        """Test 4: --inplace on a hardlink is refused since 1.3.0
+
+        This asserted that the operation succeeded and that both names ended up
+        holding the redacted content. That was true while the write went
+        through the link, truncating and rewriting the same inode.
+
+        Output is now written by atomic replacement, which puts a new inode at
+        the destination. The other name would keep the old content - the
+        unredacted configuration - while the operator, having watched
+        --inplace report success, has no reason to look at it. That is a silent
+        stale copy of exactly the material the tool exists to remove, so the
+        operation is refused instead.
+
+        The invariant the original test protected - after --inplace on a
+        hardlink, no name holds unredacted content the operator believes was
+        redacted - is asserted below, and is now satisfied by refusing rather
+        than by rewriting both names.
+        """
         hardlink_path = temp_dir / "hardlink.xml"
         os.link(sample_config, hardlink_path)
 
-        # Get original content
         original_content = sample_config.read_text(encoding='utf-8')
 
-        # Run redactor on the hardlink with --inplace
         result = run_redactor(
             [str(hardlink_path), "--inplace", "--force"]
         )
 
-        # Should succeed (hardlinks are safe)
-        assert result.returncode == 0, f"Hardlink should be allowed: {result.stderr}"
+        assert result.returncode != 0, "Hardlink --inplace should be refused"
+        assert "hard link" in result.stderr.lower(), (
+            f"Error should name the reason: {result.stderr}"
+        )
 
-        # Both names should point to the same modified content
-        hardlink_content = hardlink_path.read_text(encoding='utf-8')
-        original_content_now = sample_config.read_text(encoding='utf-8')
-
-        assert hardlink_content == original_content_now, "Both hardlinks should have same content"
-        assert hardlink_content != original_content, "Content should be modified"
-        assert "testdomain.local" not in hardlink_content, "Domain should be redacted"
+        # Nothing was written, so neither name changed and nothing is stale
+        assert hardlink_path.read_text(encoding='utf-8') == original_content
+        assert sample_config.read_text(encoding='utf-8') == original_content
 
     def test_nested_symlinks_refused(self, sample_config, temp_dir):
         """Test 5: Nested symlinks (symlink to symlink) should be refused"""

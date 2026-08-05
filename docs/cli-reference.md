@@ -77,6 +77,12 @@ pfsense-redactor config.xml --stdout > redacted.xml
 pfsense-redactor config.xml --inplace --force
 ```
 
+`--force` is required, not optional. `--inplace` destroys the only unredacted
+copy of the configuration, and until 1.3.0 a single mistyped flag was enough to
+do it. It is also refused on a file with more than one name (a hard link),
+because output is written by atomic replacement and the other name would keep
+the unredacted content.
+
 ## Command-Line Flags Reference
 
 ### Version & Help
@@ -94,8 +100,8 @@ pfsense-redactor config.xml --inplace --force
 | `input`                  | Input pfSense config.xml file (positional argument)                                                     |
 | `output`                 | Output redacted config.xml file (positional argument, optional with `--stdout`/`--dry-run`/`--inplace`) |
 | `--stdout`               | Write redacted XML to stdout instead of file                                                            |
-| `--inplace`              | Overwrite input file with redacted output (use with caution)                                            |
-| `--force`                | Overwrite output file if it already exists                                                              |
+| `--inplace`              | Overwrite input file with redacted output. **Requires `--force`** since 1.3.0; refused on a hard-linked file |
+| `--force`                | Overwrite output file if it already exists; also the required consent for `--inplace`                   |
 | `--allow-absolute-paths` | Allow absolute file paths (relative paths only by default for security)                                 |
 
 ### Redaction Modes

@@ -30,12 +30,6 @@ class TestFailClosed:
             "exit 0 on output containing a private key certifies the leak"
         )
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="FINDING-22: --fail-on-warn reports failure only after the "
-               "output has already been written, so the gate does not prevent "
-               "the unsafe artefact from existing",
-    )
     def test_fail_on_warn_writes_no_output(self, adversarial_canary, run_redactor, tmp_path):
         """The gate must prevent the artefact, not just report on it"""
         out = tmp_path / "out.xml"
@@ -52,6 +46,34 @@ class TestFailClosed:
         """Regression pin: the gate itself works, whatever its timing"""
         result = run_redactor(adversarial_canary, "--stdout", "--fail-on-warn")
         assert result.returncode != 0
+
+    def test_fail_on_warn_emits_no_xml_on_stdout(self, adversarial_canary, run_redactor):
+        """A redirected stdout is an artefact like any other"""
+        result = run_redactor(adversarial_canary, "--stdout", "--fail-on-warn")
+
+        assert result.returncode != 0
+        assert result.stdout.strip() == "", "the gate failed but emitted the document"
+
+    def test_a_verifier_finding_alone_blocks_output(self, tmp_path, run_redactor):
+        """The gate reads the independent verification, not only the summary
+
+        This config has nothing the transformer reports: the value is not in a
+        secret-named element and does not survive as high-entropy. It does
+        survive verbatim, which only something re-reading the output can tell.
+        """
+        config = tmp_path / "in.xml"
+        config.write_text(
+            "<pfsense><installedpackages><vendor><config>"
+            "<sitecode>CANARYVERBATIMSURVIVOR42</sitecode>"
+            "</config></vendor></installedpackages></pfsense>"
+        )
+        out = tmp_path / "out.xml"
+
+        result = run_redactor(config, out, "--fail-on-warn")
+
+        assert result.returncode != 0
+        assert not out.exists()
+        assert "verification" in result.stderr.lower()
 
     @pytest.mark.xfail(
         strict=True,

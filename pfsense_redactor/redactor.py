@@ -60,6 +60,7 @@ from pathlib import Path
 from collections import Counter, defaultdict
 from collections.abc import Callable
 from itertools import islice
+import tempfile
 from typing import NoReturn, Union
 from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode, SplitResult
 import os
@@ -3288,22 +3289,29 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         for line in VERIFIER.describe(result):
             self.logger.warning("    - %s", line)
 
-    def _write_output(
-        self, tree: ET.ElementTree, input_file: str, output_file: str | None,
+    def _emit_candidate(
+        self, candidate: str, input_file: str, output_file: str | None,
         stdout_mode: bool, inplace: bool
     ) -> None:
-        """Write the redacted tree to stdout, over the input, or to a new file"""
+        """Make the verified candidate externally visible
+
+        Called only after a verdict has been reached. Everything before this
+        point happens in memory, so a run that decides not to produce output
+        leaves nothing behind for someone to find and share.
+        """
+        payload = candidate.encode('utf-8')
+
         if stdout_mode:
-            tree.write(sys.stdout.buffer, encoding='utf-8', xml_declaration=True)
+            sys.stdout.buffer.write(payload)
             return
+
+        target = input_file if inplace else output_file
+        write_bytes_atomically(target, payload)
 
         if inplace:
-            tree.write(input_file, encoding='utf-8', xml_declaration=True)
-            self.logger.info("[+] Redacted configuration written in-place to: %s", input_file)
+            self.logger.info("[+] Redacted configuration written in-place to: %s", target)
             return
-
-        tree.write(output_file, encoding='utf-8', xml_declaration=True)
-        self.logger.info("[+] Redacted configuration written to: %s", output_file)
+        self.logger.info("[+] Redacted configuration written to: %s", target)
 
     def redact_config(
         self,
@@ -3315,62 +3323,28 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         stdout_mode: bool = False,
         inplace: bool = False
     ) -> bool:
-        """Redact pfSense configuration file"""
+        """Redact pfSense configuration file
+
+        The order is load-bearing:
+
+            parse -> transform in memory -> serialise candidate
+                  -> verify candidate -> decide -> write
+
+        Nothing is written to a file or to stdout before the verdict. Before
+        1.3.0 the write happened first and the verdict was returned afterwards,
+        so `--fail-on-warn` reported the problem and still left the artefact on
+        disk for someone to share.
+        """
         try:
-            tree = self._load_config_tree(input_file)
-            if tree is None:
-                return False
-            root = tree.getroot()
-
-            # Both lines are progress reporting under the same condition, and
-            # nothing runs between them, so they share one guard.
-            if not dry_run and not stdout_mode:
-                self.logger.info("[+] Parsing XML configuration from: %s", input_file)
-                self.logger.info("[+] Redacting sensitive information...")
-
             # Policy for this run, set before the traversal reads it. Assigned
             # on every call so a reused instance cannot inherit the previous
             # run's flags.
             self.redact_ips = redact_ips
             self.redact_domains = redact_domains
 
-            # Before the traversal, so certificate references can be resolved
-            # against what the config actually defines
-            self.known_refids = self._collect_refids(root)
-
-            # Also before the traversal: the retention comparison needs the
-            # input's values, and redaction overwrites them in place.
-            self._snapshot_input_values(root)
-
-            self.redact_element(root)
-
-            # Dry run mode: just print stats
-            if dry_run:
-                self.logger.info("[+] Dry run - no files modified")
-                self._print_stats()
-                return self._retained_values_are_acceptable()
-
-            # Add redaction comment to the root element
-            self._add_redaction_comment(root)
-
-            # Pretty print (Python 3.9+)
-            ET.indent(tree, space="  ")
-
-            # Advisory in this release: reported, not enforced. The candidate
-            # is serialised once and both verified and written from the same
-            # text, so what is checked is what is shared.
-            self.last_verification = self.verify_candidate_output(
-                self.serialise_tree(tree)
+            return self._process(
+                input_file, output_file, dry_run, stdout_mode, inplace
             )
-
-            self._write_output(tree, input_file, output_file, stdout_mode, inplace)
-
-            # Print summary (always print, logger routes to correct stream)
-            self._print_stats()
-            self._report_verification(self.last_verification)
-
-            return self._retained_values_are_acceptable()
-
         except ET.ParseError as e:
             self.logger.error("[!] Error parsing XML: %s", e)
             return False
@@ -3380,6 +3354,112 @@ class PfSenseRedactor:  # pylint: disable=too-many-instance-attributes
         except (ValueError, TypeError) as e:
             self.logger.error("[!] Error processing configuration: %s", e)
             return False
+
+    def _process(
+        self,
+        input_file: str,
+        output_file: str | None,
+        dry_run: bool,
+        stdout_mode: bool,
+        inplace: bool
+    ) -> bool:
+        """redact_config's body, with the exception handling lifted out
+
+        The traversal's IP and domain policy is instance state set by
+        redact_config, not a parameter, so it is not threaded through here.
+        """
+        tree = self._load_config_tree(input_file)
+        if tree is None:
+            return False
+        root = tree.getroot()
+
+        # Both lines are progress reporting under the same condition, and
+        # nothing runs between them, so they share one guard.
+        if not dry_run and not stdout_mode:
+            self.logger.info("[+] Parsing XML configuration from: %s", input_file)
+            self.logger.info("[+] Redacting sensitive information...")
+
+        # Before the traversal, so certificate references can be resolved
+        # against what the config actually defines
+        self.known_refids = self._collect_refids(root)
+
+        # Also before the traversal: the retention comparison needs the
+        # input's values, and redaction overwrites them in place.
+        self._snapshot_input_values(root)
+
+        self.redact_element(root)
+
+        candidate = self._build_candidate(tree, root)
+        self.last_verification = self.verify_candidate_output(candidate)
+
+        self._print_stats()
+        self._report_verification(self.last_verification)
+
+        permitted = self._output_is_permitted()
+
+        if dry_run:
+            self.logger.info("[+] Dry run - no files modified")
+            return permitted
+
+        if not permitted:
+            self.logger.error(
+                "[!] No output was produced. The candidate was verified before "
+                "anything was written, so there is no artefact to review or "
+                "share."
+            )
+            return False
+
+        self._emit_candidate(candidate, input_file, output_file, stdout_mode, inplace)
+        return True
+
+    def _build_candidate(self, tree: ET.ElementTree, root: ET.Element) -> str:
+        """Produce the exact text that would be written, without writing it
+
+        Built in every mode including --dry-run, because the verification a
+        dry run reports is only worth anything if it examined the document the
+        real run would produce.
+        """
+        self._add_redaction_comment(root)
+        ET.indent(tree, space="  ")
+        return self.serialise_tree(tree)
+
+    def _output_is_permitted(self) -> bool:
+        """Whether policy allows this candidate to become externally visible
+
+        Two gates, both of which only bite under --fail-on-warn. Without a
+        gate, findings are reported and the output is still produced: an
+        operator troubleshooting privately needs the file, and the
+        retained-value warning has always been advisory. The gate exists
+        precisely to stop the artefact, so under it a finding means no output.
+        """
+        return self._retained_values_are_acceptable() and self._verification_permits_output()
+
+    def _verification_permits_output(self) -> bool:
+        """Whether the independent verification allows output, under a gate
+
+        An unavailable verifier blocks a gated run. "Nothing checked" is not
+        "nothing found", and a gate that passes because its check did not run
+        is not a gate.
+        """
+        if not self.fail_on_warn:
+            return True
+
+        if self.last_verification is None:
+            self.logger.error(
+                "[!] Failing because --fail-on-warn is set and independent "
+                "verification could not run: verifier.py is not importable."
+            )
+            return False
+
+        if self.last_verification.clean:
+            return True
+
+        self.logger.error(
+            "[!] Failing because --fail-on-warn is set and independent "
+            "verification reported %d finding(s) in the candidate output.",
+            self.last_verification.count
+        )
+        return False
 
     def _retained_values_are_acceptable(self) -> bool:
         """Whether the run should be treated as successful
@@ -3666,6 +3746,234 @@ DANGEROUS_OUTPUT_FILES: frozenset[str] = frozenset({
 })
 
 
+# ==========================================================================
+# File identity and secure writing
+# ==========================================================================
+# Redacted output can still hold retained high-entropy values by design, plus
+# hostnames, topology and free-text descriptions. On a shared host, umask
+# permissions typically make that world-readable.
+OUTPUT_FILE_MODE: int = 0o600
+
+# Temporary files are created in the *destination* directory, so that
+# os.replace is a rename within one filesystem and therefore atomic. A
+# distinctive prefix makes anything left behind by a killed process
+# identifiable rather than mysterious.
+TEMP_OUTPUT_PREFIX: str = '.pfsense-redactor-'
+TEMP_OUTPUT_SUFFIX: str = '.tmp'
+
+
+def _stat_or_none(file_path: str) -> os.stat_result | None:
+    """os.stat, or None when the path does not exist or cannot be read"""
+    try:
+        return os.stat(file_path)
+    except (OSError, ValueError):
+        return None
+
+
+def _realpath_or_abspath(file_path: str) -> str:
+    """Absolute, symlink-resolved form, tolerating a path that does not exist"""
+    try:
+        return os.path.realpath(file_path)
+    except (OSError, ValueError):  # pragma: no cover - realpath rarely raises
+        return os.path.abspath(file_path)
+
+
+def paths_identify_same_file(first: str, second: str) -> bool:
+    """Whether two path strings reach the same file
+
+    Compared on device and inode via os.path.samestat rather than on the
+    strings, because 'config.xml' and './config.xml' are the same file, and so
+    are a path, a symlink to it and a hard link to it. String equality catches
+    none of those, and a case-insensitive filesystem catches none of them
+    either - but a stat of both names does.
+
+    When one of the paths does not exist there is nothing to stat, so the
+    resolved forms are compared instead. That is the weaker comparison, and it
+    is only reachable when the output does not exist yet - in which case
+    writing it cannot destroy the input.
+    """
+    first_stat = _stat_or_none(first)
+    second_stat = _stat_or_none(second)
+
+    if first_stat is not None and second_stat is not None:
+        return os.path.samestat(first_stat, second_stat)
+
+    return _realpath_or_abspath(first) == _realpath_or_abspath(second)
+
+
+def _has_multiple_names(file_path: str) -> bool:
+    """Whether a file is reachable under more than one name
+
+    st_nlink is not available meaningfully on every platform; where it reports
+    0 or 1 this returns False and the caller proceeds, which is the same
+    behaviour as before hard links were considered at all.
+    """
+    stat_result = _stat_or_none(file_path)
+    if stat_result is None:
+        return False
+    return getattr(stat_result, 'st_nlink', 1) > 1
+
+
+def output_path_refusal(input_file: str, output_file: str) -> str | None:
+    """Why writing to this output path is unsafe, or None if it is acceptable
+
+    Three refusals. Each is a case where the write destroys data, or leaves
+    data the operator believes was redacted sitting somewhere they will not
+    look.
+
+    1. The output reaches the input. That is --inplace by accident: without
+       --inplace's symlink guard, without its consent, and with no warning that
+       the only copy of the secrets is being consumed.
+
+    2. The output is a symbolic link. The write would follow it to a file the
+       operator did not name, and the atomic replacement would then remove the
+       link itself - so the destination is both wrong and gone.
+
+    3. The output has more than one name. Atomic replacement puts a *new inode*
+       at the destination, so every other name keeps pointing at the old
+       content. For a file being redacted, the old content is the unredacted
+       config, and it now sits under a name nobody is going to check.
+
+    Returns a message rather than raising, so the caller decides how to report
+    it - and so this function can be tested without a CLI.
+    """
+    if paths_identify_same_file(input_file, output_file):
+        return (f"output '{output_file}' is the input file. Redacting a file "
+                f"over itself destroys the only copy of the secrets; use "
+                f"--inplace --force if that is genuinely what you want.")
+
+    if os.path.islink(output_file):
+        return (f"output '{output_file}' is a symbolic link. Writing would "
+                f"follow it to a file you did not name.")
+
+    if _has_multiple_names(output_file):
+        return (f"output '{output_file}' has more than one name (hard link). "
+                f"Output is written by atomic replacement, so the other "
+                f"name(s) would keep the previous, unredacted content.")
+
+    return None
+
+
+def inplace_path_refusal(input_file: str) -> str | None:
+    """Why --inplace on this file is unsafe, or None if it is acceptable
+
+    The symlink case is refused earlier, by _resolve_input_path. What is left
+    is the hard link, and it is refused for the reason above: the replacement
+    creates a new inode, so the other name would still hold the unredacted
+    configuration while the operator believes the file has been redacted.
+
+    Before atomic writes this case worked - the write went through the link and
+    every name saw the redacted content - so this is a deliberate behaviour
+    change, made because the alternative is a silent stale copy.
+    """
+    if _has_multiple_names(input_file):
+        return (f"'{input_file}' has more than one name (hard link). In-place "
+                f"output is written by atomic replacement, so the other "
+                f"name(s) would keep the previous, unredacted content. Write "
+                f"to a new file instead.")
+    return None
+
+
+def _remove_quietly(file_path: str) -> None:
+    """Delete a file, ignoring the case where it is already gone
+
+    Used only on failure paths, where the original error is the one worth
+    reporting and a second failure while cleaning up would hide it.
+    """
+    try:
+        os.unlink(file_path)
+    except OSError:
+        pass
+
+
+def _fsync_directory(directory: str) -> None:
+    """Fsync a directory so a completed rename survives power loss
+
+    Not supported everywhere - Windows has no directory file descriptor to
+    sync - so failure here is not a failed write and is not reported as one.
+    The data itself was already fsynced before the rename.
+    """
+    try:
+        handle = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+
+    try:
+        os.fsync(handle)
+    except OSError:
+        pass
+    finally:
+        os.close(handle)
+
+
+def write_bytes_atomically(target: str, payload: bytes) -> None:
+    """Write `payload` to `target` atomically, at OUTPUT_FILE_MODE
+
+    The sequence, and why each step is there:
+
+        temp file in the destination directory   same filesystem, so the
+                                                 rename below is atomic
+        0600 before any bytes are written        the window where a partial
+                                                 secret file is readable by
+                                                 others never opens
+        write, flush, fsync                      the bytes are on the device,
+                                                 not in a buffer
+        close, os.replace                        the destination changes from
+                                                 old content to new content in
+                                                 one step, with no moment at
+                                                 which it is neither
+        fsync the directory                      the rename survives power loss
+
+    On any failure - including KeyboardInterrupt - the temporary file is
+    removed and the exception is re-raised. The destination is left holding
+    either its previous content or the complete new content. It is never a
+    truncated mixture of the two, which is what tree.write() produced: that
+    opens the target for writing, truncating it, and only then starts
+    serialising.
+    """
+    directory = os.path.dirname(os.path.abspath(target)) or os.curdir
+    handle, temp_path = tempfile.mkstemp(
+        prefix=TEMP_OUTPUT_PREFIX, suffix=TEMP_OUTPUT_SUFFIX, dir=directory
+    )
+
+    try:
+        _write_and_sync(handle, temp_path, payload)
+        os.replace(temp_path, target)
+    except BaseException:
+        _remove_quietly(temp_path)
+        raise
+
+    _fsync_directory(directory)
+
+
+def _restrict_mode(stream, temp_path: str) -> None:
+    """Set the temporary file to OUTPUT_FILE_MODE, by descriptor where possible
+
+    fchmod acts on the descriptor already held open, so nothing can substitute
+    a different file at that path between creating it and setting its mode.
+    chmod-by-path is the same operation with a window in the middle, and there
+    is no reason to keep the window when the descriptor is right there.
+
+    mkstemp already creates at 0600 on POSIX, so this is belt and braces there.
+    Windows has no fchmod, and its chmod only clears the read-only bit because
+    permissions are ACLs - the restrictive-permissions guarantee is POSIX-only
+    and documented as such.
+    """
+    if hasattr(os, 'fchmod'):
+        os.fchmod(stream.fileno(), OUTPUT_FILE_MODE)
+        return
+    os.chmod(temp_path, OUTPUT_FILE_MODE)  # pragma: no cover - Windows only
+
+
+def _write_and_sync(handle: int, temp_path: str, payload: bytes) -> None:
+    """Fill the temporary file, set its mode, and get it onto the device"""
+    with os.fdopen(handle, 'wb') as stream:
+        _restrict_mode(stream, temp_path)
+        stream.write(payload)
+        stream.flush()
+        os.fsync(stream.fileno())
+
+
 def _resolve_for_validation(file_path: str, path: Path) -> tuple[Path, bool]:
     """Resolve a path to absolute form. Returns (resolved, was_absolute)
 
@@ -3927,7 +4235,7 @@ def _add_output_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('--stdout', action='store_true',
                         help='Write redacted XML to stdout')
     parser.add_argument('--inplace', action='store_true',
-                        help='Overwrite input file with redacted output')
+                        help='Overwrite input file with redacted output. Requires --force: this destroys the only unredacted copy of the configuration.')
     parser.add_argument('--force', action='store_true',
                         help='Overwrite output file if it exists')
     parser.add_argument('--aggressive', action='store_true',
@@ -4028,6 +4336,36 @@ def _would_overwrite_without_force(args: argparse.Namespace, resolved: Path) -> 
     return resolved.exists()
 
 
+def _writes_a_file(args: argparse.Namespace) -> bool:
+    """Whether this invocation will actually create or replace a file
+
+    --dry-run and --stdout write nothing, so the destination checks below have
+    nothing to protect in those modes.
+    """
+    if args.dry_run:
+        return False
+    return bool(args.inplace or (args.output and not args.stdout))
+
+
+def _refuse_unsafe_destination(args: argparse.Namespace, logger: logging.Logger) -> None:
+    """Exit if the destination would destroy the input or strand stale content
+
+    Kept separate from validate_file_path, which asks where a path points.
+    This asks what writing there would do to files that already exist, which is
+    a different question with different answers.
+    """
+    if not _writes_a_file(args):
+        return
+
+    refusal = (inplace_path_refusal(args.input) if args.inplace
+               else output_path_refusal(args.input, args.output))
+    if refusal is None:
+        return
+
+    logger.error("[!] Error: %s", refusal)
+    sys.exit(1)
+
+
 def _resolve_output_path(
     args: argparse.Namespace, sensitive_dirs: frozenset[str], logger: logging.Logger
 ) -> None:
@@ -4051,6 +4389,8 @@ def _resolve_output_path(
             args.input, args, sensitive_dirs, logger,
             "[!] Error: Cannot use --inplace with this file: %s"
         )
+
+    _refuse_unsafe_destination(args, logger)
 
 
 def _validate_as_output_target(
@@ -4186,6 +4526,26 @@ def _handle_early_exit_flags(args: argparse.Namespace, parser: argparse.Argument
 
     if args.quiet and args.verbose:
         parser.error("--quiet and --verbose are mutually exclusive")
+
+    _require_consent_for_inplace(args, parser)
+
+
+def _require_consent_for_inplace(
+    args: argparse.Namespace, parser: argparse.ArgumentParser
+) -> None:
+    """Refuse --inplace without --force
+
+    The help epilogue has shown '--inplace --force' since the flag existed and
+    docs/security.md describes them together, but nothing enforced it: the
+    overwrite guard is reached only when args.output is set, and --inplace
+    leaves it None. A single mistyped flag rewrote the operator's only
+    unredacted copy with no confirmation.
+    """
+    if args.inplace and not args.force:
+        parser.error(
+            "--inplace overwrites the input file, destroying the only "
+            "unredacted copy of the configuration. Add --force to confirm."
+        )
 
 
 def _configure_logging_from_args(args: argparse.Namespace) -> None:
