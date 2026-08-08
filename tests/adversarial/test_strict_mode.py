@@ -78,6 +78,7 @@ class TestStrictModeProducesOutputWhenItCan:
         assert out.exists()
         ET.fromstring(out.read_text())
 
+    @pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
     def test_the_output_is_not_world_readable(self, tmp_path, run_redactor):
         """Strict output is still a redacted configuration"""
         source = write(tmp_path, CLEAN_CONFIG)
