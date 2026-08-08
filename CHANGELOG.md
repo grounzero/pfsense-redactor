@@ -71,15 +71,7 @@ needs to check a sharing decision without reading prose on stderr.
 
 - **A wrong root element aborts under `--strict` as well as `--fail-on-warn`.**
 
-### Documentation
-
-- `docs/benchmark.md` now states which mode the published score refers to, gives
-  the decode-aware counts alongside the literal ones, and says plainly that the
-  default-mode figure is a literal-marker count. (FINDING-27, documentation part)
-
-- `docs/security.md` distinguishes redaction, identifier anonymisation,
-  independent verification and third-party scanning, and separates default,
-  `--aggressive` and `--strict` by what each refuses.
+### Fixed
 
 - **A document too deep to traverse fully now fails closed in every mode.**
   `redact_element` stops descending at 400 elements and counted that it had;
@@ -99,6 +91,16 @@ needs to check a sharing decision without reading prose on stderr.
   `--force`, `--strict` with `--inplace`, and `--quiet` with `--verbose` went
   through `argparse.error` and exited 2. `argparse` still exits 2 for a command
   line it cannot parse itself, such as an unknown flag.
+
+### Documentation
+
+- `docs/benchmark.md` now states which mode the published score refers to, gives
+  the decode-aware counts alongside the literal ones, and says plainly that the
+  default-mode figure is a literal-marker count. (FINDING-27, documentation part)
+
+- `docs/security.md` distinguishes redaction, identifier anonymisation,
+  independent verification and third-party scanning, and separates default,
+  `--aggressive` and `--strict` by what each refuses.
 
 **Action required:** none for existing invocations. `--strict` and
 `--report-json` are new. Scripts testing only for a non-zero exit are
