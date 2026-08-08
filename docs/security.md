@@ -202,6 +202,68 @@ Redacted output is for **analysis only**, because:
 
 Always keep the **original secure copy**.
 
+## Modes
+
+Four things the documentation deliberately keeps apart, because conflating them
+is how a file gets shared that should not have been:
+
+| | What it does |
+| --- | --- |
+| **Redaction** | Removing secrets: passwords, keys, tokens, certificates |
+| **Identifier anonymisation** | Replacing addresses and hostnames with consistent aliases, so topology survives and the real values do not (`--anonymise`) |
+| **Independent verification** | A separate component re-reading the output for material that should not be in it |
+| **Gitleaks and similar** | A third-party scanner that fails differently. Useful, and not a certificate — see [verifying output](verifying-output.md#a-clean-scan-is-not-a-clean-file) |
+
+And three modes, in increasing order of what they will refuse:
+
+| Mode | Intended for | Behaviour on a finding |
+| --- | --- | --- |
+| Default | Private troubleshooting, where you keep the output | Reported; output is still produced |
+| `--aggressive` | Controlled sharing with a named recipient | More is redacted; findings still reported, output still produced |
+| `--strict` | Public sharing, where the output may be read by anyone indefinitely | **No output at all**, and a distinct non-zero exit code |
+
+### Strict mode
+
+`--strict` implies `--aggressive` and `--redact-descriptions`, then adds a
+policy: this run has no silent failure path.
+
+- The independent verifier runs, and **any** finding means no output — no file,
+  no XML on stdout, no temporary file. A verifier that could not be imported
+  counts as a finding, because nothing checked is not nothing found.
+- Any high-entropy value the transformer chose to retain means no output.
+- Allow-list files found in the working directory or the home directory are
+  **ignored**, and the refusal is announced. An allow-list weakens redaction,
+  and one picked up from wherever the tool happened to run means the output
+  depends on the working directory — which is not a property output intended
+  for public sharing can have. `--allowlist-file` is the only way in, and every
+  source that took effect is announced on stderr and recorded in the report.
+- `--inplace` is a usage error. Strict mode withholds output when it finds
+  something, and in-place operation has nowhere to withhold it to.
+- Input is **rejected** rather than warned about: a root element that is not
+  `pfsense`, a configuration schema version outside the range this tool has been
+  exercised against, a document nesting more than 400 elements deep, and any
+  element too large to process.
+
+#### What strict mode does not establish
+
+It is a mode with no silent failure path. It is not a guarantee, and the
+following are all still true under it:
+
+- **Unknown encodings exist.** Base64 and Base64URL are decoded to a depth of
+  three. A value encoded some other way — a vendor's own scheme, compression,
+  encryption — is opaque to both the transformer and the verifier.
+- **Unsupported packages exist.** pfSense packages invent element names freely.
+  Coverage of a package this project has never seen rests on the value-shape
+  rules and on the retention comparison, not on knowing what the field means.
+- **Independent verification does not eliminate false negatives.** It reduces
+  correlated failure — the transformer and the verifier can be wrong about
+  different things — and that is all it does.
+- **Passing the included corpus is not certification.** The corpus was written
+  alongside this tool, which biases it; see [the benchmark](benchmark.md).
+
+Strict mode is not described as certified, audit-grade, complete, or suitable
+for every package schema, because it is none of those.
+
 ## Output safety
 
 Where the output goes, and how it gets there. Separate from path safety below,

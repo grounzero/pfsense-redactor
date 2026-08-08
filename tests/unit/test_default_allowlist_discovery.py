@@ -126,15 +126,28 @@ class TestLoadIsAnnounced:
     """A file picked up without being asked for should say so"""
 
     def test_logged_when_writing_a_file(self, in_dir_with_default, caplog):
-        """Not in --stdout or --dry-run, where output is the product"""
+        """The ordinary case"""
         with caplog.at_level(logging.INFO, logger='pfsense_redactor'):
             collect(stdout=False)
 
         assert 'default allow-list' in caplog.text
 
-    def test_not_logged_in_stdout_mode(self, in_dir_with_default, caplog):
-        """stdout carries the redacted config, so nothing else may land there"""
-        with caplog.at_level(logging.INFO, logger='pfsense_redactor'):
-            collect(stdout=True)
+    @pytest.mark.parametrize('mode', [{'stdout': True}, {'dry_run': True}], ids=['stdout', 'dry-run'])
+    def test_logged_in_every_mode(self, in_dir_with_default, caplog, mode):
+        """Including --stdout and --dry-run, which is where it used to be silent
 
-        assert 'default allow-list' not in caplog.text
+        This asserted the opposite: that the notice was suppressed under
+        --stdout, on the reasoning that stdout carries the redacted config and
+        nothing else may land there. The reasoning was sound and the conclusion
+        was not - the notice goes to *stderr*, so it never competed with the
+        document, and suppressing it meant a file in the working directory
+        could weaken redaction in exactly the two modes most likely to be
+        scripted, with nothing in the run saying so.
+
+        Announced in every mode now. An allow-list changes what is redacted; a
+        run must not be quiet about being handed one it was not asked to use.
+        """
+        with caplog.at_level(logging.INFO, logger='pfsense_redactor'):
+            collect(**mode)
+
+        assert 'default allow-list' in caplog.text

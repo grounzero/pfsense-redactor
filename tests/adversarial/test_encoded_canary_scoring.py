@@ -98,6 +98,25 @@ class TestCorpusScoringIsIncomplete:
             f"markers recoverable only by decoding: {sorted(decoded - literal)}"
         )
 
+    def test_strict_mode_leaves_no_encoded_marker(self, corpus, run_redactor, tmp_path):
+        """Strict mode is where the encoded survivor is actually accounted for
+
+        The default-mode gap above stands: the corpus score counts literal
+        markers, and the base64 canary is not in its denominator. What strict
+        mode adds is that the same marker cannot reach output at all - either
+        it is redacted, or the run produces nothing.
+        """
+        out = tmp_path / "out.xml"
+        result = run_redactor(corpus, out, "--strict")
+
+        if result.returncode != 0:
+            assert not out.exists()
+            return
+
+        literal = find_markers(out.read_text(), max_depth=0)
+        decoded = find_markers(out.read_text())
+        assert not (decoded - literal), sorted(decoded - literal)
+
     def test_aggressive_mode_clears_the_encoded_marker(self, corpus, run_redactor):
         """Pins the escape hatch, and scopes the finding to default mode"""
         result = run_redactor(corpus, "--stdout", "--aggressive")

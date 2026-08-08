@@ -5,6 +5,108 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0][] - 2026-08-05
+
+A mode for output intended to be read by anyone, and the machinery a caller
+needs to check a sharing decision without reading prose on stderr.
+
+### Added
+
+- **`--strict`, a fail-closed mode for public sharing.** It implies
+  `--aggressive` and `--redact-descriptions`, runs the independent verifier, and
+  **produces no output at all** - no file, no XML on stdout, no temporary file -
+  when anything is retained or found, or when the verifier could not run. It
+  ignores allow-list files found in the working directory or home directory and
+  says so; refuses `--inplace`; and rejects rather than warns about an
+  unsupported root element, a configuration schema version outside the range
+  this tool has been exercised against, a document nesting more than 400
+  elements deep, and any element too large to process. (FINDING-25)
+
+  Strict mode is a mode with no silent failure path. It is not described as
+  certified, audit-grade, complete or suitable for every package schema,
+  because it is none of those; `docs/security.md` states what it does not
+  establish.
+
+- **`--report-json PATH`, a machine-readable assurance report.** Paths, kinds,
+  lengths, counts and a verdict. Never a retained value, a prefix of one,
+  decoded content, a full credential-bearing URL, or a hash of a secret - a
+  short secret's hash is brute-forceable. Written on failure as well as on
+  success, through the same atomic `0600` writer as the XML. Works in every
+  mode, not only under `--strict`. (FINDING-26)
+
+- **Distinct exit codes.** `0` clean, `1` usage error, `2` input rejected, `3`
+  sensitive value retained, `4` verifier finding, `5` I/O failure, `6` internal
+  failure. Previously only `0` and `1` were used, so a CI job could not tell
+  "this file is not parseable" from "this file still has secrets" from "the
+  disk is full". Every non-zero value is still non-zero, so an integration that
+  only tests for success is unaffected. `argparse` still exits `2` of its own
+  accord for a malformed command line; the overlap is documented rather than
+  hidden. (FINDING-23)
+
+### Security
+
+- **Allow-list sources are announced in every mode.** The notice was printed
+  only when *not* `--dry-run` and *not* `--stdout` - the two modes most likely
+  to be scripted - so running the tool inside a repository checkout or a CI
+  workspace could weaken redaction with nothing in the run saying so.
+  (FINDING-25)
+
+- **Nesting is bounded at 400 elements.** Deeper documents are refused with a
+  diagnosis instead of reaching the interpreter's recursion limit and arriving
+  at the shell as a traceback with interpreter paths in it. Depth is measured
+  iteratively, because recursing over the document is what fails. (FINDING-13)
+
+- **Text over the 1 MiB element limit is replaced, not trimmed, and the run is
+  refused.** Truncating discarded 151,424 characters of a 1,200,000-character
+  element and reported success. Refused in every mode, not only under a gate:
+  output that silently lacks part of the configuration misrepresents itself.
+  (FINDING-14)
+
+- **The configuration's own `<version>` is inspected and reported.** Redaction
+  is name-driven, so an unfamiliar schema is exactly where coverage is weakest,
+  and an operator deciding whether to share is entitled to know. Reported as a
+  warning outside strict mode; a refusal inside it. Only the root's own
+  `<version>` is read, so a package version is never mistaken for the schema.
+  (FINDING-24)
+
+- **A wrong root element aborts under `--strict` as well as `--fail-on-warn`.**
+
+### Fixed
+
+- **A document too deep to traverse fully now fails closed in every mode.**
+  `redact_element` stops descending at 400 elements and counted that it had;
+  nothing read the counter. The structural check normally refuses such a
+  document first, so this was not reachable through the CLI — but a run that
+  stopped early would have emitted elements it never examined, and reported
+  success. Refused with exit code 2, no output, in every mode rather than only
+  under a gate.
+
+- **The JSON report distinguishes a failed run from a dirty configuration.**
+  `verdict` was `"findings"` for I/O and internal failures as well as for
+  retained material, so a pipeline reading it concluded the configuration
+  still held secrets when the disk was full. Those now report `"error"`.
+  Values are `clean`, `rejected`, `findings`, `error`.
+
+- **The tool's own usage errors exit 1, as documented.** `--inplace` without
+  `--force`, `--strict` with `--inplace`, and `--quiet` with `--verbose` went
+  through `argparse.error` and exited 2. `argparse` still exits 2 for a command
+  line it cannot parse itself, such as an unknown flag.
+
+### Documentation
+
+- `docs/benchmark.md` now states which mode the published score refers to, gives
+  the decode-aware counts alongside the literal ones, and says plainly that the
+  default-mode figure is a literal-marker count. (FINDING-27, documentation part)
+
+- `docs/security.md` distinguishes redaction, identifier anonymisation,
+  independent verification and third-party scanning, and separates default,
+  `--aggressive` and `--strict` by what each refuses.
+
+**Action required:** none for existing invocations. `--strict` and
+`--report-json` are new. Scripts testing only for a non-zero exit are
+unaffected; a script matching the exact value **2** for a usage error should
+match **1** instead.
+
 ## [1.3.0][] - 2026-08-05
 
 Verify, then write. Until now the write happened first and the verdict was
@@ -848,6 +950,7 @@ pfsense-redactor config.xml --anonymise
 pfsense-redactor config.xml --dry-run-verbose
 ```
 
+[1.4.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.4.0
 [1.3.0]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.3.0
 [1.2.2]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.2.2
 [1.2.1]: https://github.com/grounzero/pfsense-redactor/releases/tag/1.2.1

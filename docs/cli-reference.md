@@ -104,6 +104,114 @@ the unredacted content.
 | `--force`                | Overwrite output file if it already exists; also the required consent for `--inplace`                   |
 | `--allow-absolute-paths` | Allow absolute file paths (relative paths only by default for security)                                 |
 
+### Assurance
+
+| Flag             | Description                                                                                                     |
+| ---------------- | --------------------------------------------------------------------------------------------------------------- |
+| `--fail-on-warn` | Exit non-zero, and produce no output, if the root tag is wrong, values were retained, or verification found anything |
+| `--strict`       | Fail-closed mode for output intended for public sharing. See below                                              |
+| `--report-json`  | Write a machine-readable assurance report. Paths, kinds, lengths and counts only — never a value                 |
+
+#### `--strict`
+
+Intended for output that may be read by anyone, indefinitely. It is a mode with
+no silent failure path, not a guarantee of safety — see
+[security](security.md#strict-mode) for what it does and does not establish.
+
+Strict mode:
+
+- implies `--aggressive` and `--redact-descriptions`
+- runs the independent verifier and **produces no output at all** if it finds
+  anything, or if it could not run
+- ignores allow-list files found in the working directory or home directory,
+  and says so; `--allowlist-file` is the only way in
+- refuses `--inplace`, an unsupported root element, a configuration schema
+  version outside the range the tool has been exercised against, a document
+  nesting more than 400 elements deep, and any element too large to process
+- writes through the same atomic `0600` writer as every other mode
+
+```bash
+pfsense-redactor config.xml public.xml --strict --report-json report.json
+```
+
+### Exit codes
+
+Every non-zero value is still non-zero, so an integration that only tests for
+success is unaffected.
+
+| Code | Meaning                                                                    |
+| ---- | -------------------------------------------------------------------------- |
+| 0    | Clean output produced                                                      |
+| 1    | Usage error — the command line parsed, and asks for something incoherent    |
+| 2    | Input rejected: unparseable, unsupported schema, too deeply nested, oversized |
+| 3    | A sensitive value was retained (under `--fail-on-warn` or `--strict`)      |
+| 4    | Independent verification found something, or could not run                 |
+| 5    | Reading or writing a file failed                                           |
+| 6    | Internal processing failure                                                |
+
+The tool's own usage errors — `--inplace` without `--force`, `--strict` with
+`--inplace`, `--quiet` with `--verbose` — exit **1**.
+
+`argparse` exits **2** of its own accord for a command line it cannot parse at
+all, such as an unknown flag. That is the same value as *input rejected*. Both
+mean "what you gave me cannot be used", they are distinguishable from stderr,
+and overriding argparse's convention would be worse than the overlap.
+
+### Report schema
+
+```json
+{
+  "schema_version": 1,
+  "tool": {"name": "pfsense-redactor", "version": "1.4.0"},
+  "input": {"sha256": "…", "bytes": 48213, "root_tag": "pfsense",
+            "config_version": "23.1", "config_version_supported": true},
+  "mode": {"strict": true, "aggressive": true, "redact_descriptions": true,
+           "anonymise": false, "fail_on_warn": false, "dry_run": false,
+           "allowlist_files": []},
+  "verdict": "clean",           // clean | rejected | findings | error
+  "verification": {"available": true, "clean": true},
+  "counts": {"secrets_redacted": 42, "certificates_redacted": 6,
+             "ips_redacted": 18, "domains_redacted": 9,
+             "identifiers_anonymised": 0, "high_entropy_retained": 0,
+             "oversized_text": 0, "verifier_findings": 0},
+  "retained": [],
+  "findings": [],
+  "exit_code": 0
+}
+```
+
+A finding looks like:
+
+```json
+{"id": "retained-private-key",
+ "path": "pfsense/installedpackages/example/vendorblob",
+ "kind": "pem-private-key",
+ "length": 1679}
+```
+
+`verdict` distinguishes what the run concluded from how it ended:
+
+| Verdict | Means |
+| --- | --- |
+| `clean` | Output was produced and nothing was withheld |
+| `rejected` | The input was unsupported or structurally unsafe (exit 2) |
+| `findings` | Something sensitive was retained or detected **in the configuration** (exit 3 or 4) |
+| `error` | The **run** failed — I/O or an internal fault (exit 5 or 6). Says nothing about the configuration |
+
+The distinction matters to a pipeline: reading `findings` when the disk was
+full would report the configuration as still holding secrets.
+
+The report never contains a retained value, a prefix of one, decoded content, a
+full credential-bearing URL, or a hash of a secret. A short secret's hash is
+brute-forceable, so publishing one publishes the secret.
+
+The `sha256` under `input` is a digest of the **input file**, which the operator
+already has. It identifies which file the report describes.
+
+Reports are written through the same atomic `0600` writer as the XML, and are
+written on failure as well as on success — a run that withheld output is exactly
+when a caller needs to know why.
+
 ### Redaction Modes
 
 | Flag                     | Description                                                                                                                                        |
