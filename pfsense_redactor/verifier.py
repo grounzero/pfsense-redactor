@@ -202,7 +202,7 @@ CREDENTIAL_ALPHABET_RE = re.compile(r'\A[A-Za-z0-9+/=_-]+\Z')
 # every ordinary English word are below it. See tests/unit/test_output_verification.py
 # for the measured false-positive volume on the shipped sample configs.
 EMBEDDED_TOKEN_RE = re.compile(
-    r'[A-Za-z0-9+/=_-]{%d,%d}' % (MIN_RETENTION_LENGTH, MAX_TOKEN_LENGTH)
+    rf'[A-Za-z0-9+/=_-]{{{MIN_RETENTION_LENGTH},{MAX_TOKEN_LENGTH}}}'
 )
 
 # Structural values that legitimately appear unchanged in the output and are
