@@ -48,6 +48,7 @@ That is the number each pull request below is compared against.
 | 2 | 1106 passed, 1 skipped, 26 xfailed | 0 | 26 |
 | 3 | 1153 passed, 1 skipped, 18 xfailed | 8 | 18 |
 | 4 | 1205 passed, 1 skipped, 9 xfailed | 9 | 9 |
+| 5 | 1229 passed, 1 skipped, 9 xfailed | 0 | 9 |
 
 Every confirmed gap carries a `xfail(strict=True)` marker naming its finding id,
 so closing one turns its test into a failure until the marker is removed.
@@ -83,6 +84,26 @@ Status values: `fixed`, `partial`, `deferred`, `not planned`.
 | SC-02 Dormant PyPI token | 5 | — (repository setting) | — | OIDC remains the only path | Requires a manual revocation | partial |
 | SC-03 Ruleset requires no checks | 5 | — (repository setting) | — | Documented required checks | Requires administrator action | deferred |
 | 29 Documentation drift | 5 | `tests/unit/test_docs_links.py` | documentation assertions | Corrected `/tmp`, bandit, version, reporting channel | Documentation only | fixed |
+
+## Manual administrator actions
+
+None of these can be made from a pull request. They are listed here rather than
+marked done, because claiming a repository setting was changed when it was not
+is worse than leaving it open.
+
+| Action | Status | Why it is not in the code |
+| --- | --- | --- |
+| Revoke `PYPI_API_TOKEN` on PyPI and delete the repository secret | **Outstanding** | A repository secret is a settings-page object. No workflow references the name any more, and a test asserts none may, but the secret itself is still configured and still exposed to every workflow running in the trusted context |
+| Verify the PyPI Trusted Publisher entry names this repository and the `pypi` environment | **Outstanding** | Settings on pypi.org |
+| Enable private vulnerability reporting | **Outstanding** | `SECURITY.md` now points reporters at GitHub's private advisory form; that form has to be switched on in repository settings or the link is a dead end |
+| Require the `tests` and `pylint` checks on `main` | **Outstanding** | The `main-protect` ruleset has no `required_status_checks` rule at all, so the 18-cell matrix, CodeQL and the structure gate are advisory at merge time |
+| Require at least one approving review, or record that this is a sole-maintainer project and CI is the only gate | **Outstanding** | `required_approving_review_count` is 0 |
+| Review unconditional administrator bypass on `main` | **Outstanding** | Admins currently bypass the ruleset entirely, so a security-critical change can be self-merged with failing tests |
+| Add protection rules to the `pypi` deployment environment | **Outstanding** | The environment exists and is referenced by the release workflow; it has no reviewers or wait timer |
+
+The workflow-side halves of these — SHA pinning, removing the third-party push
+action, the pre-commit gates, and keeping OIDC the only publishing path — are
+done and are asserted by `tests/unit/test_workflow_security.py`.
 
 ## Findings not scoped for this sequence
 
