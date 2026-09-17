@@ -20,7 +20,7 @@ hide.
 pip install pfsense-redactor
 ```
 
-Pure Python standard library, no dependencies, Python 3.9+.
+Pure Python standard library, no runtime dependencies, Python 3.9+.
 
 <details>
 <summary>If pip reports <code>externally-managed-environment</code></summary>
